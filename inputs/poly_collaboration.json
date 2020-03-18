@@ -1,0 +1,50 @@
+{
+    "project_id": "poly_collaboration",
+
+    "experiments": [
+        {
+            "expt_id": "logistic_regression",
+
+            "model": {
+                "fc1": {
+                    "structure": {
+                        "in_features": 20,
+                        "out_features": 1,
+                        "bias": true
+                    },
+                    "type": "linear",
+                    "activation": "sigmoid"
+                }
+            },
+            
+            "runs": [
+                {
+                    "input_size": 20,
+                    "output_size": 1,
+                    "batch_size": 32,
+                    "lr": 0.15,
+                    "weight_decay": 0.01,
+                    "rounds": 2,
+                    "epochs": 1
+                }
+            ]
+        }
+    ],
+
+    "participants": [
+        {
+            "host": "127.0.0.1",
+            "port": 8020,
+            "id": "Alice",
+            "log_msgs": false,
+            "verbose": false
+        },
+        {
+            "host": "127.0.0.1",
+            "port": 8021,
+            "id": "Bob",
+            "log_msgs": false,
+            "verbose": false
+        }
+    ]
+}

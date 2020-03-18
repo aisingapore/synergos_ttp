@@ -1,0 +1,188 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Participant Initialisation Parameters (Payload)",
+    "description": "Registration fields required of a partipant in PySyft FL training",
+    "type": "object",
+    "properties": {
+
+        "participant_id":{
+            "description": "Unique Identifiers for a participant",
+            "type": "string"
+        },
+
+        "configurations": {
+            "description": "Configurations for connecting to participant",
+            "type": "object",
+            "properties": {
+
+                "id": {
+                    "description": "Unique identifier for a participant",
+                    "type": "string"
+                },
+                    
+                "host": {
+                    "description": "Host IP address",
+                    "type": "string"
+                },
+        
+                "port": {
+                    "description": "Host port allocated for WebsocketServerWorker",
+                    "type": "integer"
+                },
+        
+                "tags": {
+                    "description": "Tags of datasets to load",
+                    "type": "object",
+                    "properties": {
+        
+                        "train": {
+                            "description": "Training tag(s)",
+                            "type": "array",
+                            "items": {
+                                "description": "Tag as a list of path tokens",
+                                "type": "array",
+                                "items": {
+                                    "description": "Path token",
+                                    "type": "string"
+                                }
+                            }
+                        },
+        
+                        "evaluate": {
+                            "description": "Evaluation tag(s)",
+                            "type": "array",
+                            "items": {
+                                "description": "Tag as a list of path tokens",
+                                "type": "array",
+                                "items": {
+                                    "description": "Path token",
+                                    "type": "string"
+                                }
+                            }
+                        },
+        
+                        "predict": {
+                            "description": "Prediction tag(s)",
+                            "type": "array",
+                            "items": {
+                                "description": "Tag as a list of path tokens",
+                                "type": "array",
+                                "items": {
+                                    "description": "Path token",
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+        
+                    "required": ["train"]
+                },
+        
+                "alignments": {
+                    "description": "Aligned headers after multiple feature alignment",
+                    "type": "object",
+                    "properties": {
+        
+                        "train": {
+                            "description": "Aligned headers for combined training dataset",
+                            "type": "object",
+                            "properties": {
+        
+                                "X": {
+                                    "description": "Spacer indexes for aligning features",
+                                    "type": "array",
+                                    "items": {
+                                        "description": "Spacer index",
+                                        "type": "integer"
+                                    }
+                                },
+        
+                                "y": {
+                                    "description": "Spacer indexes for aligning targets",
+                                    "type": "array",
+                                    "items": {
+                                        "description": "Spacer index",
+                                        "type": "integer"
+                                    }
+                                }
+                            },
+        
+                            "required": ["X", "y"]
+                        },
+        
+                        "evaluate": {
+                            "description": "Aligned headers for combined evaluation dataset",
+                            "type": "object",
+                            "properties": {
+        
+                                "X": {
+                                    "description": "Spacer indexes for aligning features",
+                                    "type": "array",
+                                    "items": {
+                                        "description": "Spacer index",
+                                        "type": "integer"
+                                    }
+                                },
+        
+                                "y": {
+                                    "description": "Spacer indexes for aligning targets",
+                                    "type": "array",
+                                    "items": {
+                                        "description": "Spacer index",
+                                        "type": "integer"
+                                    }
+                                }
+                            },
+        
+                            "required": ["X", "y"]
+                        },
+        
+                        "predict": {
+                            "description": "Aligned headers for combined prediction dataset",
+                            "type": "object",
+                            "properties": {
+        
+                                "X": {
+                                    "description": "Spacer indexes for aligning features",
+                                    "type": "array",
+                                    "items": {
+                                        "description": "Spacer index",
+                                        "type": "integer"
+                                    }
+                                },
+        
+                                "y": {
+                                    "description": "Spacer indexes for aligning targets",
+                                    "type": "array",
+                                    "items": {
+                                        "description": "Spacer index",
+                                        "type": "integer"
+                                    }
+                                }
+                            },
+        
+                            "required": ["X", "y"]
+                        }
+                    },
+        
+                    "required": ["train"]
+                },
+        
+                "log_msgs": {
+                    "description": "Toggles if messages should be logged",
+                    "type": "boolean"
+                },
+        
+                "verbose": {
+                    "description": "Toggles verbosity of messages logged",
+                    "type": "boolean"
+                }
+            },
+
+            "required": ["id", "host", "port", "tags"]
+        }  
+    },
+        
+    "required": ["participant_id", "configurations"]
+}
+ 

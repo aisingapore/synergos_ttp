@@ -1,0 +1,56 @@
+{
+    "Experiment": {},
+    "Participant": {
+        "1": {
+            "configurations": {
+                "alignments": {
+                    "evaluate": {
+                        "X": [],
+                        "y": []
+                    },
+                    "predict": {
+                        "X": [],
+                        "y": []
+                    },
+                    "train": {
+                        "X": [],
+                        "y": []
+                    }
+                },
+                "host": "0.0.0.0",
+                "id": "worker_0",
+                "log_msgs": false,
+                "port": 8021,
+                "tags": {
+                    "evaluate": [],
+                    "predict": [],
+                    "train": []
+                },
+                "verbose": false
+            },
+            "created_at": "2020-03-18 09:49:24",
+            "participant_id": "worker_0"
+        }
+    },
+    "Project": {
+        "2": {
+            "created_at": "2020-03-18 04:06:28",
+            "experiments": [],
+            "participants": [],
+            "project_id": "eicu_hospital_collab"
+        },
+        "3": {
+            "created_at": "2020-03-18 07:57:41",
+            "experiments": [],
+            "participants": [],
+            "project_id": "poly_collab"
+        },
+        "4": {
+            "created_at": "2020-03-18 08:04:15",
+            "experiments": [],
+            "participants": [],
+            "project_id": "credit_collab"
+        }
+    },
+    "Run": {}
+}

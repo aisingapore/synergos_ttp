@@ -1,0 +1,66 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Experiment Model Structure Parameters (Payload)",
+    "description": "Configurations for defininng a deep neural network model in PySyft FL training",
+    "type": "object",
+    "properties": {
+        
+        "expt_id": {
+            "description": "Unique Identifier for an experiment",
+            "type": "string"
+        },
+
+        "model": {
+            "description": "Model Structure of a specified deep neural network",
+            "type": "object",
+            "additionalProperties": {
+                "type": "object",
+                "properties": {
+
+                    "is_input": {
+                        "description": "Toggles if the layer is an input layer",
+                        "type": "boolean"
+                    },
+
+                    "structure": {
+                        "description": "Structure of Deep neural network",
+                        "type": "object",
+                        "properties": {
+
+                            "in_features": {
+                                "description": "No. of input features to layer",
+                                "type": "integer"
+                            },
+                            
+                            "out_features": {
+                                "description": "No. of output features to layer",
+                                "type": "integer"                    
+                            },
+
+                            "bias": {
+                                "description": "Toggles if a bias term should be included",
+                                "type": "boolean"                                
+                            }
+                        },
+
+                        "required": ["bias"]
+                    },
+
+                    "l_type": {
+                        "description": "Supported layer type of the layer",
+                        "type": "string"                        
+                    },
+
+                    "activation": {
+                        "description": "Supported activation function of the layer",
+                        "type": "string"
+                    }
+                },
+
+                "required": ["structure", "l_type", "activation"]
+            }
+        }
+    },
+
+    "required": ["expt_id", "model"]
+}
