@@ -1,0 +1,91 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Spacer columns inline with Multiple feature alignment (Payload)",
+    "description": "Aligned headers after multiple feature alignment",
+    "type": "object",
+    "properties": {
+
+        "train": {
+            "description": "Aligned headers for combined training dataset",
+            "type": "object",
+            "properties": {
+
+                "X": {
+                    "description": "Spacer indexes for aligning features",
+                    "type": "array",
+                    "items": {
+                        "description": "Spacer index",
+                        "type": "integer"
+                    }
+                },
+
+                "y": {
+                    "description": "Spacer indexes for aligning targets",
+                    "type": "array",
+                    "items": {
+                        "description": "Spacer index",
+                        "type": "integer"
+                    }
+                }
+            },
+
+            "required": ["X", "y"]
+        },
+
+        "evaluate": {
+            "description": "Aligned headers for combined evaluation dataset",
+            "type": "object",
+            "properties": {
+
+                "X": {
+                    "description": "Spacer indexes for aligning features",
+                    "type": "array",
+                    "items": {
+                        "description": "Spacer index",
+                        "type": "integer"
+                    }
+                },
+
+                "y": {
+                    "description": "Spacer indexes for aligning targets",
+                    "type": "array",
+                    "items": {
+                        "description": "Spacer index",
+                        "type": "integer"
+                    }
+                }
+            },
+
+            "required": ["X", "y"]
+        },
+
+        "predict": {
+            "description": "Aligned headers for combined prediction dataset",
+            "type": "object",
+            "properties": {
+
+                "X": {
+                    "description": "Spacer indexes for aligning features",
+                    "type": "array",
+                    "items": {
+                        "description": "Spacer index",
+                        "type": "integer"
+                    }
+                },
+
+                "y": {
+                    "description": "Spacer indexes for aligning targets",
+                    "type": "array",
+                    "items": {
+                        "description": "Spacer index",
+                        "type": "integer"
+                    }
+                }
+            },
+
+            "required": ["X", "y"]
+        }
+    },
+
+    "required": ["train"]
+}

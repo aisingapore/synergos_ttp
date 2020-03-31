@@ -8,6 +8,7 @@
 import json
 import logging
 import os
+import random
 from collections import defaultdict, OrderedDict
 from glob import glob
 from pathlib import Path
@@ -22,7 +23,6 @@ from tinydb_serialization import SerializationMiddleware
 from tinydb_smartcache import SmartCacheTable
 
 # Custom
-from core import DateTimeSerializer, TimeDeltaSerializer
 
 ##################
 # Configurations #
@@ -33,6 +33,8 @@ logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.DEBUG)
 infinite_nested_dict = lambda: defaultdict(infinite_nested_dict)
 
 SRC_DIR = Path(__file__).parent.absolute()
+
+API_VERSION = "0.0.1"
 
 ####################
 # Helper Functions #
@@ -79,7 +81,7 @@ def detect_configurations(dirname):
         return os.path.basename(filepath).split('.')[0]
 
     # Load in parameters for participating servers
-    config_globstring = os.path.join(SRC_DIR, dirname, "*.json")
+    config_globstring = os.path.join(SRC_DIR, dirname, "**/*.json")
     config_paths = glob(config_globstring)
 
     return {parse_filename(c_path): c_path for c_path in config_paths}
@@ -93,12 +95,12 @@ erroneous queries will affect the functions of the system.
 """
 template_paths = detect_configurations("templates")
 
-schemas = {}
+SCHEMAS = {}
 for name, s_path in template_paths.items():
     with open(s_path, 'r') as schema:
-        schemas[name] = json.load(schema, object_pairs_hook=OrderedDict)
+        SCHEMAS[name] = json.load(schema, object_pairs_hook=OrderedDict)
 
-logging.debug(f"Schemas loaded: {list(schemas.keys())}")
+logging.debug(f"Schemas loaded: {list(SCHEMAS.keys())}")
 
 ##########################################
 # PySyft Project Database Configurations #
@@ -109,43 +111,51 @@ tables reside - Participant & Experiment. All interaction between Project,
 Participant, Experiment & Runs must conform to specified template schemas. Refer
 to the `templates` directory for the actual schemas.
 """
-db_path = os.path.join(SRC_DIR, "data", "database.json")
+DB_PATH = os.path.join(SRC_DIR, "data", "database.json")
 
-serialization = SerializationMiddleware(JSONStorage)
-serialization.register_serializer(DateTimeSerializer(), 'TinyDate')
-serialization.register_serializer(TimeDeltaSerializer(), 'TinyDelta')
+logging.debug(f"Project Database path detected: {DB_PATH}")
 
-database = TinyDB(
-    path=db_path, 
-    sort_keys=True,
-    indent=4,
-    separators=(',', ': '),
-    default_table="Project",
-    storage=CachingMiddleware(serialization)
-)
-
-#database.table_class = SmartCacheTable
-
-logging.debug(f"Project Database loaded: {database}")
+#######################################
+# PySyft Flask Payload Configurations #
+####################################### 
+"""
+Responses for REST-RPC have a specific format to allow compatibility between TTP
+& Worker Flask Interfaces. Remember to modify rest_rpc.connection.core.utils.Payload 
+upon modifying this template!
+"""
+PAYLOAD_TEMPLATE = {
+    'apiVersion': API_VERSION,
+    'success': 0,
+    'status': None,
+    'method': "",
+    'params': {},
+    'data': {}
+}
 
 #########################################
 # PySyft Container Local Configurations #
 #########################################
+""" 
+General parameters required for processing inputs & outputs
+"""
 
-server_params = {
-    
-    # Define server's role: Master or slave
-    'is_master': True,
-    
-    # State input directory
-    'in_dir': os.path.join(SRC_DIR, "inputs"),
+# Define server's role: Master or slave
+IS_MASTER = True
 
-    # State output directory
-    'out_dir': os.path.join(SRC_DIR, "outputs"),
+# State input directory
+IN_DIR = os.path.join(SRC_DIR, "inputs")
 
-    # Initialise Cache
-    'cache': infinite_nested_dict()
+# State output directory
+OUT_DIR = os.path.join(SRC_DIR, "outputs")
 
-}
+# State test directory
+TEST_DIR = os.path.join(SRC_DIR, "tests")
 
-logging.debug(f"Server configurations: {server_params}")
+# Initialise Cache
+CACHE = infinite_nested_dict()
+
+logging.debug(f"Is master node? {IS_MASTER}")
+logging.debug(f"Input directory detected: {IN_DIR}")
+logging.debug(f"Output directory detected: {OUT_DIR}")
+logging.debug(f"Test directory detected: {TEST_DIR}")
+logging.debug(f"Cache initialised: {CACHE}")

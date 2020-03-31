@@ -1,0 +1,79 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Data tags for registered participant (Payload)",
+    "description": "Path tokens of datasets to load required of a partipant in PySyft FL training",
+    "type": "object",
+    "properties": {
+
+        "apiVersion": {
+            "description": "API version of current PySyft REST-RPC System",
+            "type": "string"
+        },
+
+        "success": {
+            "description": "Switch indication if endpoint operation was successful",
+            "type": "integer"
+        },
+
+        "status": {
+            "description": "Status code of endpoint operation",
+            "type": "integer"
+        },
+
+        "method": {
+            "description": "Endpoint operation invoked",
+            "type": "string"
+        },
+
+        "params": {
+            "description": "Prerequisite Identifiers required to start endpoint operation",
+            "type": "object",
+            "anyOf": [
+                {
+                    "project_id": {
+                        "description": "Identifier for a project",
+                        "type": "string"
+                    }
+                },
+                {
+                    "expt_id": {
+                        "description": "Identifier for an experiment",
+                        "type": "string"
+                    }
+                },
+                {
+                    "run_id": {
+                        "description": "Identifier for a run",
+                        "type": "string"
+                    }
+                },
+                {
+                    "participant_id": {
+                        "description": "Identifier for a participant",
+                        "type": "string"
+                    }
+                },
+                {
+                    "tag_id": {
+                        "description": "Identifier for a tag",
+                        "type": "string"
+                    }
+                },
+                {
+                    "alignment_id": {
+                        "description": "Identifier for an alignment",
+                        "type": "string"
+                    }
+                }
+            ]
+
+        },
+
+        "data": {
+            "description": "Main resource data transmitted in payload",
+            "type": ["array","object"]
+        }
+    },
+
+    "required": ["apiVersion", "success", "status", "method", "params", "data"]
+}

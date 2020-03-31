@@ -1,0 +1,38 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Project Initialisation Metadata (Payload)",
+    "description": "Hyperparameter fields required of a partipant in PySyft FL training",
+    "type": "object",
+    "properties": {
+        
+        "project_id": {
+            "description": "Unique Identifiers for a project",
+            "type": "string"
+        },
+
+        "universe_alignment": {
+            "description": "Universal header obtained from MFA across all parties",
+            "type": "array",
+            "items": {
+                "description": "OHE column name",
+                "type": "string"
+            }
+        },
+
+        "incentives": {
+            "description": "Experiments registered for FL training under this project",
+            "type": "object"
+        },
+
+        "created_at": {
+            "description": "Date at which project was created",
+            "type": "string"
+        },
+
+        "start_at": {
+            "description": "Date at which project will commence (i.e. deadline for registration)"
+        }
+    },
+
+    "required": ["incentives"]
+}

@@ -1,0 +1,49 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Data tags for registered participant (Payload)",
+    "description": "Path tokens of datasets to load required of a partipant in PySyft FL training",
+    "type": "object",
+    "properties": {
+
+        "train": {
+            "description": "Training tag(s)",
+            "type": "array",
+            "items": {
+                "description": "Tag as a list of path tokens",
+                "type": "array",
+                "items": {
+                    "description": "Path token",
+                    "type": "string"
+                }
+            }
+        },
+
+        "evaluate": {
+            "description": "Evaluation tag(s)",
+            "type": "array",
+            "items": {
+                "description": "Tag as a list of path tokens",
+                "type": "array",
+                "items": {
+                    "description": "Path token",
+                    "type": "string"
+                }
+            }
+        },
+
+        "predict": {
+            "description": "Prediction tag(s)",
+            "type": "array",
+            "items": {
+                "description": "Tag as a list of path tokens",
+                "type": "array",
+                "items": {
+                    "description": "Path token",
+                    "type": "string"
+                }
+            }
+        }
+    },
+
+    "required": ["train"]
+}
