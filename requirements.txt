@@ -23,3 +23,5 @@ tinyrecord==0.1.5
 tqdm==4.39.0
 werkzeug==0.16.0 
 xgboost==0.90
+aiohttp==3.6.2
+mlflow==1.7.2
