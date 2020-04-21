@@ -1,4 +1,54 @@
 {
+    "Alignment": {
+        "1": {
+            "created_at": "{TinyDate}:2020-04-20 18:13:58 N",
+            "key": {
+                "participant_id": "test_worker_2",
+                "project_id": "test_project"
+            },
+            "link": {
+                "alignment_id": "b466abf6833211ea9095f999898e5ac0",
+                "registration_id": "64550c6682fb11eab7fe052f135a364f",
+                "tag_id": "e364066082fb11eab7fe052f135a364f"
+            },
+            "train": {
+                "X": [
+
+                ],
+                "y": [
+
+                ]
+            }
+        },
+        "2": {
+            "created_at": "{TinyDate}:2020-04-20 18:13:58 N",
+            "evaluate": {
+                "X": [
+
+                ],
+                "y": [
+
+                ]
+            },
+            "key": {
+                "participant_id": "test_worker_1",
+                "project_id": "test_project"
+            },
+            "link": {
+                "alignment_id": "b46a112e833211ea9095f999898e5ac0",
+                "registration_id": "59852bae82fb11eab7fe052f135a364f",
+                "tag_id": "d2c9b19282fb11eab7fe052f135a364f"
+            },
+            "train": {
+                "X": [
+
+                ],
+                "y": [
+
+                ]
+            }
+        }
+    },
     "Experiment": {
         "1": {
             "created_at": "{TinyDate}:2020-03-30 00:15:07 N",
@@ -70,88 +120,138 @@
     },
     "Participant": {
         "1": {
-            "configurations": {
-                "alignments": {
-                    "evaluate": {
-                        "X": [],
-                        "y": []
-                    },
-                    "predict": {
-                        "X": [],
-                        "y": []
-                    },
-                    "train": {
-                        "X": [],
-                        "y": []
-                    }
-                },
-                "host": "0.0.0.0",
-                "id": "worker_0",
-                "log_msgs": false,
-                "port": 8020,
-                "tags": {
-                    "evaluate": [],
-                    "predict": [],
-                    "train": []
-                },
-                "verbose": false
+            "created_at": "{TinyDate}:2020-04-08 05:43:57 N",
+            "host": "0.0.0.0",
+            "id": "worker_0",
+            "key": {
+                "participant_id": "worker_0"
             },
-            "created_at": "2020-03-18 13:18:11",
-            "participant_id": "worker_0",
-            "projects": []
+            "log_msgs": true,
+            "port": 8020,
+            "verbose": true
         },
         "2": {
-            "configurations": {
-                "alignments": {
-                    "evaluate": {
-                        "X": [],
-                        "y": []
-                    },
-                    "predict": {
-                        "X": [],
-                        "y": []
-                    },
-                    "train": {
-                        "X": [],
-                        "y": []
-                    }
-                },
-                "host": "0.0.0.0",
-                "id": "worker_1",
-                "log_msgs": false,
-                "port": 8020,
-                "tags": {
-                    "evaluate": [],
-                    "predict": [],
-                    "train": []
-                },
-                "verbose": false
+            "created_at": "{TinyDate}:2020-04-08 05:45:09 N",
+            "host": "1.1.1.1",
+            "id": "worker_1",
+            "key": {
+                "participant_id": "worker_1"
             },
-            "created_at": "2020-03-18 19:41:38",
-            "participant_id": "worker_1",
-            "projects": []
+            "log_msgs": false,
+            "port": 8030,
+            "verbose": false
+        },
+        "3": {
+            "created_at": "{TinyDate}:2020-04-20 11:33:38 N",
+            "host": "0.0.0.0",
+            "id": "test_worker_1",
+            "key": {
+                "participant_id": "test_worker_1"
+            },
+            "log_msgs": false,
+            "port": 5001,
+            "verbose": false
+        },
+        "4": {
+            "created_at": "{TinyDate}:2020-04-20 11:33:57 N",
+            "host": "0.0.0.0",
+            "id": "test_worker_2",
+            "key": {
+                "participant_id": "test_worker_2"
+            },
+            "log_msgs": false,
+            "port": 5002,
+            "verbose": false
         }
     },
     "Project": {
+        "1": {
+            "created_at": "{TinyDate}:2020-03-31 05:09:04 N",
+            "incentives": {
+                "scale_1": 0.5
+            },
+            "key": {
+                "project_id": "eicu_hospital_collab"
+            },
+            "universe_alignment": [
+                "file",
+                "tokens",
+                "to",
+                "data"
+            ]
+        },
         "2": {
-            "created_at": "2020-03-18 04:06:28",
-            "experiments": [],
-            "participants": [
-                "worker_0"
-            ],
-            "project_id": "eicu_hospital_collab"
+            "created_at": "{TinyDate}:2020-03-31 05:09:46 N",
+            "incentives": {
+                "scale": 0.5
+            },
+            "key": {
+                "project_id": "poly_collab"
+            }
         },
         "3": {
-            "created_at": "2020-03-18 07:57:41",
-            "experiments": [],
-            "participants": [],
-            "project_id": "poly_collab"
+            "created_at": "{TinyDate}:2020-04-20 11:36:32 N",
+            "incentives": {
+                "scale": 9
+            },
+            "key": {
+                "project_id": "string"
+            }
         },
         "4": {
-            "created_at": "2020-03-18 08:04:15",
-            "experiments": [],
-            "participants": [],
-            "project_id": "credit_collab"
+            "created_at": "{TinyDate}:2020-04-20 11:36:51 N",
+            "incentives": {
+                "scale": 9
+            },
+            "key": {
+                "project_id": "test_project"
+            }
+        }
+    },
+    "Registration": {
+        "1": {
+            "created_at": "{TinyDate}:2020-04-07 23:14:01 N",
+            "key": {
+                "participant_id": "worker_0",
+                "project_id": "eicu_hospital_collab"
+            },
+            "link": {
+                "registration_id": "77443cf0792511eab90395d60d10a4b7"
+            },
+            "role": "arbiter"
+        },
+        "2": {
+            "created_at": "{TinyDate}:2020-04-09 18:19:33 N",
+            "key": {
+                "participant_id": "worker_1",
+                "project_id": "poly_collab"
+            },
+            "link": {
+                "registration_id": "a92983827a8e11eab6edeb827ef5646a"
+            },
+            "role": "guest"
+        },
+        "3": {
+            "created_at": "{TinyDate}:2020-04-20 11:37:43 N",
+            "key": {
+                "participant_id": "test_worker_1",
+                "project_id": "test_project"
+            },
+            "link": {
+                "registration_id": "59852bae82fb11eab7fe052f135a364f"
+            },
+            "role": "guest"
+        },
+        "4": {
+            "created_at": "{TinyDate}:2020-04-20 11:38:01 N",
+            "key": {
+                "participant_id": "test_worker_2",
+                "project_id": "test_project"
+            },
+            "link": {
+                "registration_id": "64550c6682fb11eab7fe052f135a364f"
+            },
+            "role": "host"
         }
     },
     "Run": {
@@ -253,7 +353,124 @@
             "rounds": 30,
             "seed": 42,
             "use_CLR": true
+        },
+        "4": {
+            "created_at": "{TinyDate}:2020-03-31 07:12:10 N",
+            "epochs": 5,
+            "input_size": 1000,
+            "is_condensed": true,
+            "key": {
+                "expt_id": "3_layer_lstm",
+                "project_id": "eicu_hospital_collab",
+                "run_id": "run_005"
+            },
+            "l1_lambda": 0.05,
+            "l2_lambda": 0.05,
+            "lr": 0.1,
+            "lr_decay": 0.01,
+            "mu": 0.1,
+            "output_size": 10,
+            "precision_fractional": 5,
+            "rounds": 30,
+            "seed": 42,
+            "use_CLR": true
         }
     },
-    "_default": {}
+    "Tag": {
+        "1": {
+            "created_at": "{TinyDate}:2020-04-08 03:42:43 N",
+            "evaluate": [
+                [
+                    "path",
+                    "to",
+                    "file",
+                    "2"
+                ]
+            ],
+            "hyperparameters": [
+                "path",
+                "to",
+                "optimal",
+                "local",
+                "hyperparameters"
+            ],
+            "key": {
+                "participant_id": "worker_0",
+                "project_id": "eicu_hospital_collab"
+            },
+            "link": {
+                "registration_id": "77443cf0792511eab90395d60d10a4b7",
+                "tag_id": "00d07018794b11eab5a42dbb94eee6e8"
+            },
+            "model": [
+                "path",
+                "to",
+                "optimal",
+                "local",
+                "model"
+            ],
+            "predict": [
+                [
+                    "path",
+                    "to",
+                    "file",
+                    "3"
+                ]
+            ],
+            "train": [
+                [
+                    "path",
+                    "to",
+                    "file",
+                    "1"
+                ]
+            ]
+        },
+        "2": {
+            "created_at": "{TinyDate}:2020-04-20 11:41:07 N",
+            "evaluate": [
+                [
+                    "edge_test_missing_coecerable_vals"
+                ]
+            ],
+            "key": {
+                "participant_id": "test_worker_1",
+                "project_id": "test_project"
+            },
+            "link": {
+                "registration_id": "59852bae82fb11eab7fe052f135a364f",
+                "tag_id": "d2c9b19282fb11eab7fe052f135a364f"
+            },
+            "train": [
+                [
+                    "iid_1"
+                ],
+                [
+                    "non_iid_1"
+                ]
+            ]
+        },
+        "3": {
+            "created_at": "{TinyDate}:2020-04-20 11:41:35 N",
+            "key": {
+                "participant_id": "test_worker_2",
+                "project_id": "test_project"
+            },
+            "link": {
+                "registration_id": "64550c6682fb11eab7fe052f135a364f",
+                "tag_id": "e364066082fb11eab7fe052f135a364f"
+            },
+            "train": [
+                [
+                    "iid_2"
+                ],
+                [
+                    "non_iid_2"
+                ]
+            ]
+        }
+    },
+    "_default": {
+
+    }
 }

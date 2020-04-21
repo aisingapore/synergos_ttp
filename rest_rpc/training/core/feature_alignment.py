@@ -677,6 +677,7 @@ class MultipleFeatureAligner:
                 if self.is_equivalent(raw_header, augmented_header):
                     
                     ordered_mf_alignment.append(augmented_header)
+                    break
                     
         return ordered_mf_alignment
                     

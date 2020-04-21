@@ -16,13 +16,6 @@ from pathlib import Path
 # Libs
 import numpy as np
 import torch as th
-from tinydb import TinyDB
-from tinydb.middlewares import CachingMiddleware
-from tinydb.storages import JSONStorage
-from tinydb_serialization import SerializationMiddleware
-from tinydb_smartcache import SmartCacheTable
-
-# Custom
 
 ##################
 # Configurations #
@@ -86,9 +79,58 @@ def detect_configurations(dirname):
 
     return {parse_filename(c_path): c_path for c_path in config_paths}
 
-###########################
-# PySyft Template Schemas #
-###########################
+#############################################
+# PySyft TTP Container Local Configurations #
+#############################################
+""" 
+General parameters required for processing inputs & outputs
+"""
+
+# Define server's role: Master or slave
+IS_MASTER = True
+
+# State input directory
+IN_DIR = os.path.join(SRC_DIR, "inputs")
+
+# State output directory
+OUT_DIR = os.path.join(SRC_DIR, "outputs")
+
+# State data directory
+DATA_DIR = os.path.join(SRC_DIR, "data")
+
+# State test directory
+TEST_DIR = os.path.join(SRC_DIR, "tests")
+
+# Initialise Cache
+CACHE = infinite_nested_dict()
+
+logging.debug(f"Is master node? {IS_MASTER}")
+logging.debug(f"Input directory detected: {IN_DIR}")
+logging.debug(f"Output directory detected: {OUT_DIR}")
+logging.debug(f"Data directory detected: {DATA_DIR}")
+logging.debug(f"Test directory detected: {TEST_DIR}")
+logging.debug(f"Cache initialised: {CACHE}")
+
+##########################################
+# PySyft Project Database Configurations #
+##########################################
+""" 
+In PySyft TTP, each registered project is factored into many tables, namely 
+Project, Experiment, Run, Participant, Registration, Tag, Alignment & Model, all
+related hierarchially. All interactions must conform to specified relation & 
+association rules. Refer to the Record classes in all `rest_rpc/*/core/utils.py`
+for more detailed descriptions of said relations/associations.
+
+Also, all archived payloads must conform to specified template schemas. Refer 
+to the `templates` directory for the actual schemas.
+"""
+DB_PATH = os.path.join(SRC_DIR, "data", "database.json")
+
+logging.debug(f"Database path detected: {DB_PATH}")
+
+###############################
+# PySyft TTP Template Schemas #
+###############################
 """
 For REST service to be stable, there must be schemas enforced to ensure that any
 erroneous queries will affect the functions of the system.
@@ -101,19 +143,6 @@ for name, s_path in template_paths.items():
         SCHEMAS[name] = json.load(schema, object_pairs_hook=OrderedDict)
 
 logging.debug(f"Schemas loaded: {list(SCHEMAS.keys())}")
-
-##########################################
-# PySyft Project Database Configurations #
-##########################################
-""" 
-In PySyft TTP, each registered project is granted its own database, where 2 
-tables reside - Participant & Experiment. All interaction between Project,
-Participant, Experiment & Runs must conform to specified template schemas. Refer
-to the `templates` directory for the actual schemas.
-"""
-DB_PATH = os.path.join(SRC_DIR, "data", "database.json")
-
-logging.debug(f"Project Database path detected: {DB_PATH}")
 
 #######################################
 # PySyft Flask Payload Configurations #
@@ -132,30 +161,17 @@ PAYLOAD_TEMPLATE = {
     'data': {}
 }
 
-#########################################
-# PySyft Container Local Configurations #
-#########################################
-""" 
-General parameters required for processing inputs & outputs
+#################################
+# PySyft REST-RPC Worker Routes #
+#################################
 """
-
-# Define server's role: Master or slave
-IS_MASTER = True
-
-# State input directory
-IN_DIR = os.path.join(SRC_DIR, "inputs")
-
-# State output directory
-OUT_DIR = os.path.join(SRC_DIR, "outputs")
-
-# State test directory
-TEST_DIR = os.path.join(SRC_DIR, "tests")
-
-# Initialise Cache
-CACHE = infinite_nested_dict()
-
-logging.debug(f"Is master node? {IS_MASTER}")
-logging.debug(f"Input directory detected: {IN_DIR}")
-logging.debug(f"Output directory detected: {OUT_DIR}")
-logging.debug(f"Test directory detected: {TEST_DIR}")
-logging.debug(f"Cache initialised: {CACHE}")
+In a PySyft REST-RPC Worker Node, there are a few flask routes that serve as
+interfacing services in order to initialise the WSSW pysyft worker.
+"""
+WORKER_ROUTES = {
+    'poll': '/worker/poll/<project_id>',
+    'align': '/worker/align/<project_id>',
+    'initialise': '/worker/initialise/<project_id>/<expt_id>/<run_id>',
+    'terminate': '/worker/terminate/<project_id>/<expt_id>/<run_id>',
+    'predict': '/worker/predict/<project_id>/<expt_id>/<run_id>'
+}

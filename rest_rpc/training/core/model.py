@@ -42,7 +42,13 @@ class Model(nn.Module):
         
         self.layers = OrderedDict()
 
-        for layer, params in structure.items():
+        for layer, params in enumerate(structure):
+
+            # Construct layer name
+            layer_name = f"nnl_{layer}" # neural network layer
+
+            # Detect if input layer
+            is_input_layer = params['is_input']
 
             # Detect layer type
             layer_type = params['l_type']
@@ -51,13 +57,15 @@ class Model(nn.Module):
             layer_structure = params['structure']
             setattr(
                 self, 
-                layer,
+                layer_name,
                 self.__parse_layer_type(layer_type)(**layer_structure)
             )
 
             # Detect activation function & store it for use in .forward()
             layer_activation = params['activation']
-            self.layers[layer] = self.__parse_activation_type(layer_activation)
+            self.layers[layer_name] = self.__parse_activation_type(
+                layer_activation
+            )
 
     ###########
     # Helpers #

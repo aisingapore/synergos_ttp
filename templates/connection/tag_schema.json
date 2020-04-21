@@ -42,6 +42,24 @@
                     "type": "string"
                 }
             }
+        },
+
+        "model": {
+            "description": "Custom tag to optimal local model",
+            "type": "array",
+            "items": {
+                "description": "Tag as a list of path tokens",
+                "type": "string"
+            }
+        },
+
+        "hyperparameters": {
+            "description": "Custom tag to local hyperparameter set for optimality",
+            "type": "array",
+            "items": {
+                "description": "Tag as a list of path tokens",
+                "type": "string"
+            }
         }
     },
 

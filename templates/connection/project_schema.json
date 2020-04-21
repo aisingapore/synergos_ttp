@@ -24,11 +24,6 @@
             "type": "object"
         },
 
-        "created_at": {
-            "description": "Date at which project was created",
-            "type": "string"
-        },
-
         "start_at": {
             "description": "Date at which project will commence (i.e. deadline for registration)"
         }

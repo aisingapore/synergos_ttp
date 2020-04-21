@@ -95,12 +95,6 @@ run_output_model = ns_api.inherit(
                 }
             ),
             required=True
-        ),
-        'relations': fields.Nested(
-            config_model,
-            default={},
-            skip_none=True,
-            required=True
         )
     }
 )
@@ -204,7 +198,7 @@ class Run(Resource):
         else:
             ns_api.abort(
                 code=404, 
-                message=f"Run '{run_id}' does not exist in for Experiment {expt_id} under Project '{project_id}'!"
+                message=f"Run '{run_id}' does not exist for Experiment {expt_id} under Project '{project_id}'!"
             )
 
     @ns_api.doc("update_run")

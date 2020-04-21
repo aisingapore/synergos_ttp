@@ -14,7 +14,8 @@ from tinydb import where
 
 # Custom
 from rest_rpc import app
-from rest_rpc.connection.core.utils import ParticipantRecords, TagRecords, AlignmentRecords
+from rest_rpc.connection.core.utils import ParticipantRecords, TagRecords
+from rest_rpc.training.core.utils import AlignmentRecords
 
 ##################
 # Configurations #
@@ -57,7 +58,6 @@ alignment_details = {
 
 project_id = "eicu_hospital_collab"
 participant_id = "CGH"
-tag_id = "SS_2019"
 
 test_db_path = os.path.join(app.config['TEST_DIR'], "test_database.json")
 
@@ -125,7 +125,6 @@ def test_ParticipantRecords_delete():
     created_tag = tag_records.create(
         project_id=project_id,
         participant_id=participant_id,
-        tag_id=tag_id,
         details=tag_details
     )
     # Register an alignment under created tag
@@ -133,7 +132,6 @@ def test_ParticipantRecords_delete():
     created_alignment = alignment_records.create(
         project_id=project_id,
         participant_id=participant_id,
-        tag_id=tag_id,
         details=alignment_details
     )
     # Now perform participant deletion, checking for cascading deletion into tag & alignment
@@ -151,10 +149,8 @@ def test_ParticipantRecords_delete():
     assert tag_records.read(
         project_id=project_id,
         participant_id=participant_id,
-        tag_id=tag_id
     ) is None
     assert alignment_records.read(
         project_id=project_id,
         participant_id=participant_id,
-        tag_id=tag_id
     ) is None

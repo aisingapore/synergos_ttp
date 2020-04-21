@@ -63,7 +63,7 @@ layer_model = ns_api.model(
 expt_model = ns_api.model(
     name="experiment",
     model={
-        "model": fields.List(
+        'model': fields.List(
             fields.Nested(layer_model, required=True, skip_none=True)
         )
     }
@@ -72,7 +72,7 @@ expt_model = ns_api.model(
 expt_input_model = ns_api.inherit(
     "experiment_input",
     expt_model,
-    {"expt_id": fields.String()}
+    {'expt_id': fields.String()}
 )
 
 expt_output_model = ns_api.inherit(
@@ -199,7 +199,7 @@ class Experiment(Resource):
                 params={'project_id': project_id, 'expt_id': expt_id},
                 data=retrieved_expt
             )
-            return success_payload
+            return success_payload, 200
 
         else:
             ns_api.abort(
@@ -234,7 +234,7 @@ class Experiment(Resource):
                 params={'project_id': project_id, 'expt_id': expt_id},
                 data=retrieved_expt
             )
-            return success_payload
+            return success_payload, 200
 
         except jsonschema.exceptions.ValidationError:
             ns_api.abort(                
@@ -245,8 +245,8 @@ class Experiment(Resource):
     @ns_api.doc("delete_experiment")
     @ns_api.marshal_with(payload_formatter.singular_model)
     def delete(self, project_id, expt_id):
-        """ De-registers participant from previously registered experiment(s),
-            and clears out all their data
+        """ De-registers previously registered experiment, and clears out all 
+            metadata
         """
         expt_records = ExperimentRecords(db_path=db_path)
         retrieved_expt = expt_records.read(

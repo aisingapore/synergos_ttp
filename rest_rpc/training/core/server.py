@@ -6,6 +6,7 @@
 
 # Generic/Built-in
 import argparse
+import asyncio
 import logging
 import os
 import time
@@ -19,10 +20,11 @@ import torch as th
 from syft.workers.websocket_client import WebsocketClientWorker
 
 # Custom
-from arguments import Arguments
-from config import SRC_DIR, server_params, model_params, fl_params
-from model import Model
-from federated_learning import FederatedLearning
+from rest_rpc import app
+from rest_rpc.training.core.arguments import Arguments
+from rest_rpc.training.core.model import Model
+from rest_rpc.training.core.federated_learning import FederatedLearning
+from rest_rpc.training.core.utils import Governor
 
 ##################
 # Configurations #
@@ -38,7 +40,7 @@ grid_hook = sy.TorchHook(th)
 # Functions #
 #############
 
-def connect_to_ttp(verbose=False):
+def connect_to_ttp(log_msgs=False, verbose=False):
     """ Creates coordinating TTP on the local machine, and makes it the point of
         reference for subsequent federated operations. Since this implementation
         is that of the master-slave paradigm, the local machine would be
@@ -57,7 +59,7 @@ def connect_to_ttp(verbose=False):
         hook=grid_hook, 
         id='ttp',
         is_client_worker=False,
-        log_msgs=True,
+        log_msgs=log_msgs,
         verbose=verbose    
     )
 
@@ -71,14 +73,18 @@ def connect_to_ttp(verbose=False):
     return ttp
 
 
-def connect_to_workers(verbose=False):
+def connect_to_workers(reg_records, verbose=False):
     """ Create client workers for participants to their complete WS connections
 
+    Args:
+        reg_records (list(tinydb.database.Document))): Registry of participants
     Returns:
         workers (list(WebsocketClientWorker))
     """
     workers = []
-    for worker_idx, config in server_params.items():
+    for reg_record in reg_records:
+
+        config = reg_record['participant']
 
         # Replace verbosity settings with local verbosity settings
         config['verbose'] = verbose
@@ -95,42 +101,32 @@ def connect_to_workers(verbose=False):
     return workers
 
 
-def load_selected_experiments(experiment_ids):
+def load_selected_runs(fl_params):
     """ Load in specified federated experimental parameters to be conducted from
         configuration files
 
     Args:
-        experimental_ids (list(str)): Experiment Ids of experiments to be run
+        fl_params (dict): Experiment Ids of experiments to be run
     Returns:
-        experiments (list(Arguments))
+        runs (dict(str,Arguments))
     """
-    experiments = {}
-    for exp_id, params in fl_params.items():
+    runs = {run_id: Arguments(**params) for run_id, params in fl_params.items()}
 
-        # If current model is selected for training, load it
-        if exp_id in experiment_ids:
-            experiments[exp_id] = Arguments(**params)
+    logging.debug(f"Runs loaded: {runs.keys()}")
 
-    logging.debug(f"Experiments loaded: {experiments.keys()}")
-
-    return experiments
+    return runs
 
 
-def load_selected_models(model_names):
+def load_selected_models(model_params):
     """ Load in specified federated model architectures to be used for training
         from configuration files
 
     Args:
-        model_names (list(str)): Specified models to be trained
+        model_params (dict): Specified models to be trained
     Returns:
-        models (list(Model))
+        models (dict(str,Model))
     """
-    models = {}
-    for name, structure in model_params.items():
-
-        # If current model is selected for training, load it
-        if name in model_names:
-            models[name] = Model(structure)
+    models = {name: Model(structure) for name, structure in model_params.items()}
 
     logging.debug(f"Models loaded: {models.keys()}")
 
@@ -163,20 +159,30 @@ def start_proc(kwargs):
     Returns:
         Path-to-trained-models (list(str))
     """
-    # Create worker representation for local machine as TTP
+    # Extract intialisation parameters
+    log_msgs = kwargs['log_msgs']
     is_verbose = kwargs['verbose']
-    ttp = connect_to_ttp(is_verbose)
+    keys = kwargs['keys']
+    is_dockerised = kwargs['dockerised']
+    reg_records = kwargs['registrations']
     
+    # Create worker representation for local machine as TTP
+    ttp = connect_to_ttp(log_msgs=log_msgs, verbose=is_verbose)
+
+    # Initialise all remote worker WSSW objects
+    governor = Governor(dockerised=is_dockerised, **keys)
+    governor.initialise(reg_records=reg_records)
+
     # Complete WS handshake with participants
-    workers = connect_to_workers()
+    workers = connect_to_workers(reg_records, verbose=is_verbose)
 
-    # Load in all selected experiments
-    experiment_ids = kwargs['experiments']
-    experiments = load_selected_experiments(experiment_ids)
+    # Load in all selected runs
+    run_records = kwargs['runs']
+    runs = load_selected_runs(run_records)
 
-    # Load in all selected models
-    model_names = kwargs['models']
-    selected_models = load_selected_models(model_names)
+    # Load in all selected experiment models
+    expt_records = kwargs['experiments']
+    selected_models = load_selected_models(expt_records)
 
     trained_models = []
     # Test out each specified experiment
@@ -202,10 +208,14 @@ def start_proc(kwargs):
 
             trained_models.append(out_paths)
 
-    # Remember to close workers once the training process is completed
+    # Remember to close WSCW local objects once the training process is completed
     # (i.e. graceful termination)
-    #terminate_connections(workers)
-    
+    terminate_connections(workers)
+
+    # Finally, terminate WSSW remote objects for all participants' worker nodes
+    # (if no other project is running)
+    governor.terminate(reg_records=reg_records)
+
     return trained_models
 
 ##########

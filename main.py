@@ -5,12 +5,8 @@
 ####################
 
 # Generic/Built-in
-import json
-import os
+import argparse
 import logging
-import random
-from collections import OrderedDict
-from pathlib import Path
 
 # Libs
 
@@ -29,4 +25,4 @@ logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.DEBUG)
 ###########
 
 if __name__ == "__main__":
-    app.run(debug=True, host="0.0.0.0")
+    app.run(host="0.0.0.0", port=5000)
