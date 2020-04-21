@@ -9,6 +9,6 @@ WORKDIR /ttp
 EXPOSE 5000
 EXPOSE 8020
 
-ENTRYPOINT ["python", "./run.py"]
+ENTRYPOINT ["python", "./main.py"]
 
 CMD ["--help"]
