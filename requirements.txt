@@ -25,3 +25,4 @@ werkzeug==0.16.0
 xgboost==0.90
 aiohttp==3.6.2
 mlflow==1.7.2
+syft-proto==0.1.1a1.post2

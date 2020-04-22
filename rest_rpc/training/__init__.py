@@ -12,7 +12,7 @@ from flask_restx import Api
 
 # Custom
 from rest_rpc.training.alignments import ns_api as alignment_ns
-from rest_rpc.training.model import ns_api as model_ns
+from rest_rpc.training.models import ns_api as model_ns
 
 ##################
 # Configurations #

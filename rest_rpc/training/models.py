@@ -116,9 +116,9 @@ model_output_model = ns_api.inherit(
             ns_api.model(
                 name='key',
                 model={
-                    'project_id': project_id,
-                    'expt_id': expt_id,
-                    'run_id': run_id
+                    'project_id': fields.String(),
+                    'expt_id': fields.String(),
+                    'run_id': fields.String()
                 }
             ),
             required=True
@@ -245,9 +245,9 @@ class Model(Resource):
             status=200,
             method="model.get",
             params={
-                'project_id': project_id, 
-                'expt_id': expt_id,
-                'run_id': run_id    
+                'project_id': fields.String(), 
+                'expt_id': fields.String(),
+                'run_id': fields.String()    
             },
             data=retrieved_model
         )
