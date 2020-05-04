@@ -26,6 +26,3 @@ tinyrecord==0.1.5
 tqdm==4.40.2
 werkzeug==1.0.1
 xgboost==0.90
-aiohttp==3.6.2
-mlflow==1.7.2
-syft-proto==0.1.1a1.post2
