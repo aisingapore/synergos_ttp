@@ -246,9 +246,9 @@ class Models(Resource):
             status=200,
             method="model.get",
             params={
-                'project_id': project_id, 
-                'expt_id': expt_id,
-                'run_id': run_id    
+                'project_id': fields.String(), 
+                'expt_id': fields.String(),
+                'run_id': fields.String()    
             },
             data=retrieved_models
         )
