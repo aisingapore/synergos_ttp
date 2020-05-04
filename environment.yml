@@ -1,0 +1,42 @@
+name: p100-fl-env
+
+channels:
+    - defaults
+    - conda-forge
+
+dependencies:
+    - aiohttp=3.6.2
+    - catboost=0.20.1
+    - jsonschema=3.2.0 
+    - jupyter=1.0.0
+    - matplotlib=3.1.1 
+    - missingno=0.4.2     
+    - mlflow=1.7.2
+    - numpy=1.18.1
+    - pandas=0.25.3
+    - pytest=5.3.2
+    - python=3.7.4
+    - requests=2.22.0
+    - scikit-learn=0.22.1
+    - scipy=1.4.1
+    - seaborn=0.9.0
+    - statsmodels=0.11.0
+    - tqdm=4.40.2
+    - xgboost=0.90
+    - pip=20.0.2
+    - pip:
+        - diffprivlib==0.2.0
+        - flask==1.1.1
+        - flask-restx==0.2.0
+        - pytorch-ignite==0.3.0
+        - ray==0.7.7
+        - syft==0.2.4
+        - syft-proto==0.2.5.a1
+        - tensorflow==1.15.0
+        - tf-encrypted==0.5.9
+        - torch==1.4.0
+        - torchvision==0.5.0
+        - tinydb==3.15.2
+        - tinydb-serialization==1.0.4 
+        - tinydb-smartcache==1.0.2
+        - tinyrecord==0.1.5

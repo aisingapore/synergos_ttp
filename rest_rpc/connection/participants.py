@@ -51,7 +51,8 @@ participant_model = ns_api.model(
         'host': fields.String(required=True),
         'port': fields.Integer(required=True),
         'log_msgs': fields.Boolean(),
-        'verbose': fields.Boolean()
+        'verbose': fields.Boolean(),
+        'f_port': fields.Integer(required=True)
     }
 )
 

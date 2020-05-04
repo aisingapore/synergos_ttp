@@ -24,15 +24,17 @@ from rest_rpc import app
 from rest_rpc.training.core.arguments import Arguments
 from rest_rpc.training.core.model import Model
 from rest_rpc.training.core.federated_learning import FederatedLearning
-from rest_rpc.training.core.utils import Governor
-
+from rest_rpc.training.core.utils import Governor, RPCFormatter
 ##################
 # Configurations #
 ##################
 
 logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.DEBUG)
 
-# Assumptions: All participant already have their WS server workers initialised
+out_dir = app.config['OUT_DIR']
+
+rpc_formatter = RPCFormatter()
+
 # Instantiate a local hook for coordinating clients
 grid_hook = sy.TorchHook(th)
 
@@ -54,6 +56,7 @@ def connect_to_ttp(log_msgs=False, verbose=False):
     Returns:
         ttp (sy.VirtualWorker)
     """
+    """
     # Create a virtual worker representing the TTP
     ttp = sy.VirtualWorker(
         hook=grid_hook, 
@@ -64,13 +67,13 @@ def connect_to_ttp(log_msgs=False, verbose=False):
     )
 
     # Replace point of reference within federated hook with TTP
-    grid_hook.local_worker = ttp
-    assert (ttp is grid_hook.local_worker)
+    #grid_hook.local_worker = ttp
+    #assert (ttp is grid_hook.local_worker)
 
-    logging.debug(f"Local worker w.r.t hook: {grid_hook.local_worker}")
-    logging.debug(f"Local worker w.r.t env : {sy.local_worker}")
-
-    return ttp
+    logging.debug(f"Local worker w.r.t grid hook: {grid_hook.local_worker}")
+    logging.debug(f"Local worker w.r.t env      : {sy.local_worker}")
+    """
+    return grid_hook.local_worker#sy.local_worker#ttp
 
 
 def connect_to_workers(reg_records, verbose=False):
@@ -84,7 +87,9 @@ def connect_to_workers(reg_records, verbose=False):
     workers = []
     for reg_record in reg_records:
 
-        config = reg_record['participant']
+        # Remove redundant fields
+        config = rpc_formatter.strip_keys(reg_record['participant'].copy())
+        config.pop('f_port')
 
         # Replace verbosity settings with local verbosity settings
         config['verbose'] = verbose
@@ -142,12 +147,21 @@ def terminate_connections(workers):
     Returns:
         closed workers (list(WebsocketClientWorkers))
     """
-    
-    workers_closed = [w.close() for w in workers]
+    for worker in workers:
 
-    logging.debug(f"Workers closed: {workers_closed}")
+        # Superclass of websocketclient (baseworker) contains a worker registry 
+        # which caches the websocketclient objects when the auto_add variable is
+        # set to True. This registry is indexed by the websocketclient ID and 
+        # thus, recreation of the websocketclient object will not get replaced 
+        # in the registry if the ID is the same. Therefore, this explains the 
+        # 'socket is already closed' issue since it's referencing to the 
+        # previous websocketclient connection that I have closed. The solution 
+        # was to simply call the remove_worker_from_local_worker_registry() 
+        # method on the websocketclient object before closing its connection.
+        worker.remove_worker_from_local_worker_registry()
 
-    return workers_closed
+        # Now close the websocket connection
+        worker.close() 
 
 
 def start_proc(kwargs):
@@ -166,6 +180,8 @@ def start_proc(kwargs):
     is_dockerised = kwargs['dockerised']
     reg_records = kwargs['registrations']
     
+    logging.info([rr['participant'] for rr in reg_records])
+
     # Create worker representation for local machine as TTP
     ttp = connect_to_ttp(log_msgs=log_msgs, verbose=is_verbose)
 
@@ -176,6 +192,8 @@ def start_proc(kwargs):
     # Complete WS handshake with participants
     workers = connect_to_workers(reg_records, verbose=is_verbose)
 
+    logging.info(f"Workers: {workers}")
+
     # Load in all selected runs
     run_records = kwargs['runs']
     runs = load_selected_runs(run_records)
@@ -184,12 +202,13 @@ def start_proc(kwargs):
     expt_records = kwargs['experiments']
     selected_models = load_selected_models(expt_records)
 
-    trained_models = []
-    # Test out each specified experiment
-    for exp_id, args in experiments.items():
+    completed_trainings = {}
+    # Test out each sepcified model
+    for expt_id, model in selected_models.items():
 
-        # Test out each sepcified model
-        for name, model in selected_models.items():
+        # Test out each specified run
+        for run_id, args in runs.items():
+            logging.info(f"Run ID: {run_id}, Arguments: {vars(args)}")
 
             # Perform a Federated Learning experiment
             fl_expt = FederatedLearning(args, ttp, workers, model)
@@ -197,16 +216,16 @@ def start_proc(kwargs):
             fl_expt.fit()
 
             # Export trained model weights/biases for persistence
-            out_dir = os.path.join(SRC_DIR, "outputs", exp_id, name)
-            Path(out_dir).mkdir(parents=True, exist_ok=True)
+            res_dir = os.path.join(out_dir, keys['project_id'], expt_id, run_id)
+            Path(res_dir).mkdir(parents=True, exist_ok=True)
 
-            out_paths = fl_expt.export(out_dir)
+            out_paths = fl_expt.export(res_dir)
 
             logging.info(f"Final model: {fl_expt.global_model.state_dict()}")
             logging.info(f"Final model stored at {out_paths}")
             logging.info(f"Loss history: {fl_expt.loss_history}")
 
-            trained_models.append(out_paths)
+            completed_trainings[(expt_id, run_id)] = out_paths
 
     # Remember to close WSCW local objects once the training process is completed
     # (i.e. graceful termination)
@@ -216,7 +235,7 @@ def start_proc(kwargs):
     # (if no other project is running)
     governor.terminate(reg_records=reg_records)
 
-    return trained_models
+    return completed_trainings
 
 ##########
 # Script #

@@ -44,7 +44,7 @@ db_path = app.config['DB_PATH']
 # Models - Used for marshalling (i.e. moulding responses) #
 ###########################################################
 
-incentives_field = fields.Wildcard(fields.Float()) # tentative
+incentives_field = fields.Wildcard(fields.List(fields.String())) # tentative
 incentive_model = ns_api.model(
     name="incentives",
     model={"*": incentives_field}

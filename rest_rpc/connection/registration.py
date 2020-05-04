@@ -44,7 +44,7 @@ role_model = ns_api.model(
     }
 )
 
-incentives_field = fields.Wildcard(fields.Float()) # tentative
+incentives_field = fields.Wildcard(fields.List(fields.String())) # tentative
 incentive_model = ns_api.model(
     name="registered_incentives",
     model={"*": incentives_field}

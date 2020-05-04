@@ -65,6 +65,8 @@ class FederatedLearning:
         test_loader (sy.FederatedLoader): Testing data in configured batches
         
         global_model (Model): Federatedly-trained Global model
+        local_models (dict(str,Models)): Most recent cache of local models
+        loss_history (dict): Local & global losses tracked throughout FL training
     """
     def __init__(self, arguments, crypto_provider, workers, model):
         
@@ -81,6 +83,7 @@ class FederatedLearning:
         
         # Model attributes
         self.global_model = model
+        self.local_models = {}
         self.loss_history = {'local': {}, 'global': {}}
 
     ############
@@ -144,9 +147,12 @@ class FederatedLearning:
         
             datasets = {}
             for worker_id, data in pointers.items():
+                
+                # Ensure that X & y pointers are arranged sequentially
+                sorted_data = sorted(data, key=lambda x: sorted(list(x.tags)))
 
                 curr_worker = self._aliases[worker_id]
-                data_ptr = sy.BaseDataset(*data)
+                data_ptr = sy.BaseDataset(*sorted_data)
                 datasets[self._aliases[worker_id]] = data_ptr
 
             return datasets
@@ -214,7 +220,8 @@ class FederatedLearning:
         Args:
             datasets (sy.FederatedDataLoader): Distributed training datasets
         Returns:
-            trained global model (nn.Module)
+            trained global model (Model)
+            Cached local models  (dict(Model))
         """
         
         class SurrogateCriterion(self.arguments.criterion):
@@ -239,7 +246,10 @@ class FederatedLearning:
             def forward(self, outputs, labels, w, wt):
                 # Calculate normal criterion loss
                 loss = super().forward(outputs, labels)
-            
+                print("loss", loss, loss.clone().detach().get())
+
+                print("Mu:", self.mu, "L1:", self.l1_lambda, "L2:", self.l2_lambda)
+
                 # Calculate regularisation terms
                 fedprox_reg_terms = []
                 l1_reg_terms = []
@@ -248,43 +258,83 @@ class FederatedLearning:
                     
                     # Extract corresponding global layer weights
                     layer_wt = wt[layer]
-                    
+
+                    print("Layer W:", layer_w.clone().detach().get())
+                    print("Layer WT:", layer_wt.clone().detach().get())
+                    print("layer W - Layer WT:", layer_w.clone().detach().get() - layer_wt.clone().detach().get())
+                    print("Norm diff:", th.norm(layer_w.clone().detach().get() - layer_wt.clone().detach().get()))
+
+                    print("Layer w - layer wt --> pointer:", layer_w - layer_wt)
+                    print("Layer w - layer wt (retrieved):", (layer_w - layer_wt).clone().detach().get())
+                    print("Norm diff --> pointer:", th.norm(layer_w - layer_wt))
+                    print("Max value --> pointer:", th.max(layer_w -layer_wt))
+
+                    # Note: In syft==0.2.4, 
+                    # 1) `th.norm(<PointerTensor>)` will always return 
+                    #    `tensor(0.)`, hence the need to manually apply the 
+                    #    regularisation formulas. However, in future versions 
+                    #    when this issue is solved, revert back to cleaner 
+                    #    implementation using `th.norm`.
+
                     # Calculate FedProx regularisation
+                    """ 
+                    [REDACTED in syft==0.2.4]
                     norm_diff = th.norm(layer_w - layer_wt)
                     fp_reg_term = self.mu * 0.5 * (norm_diff**2)
+                    """
+                    norm_diff = th.pow((layer_w - layer_wt), 2).sum()
+                    print("Manual norm diff:", norm_diff.clone().detach().get())
+                    fp_reg_term = self.mu * 0.5 * norm_diff # exp cancelled out
+                    print("Manual calculation of fedprox reg term:", fp_reg_term, fp_reg_term.clone().detach().get())
                     fedprox_reg_terms.append(fp_reg_term)
                     
                     # Calculate L1 regularisation
+                    """
+                    [REDACTED in syft==0.2.4]
                     l1_norm = th.norm(layer_w, p=1)
                     l1_reg_term = self.l1_lambda * l1_norm
+                    """
+                    l1_norm = layer_w.abs().sum()
+                    print("Manual L1 Norm:", l1_norm)
+                    l1_reg_term = self.l1_lambda * l1_norm
+                    print("Manual calculation of l1 reg term:", l1_reg_term, l1_reg_term.clone().detach().get())
                     l1_reg_terms.append(l1_reg_term)
                     
                     # Calculate L2 regularisation
+                    """
+                    [REDACTED in syft==0.2.4]
                     l2_norm = th.norm(layer_w, p=2)
                     l2_reg_term = self.l2_lambda * 0.5 * (l2_norm)**2
+                    """
+                    l2_norm = th.pow(layer_w, 2).sum()
+                    print("Manual L2 Norm:", l2_norm)
+                    l2_reg_term = self.l2_lambda * 0.5 * l2_norm
+                    print("Manual calculation of l2 reg term:", l2_reg_term, l2_reg_term.clone().detach().get())
                     l2_reg_terms.append(l2_reg_term)
                 
+                print("Fedprox reg terms", fedprox_reg_terms)
+                print("l1 reg terms", l1_reg_terms)
+                print("l2 reg terms", l2_reg_terms)
+
                 # Retrieve worker involved
                 assert outputs.location is labels.location
                 worker = labels.location
                 
                 # Summing up from a list instead of in-place changes 
                 # prevents the breaking of the autograd's computation graph
-                fedprox_loss = th.stack(
-                    fedprox_reg_terms
-                ).sum().requires_grad_().send(worker)
-                
-                l1_loss = th.stack(
-                    l1_reg_terms
-                ).sum().requires_grad_().send(worker)
-                
-                l2_loss = th.stack(
-                    l2_reg_terms
-                ).sum().requires_grad_().send(worker)
+                fedprox_loss = th.stack(fedprox_reg_terms).sum().requires_grad_()
+                print("Fedprox contribution", fedprox_loss, fedprox_loss.numel())
+
+                l1_loss = th.stack(l1_reg_terms).sum().requires_grad_()
+                print("l1 contribution", l1_loss, l1_loss.numel())
+
+
+                l2_loss = th.stack(l2_reg_terms).sum().requires_grad_()
+                print("l2 contribution", l2_loss, l2_loss.numel())
                         
                 # Add up all losses involved
                 surrogate_loss = loss + fedprox_loss + l1_loss + l2_loss
-                
+                print("Surrogate loss", surrogate_loss.clone().detach().get(), surrogate_loss.numel())
                 # Store result in cache
                 self.__temp.append(surrogate_loss.clone().detach().get())
                 
@@ -303,26 +353,52 @@ class FederatedLearning:
                 return self
             
             
-        def perform_parallel_training(datasets, models, optimizers, schedulers, criterions, stoppers, epochs):
-            """ Parallelizes training across each distributed dataset (i.e. simulated worker)
-                Parallelization here refers to the training of all distributed models per
-                epoch.
-                NOTE: Current approach does not have early stopping implemented
+        def generate_local_models(is_snn=False):
+            """ Abstracts the generation of local models in a federated learning
+                context. For default FL training (i.e. non-SNN/FedAvg/Fedprox),
+                local models generated are clones of the previous round's global
+                model. Conversely, in SNN, the local models are instances of
+                participant-specified models with supposedly pre-optimised
+                architectures.
+
+            Args:
+                is_snn (bool): Toggles which type of context-specific local 
+                               models to generate
+            Returns:
+                Distributed context-specific local models (dict(str, Model))
+            """
+            if not is_snn:
+                local_models = {
+                    w: copy.deepcopy(self.global_model).send(w)
+                    for w in self.workers
+                }
+
+            else:
+                raise NotImplementedError("SNN training not yet supported!")
+            
+            return local_models
+
+
+        def perform_parallel_training(datasets, models, cache, optimizers, 
+                                      schedulers, criterions, stoppers, epochs):
+            """ Parallelizes training across each distributed dataset 
+                (i.e. simulated worker) Parallelization here refers to the 
+                training of all distributed models per epoch.
+                Note: All objects involved in this set of operations have
+                      already been distributed to their respective workers
 
             Args:
                 datasets   (dict(DataLoader)): Distributed training datasets
-                models     (dict(nn.Module)): Local models (after distribution)
-                optimizers (dict(th.optim)): Local optimizers (after distribution)
-                schedulers (dict(lr_scheduler)): Local LR schedulers (after distribution)
-                criterions (dict(th.nn)): Custom local objective function (after distribution)
+                models     (dict(nn.Module)): Local models
+                cache      (dict(nn.Module)): Cached models from previous rounds
+                optimizers (dict(th.optim)): Local optimizers
+                schedulers (dict(lr_scheduler)): Local LR schedulers
+                criterions (dict(th.nn)): Custom local objective function
                 stoppers   (dict(EarlyStopping)): Local early stopping drivers
                 epochs (int): No. of epochs to train each local model
             Returns:
                 trained local models
             """ 
-            # Global model weights from previous round for subsequent FedProx Comparison
-            PREV_ROUND_GLOBAL_MODELS = {w:copy.deepcopy(m) for w,m in models.items()}
-            
             # Tracks which workers have reach an optimal/stagnated model
             WORKERS_STOPPED = []
             
@@ -336,19 +412,28 @@ class FederatedLearning:
                         if worker in WORKERS_STOPPED:
                             break
                         
-                        curr_global_model = PREV_ROUND_GLOBAL_MODELS[worker]
+                        curr_global_model = cache[worker]
                         curr_local_model = models[worker]
                         curr_optimizer = optimizers[worker]
                         curr_criterion = criterions[worker]
+
+                        print(f"{worker} - Current GM:", [p.clone().detach().get() for p in list(curr_global_model.parameters())])
+                        print(f"{worker} - Current LM:", [p.clone().detach().get() for p in list(curr_local_model.parameters())])
 
                         # Zero gradients to prevent accumulation  
                         curr_local_model.train()
                         curr_optimizer.zero_grad()
 
                         # Forward Propagation
+                        print("Data shape:", data.clone().detach().get().shape)
+                        print("Labels shape:", labels.clone().detach().get().shape)
+                        print("Curr_local model:", curr_local_model)
                         predictions = curr_local_model(data.float())
 
+                        print("Prediction shape:", predictions.clone().detach().get().shape)
+
                         if self.arguments.is_condensed:
+                            print("Is condensed?", self.arguments.is_condensed)
                             loss = curr_criterion(
                                 predictions, 
                                 labels.float(),
@@ -363,6 +448,8 @@ class FederatedLearning:
                                 w=curr_local_model.state_dict(),
                                 wt=curr_global_model.state_dict()
                             )
+
+                        print("Updated loss:", loss)
 
                         # Backward propagation
                         loss.backward()
@@ -470,27 +557,40 @@ class FederatedLearning:
         # Implementation Footnote #
         ###########################
 
-        # However, due to certain PySyft nuances (refer to Part 4, section 1: Frame of
-        # Reference) there is a need to choose a conceptual representation of the overall 
-        # architecture. Here, the node agnostic variant is implemented.
-        # Model is stored in the server -> Client (i.e. 'Me') does not interact with it
+        # However, due to certain PySyft nuances (refer to Part 4, section 1: 
+        # Frame of Reference) there is a need to choose a conceptual 
+        # representation of the overall architecture. Here, the node agnostic 
+        # variant is implemented. Model is stored in the server -> Client 
+        # (i.e. 'Me') does not interact with it
         
-        # Note: If MPC is requested, global model itself cannot be shared, only its
-        # copies are shared. This is due to restrictions in PointerTensor mechanics.
+        # Note: If MPC is requested, global model itself cannot be shared, only 
+        # its copies are shared. This is due to restrictions in PointerTensor 
+        # mechanics.
         
         global_stopper = EarlyStopping(**self.arguments.early_stopping_params)
-        
+
         rounds = 0
         pbar = tqdm(total=self.arguments.rounds, desc='Rounds', leave=True)
         while rounds < self.arguments.rounds:
 
-            # Generate K copies of template model, representing local models for each worker,
-            # and send them to their designated worker
-            # Note: This step is crucial because it is able prevent pointer mutation, which
-            #       comes as a result of copying pointers (refer to Part 4, section X), 
-            #       specifically if the global pointer was copied directly.
-            
-            local_models = {w: copy.deepcopy(self.global_model).send(w) for w in self.workers}
+            # Generate K copies of template model, representing local models for
+            # each worker in preparation for parallel training, and send them to
+            # their designated workers
+            # Note: This step is crucial because it is able prevent pointer 
+            #       mutation, which comes as a result of copying pointers (refer
+            #       to Part 4, section X), specifically if the global pointer 
+            #       was copied directly.
+            local_models = generate_local_models(is_snn=self.arguments.is_snn)
+
+            # Model weights from previous round for subsequent FedProx 
+            # comparison. Due to certain nuances stated below, they have to be
+            # specified here. 
+            # Note - In syft==0.2.4: 
+            # 1) copy.deepcopy(PointerTensor) causes "TypeError: clone() got an 
+            #    unexpected keyword argument 'memory_format'"
+            # 2) Direct cloning of dictionary of models causes "TypeError: can't 
+            #    pickle module objects"
+            prev_models = generate_local_models(is_snn=self.arguments.is_snn)
 
             optimizers = {
                 w: self.arguments.optimizer(
@@ -519,15 +619,16 @@ class FederatedLearning:
             }
             
             trained_models, _, _, _, _= perform_parallel_training(
-                datasets, 
-                local_models, 
-                optimizers, 
-                schedulers,
-                criterions, 
-                stoppers,
-                self.arguments.epochs
+                datasets=datasets, 
+                models=local_models,
+                cache=prev_models,
+                optimizers=optimizers, 
+                schedulers=schedulers,
+                criterions=criterions, 
+                stoppers=stoppers,
+                epochs=self.arguments.epochs
             )
-            
+
             aggregated_params = calculate_global_params(
                 self.global_model, 
                 trained_models, 
@@ -537,13 +638,25 @@ class FederatedLearning:
             # Update weights with aggregated parameters 
             self.global_model.load_state_dict(aggregated_params)
             
-            # Check if early stopping is possible for global model
-            final_local_losses = [c._cache[-1] for c in criterions.values()]
-            global_loss = th.mean(th.stack(final_local_losses))
+            # Update cache for local models
+            self.local_models = {w.id:lm for w,lm in trained_models.items()}
 
-            # Store losses for analysis
-            self.loss_history['local'].update({rounds: final_local_losses})
-            self.loss_history['global'].update({rounds: global_loss})
+            # Check if early stopping is possible for global model
+            final_local_losses = {
+                w.id: c._cache[-1]
+                for w,c in criterions.items()
+            }
+            global_loss = th.mean(th.stack(tuple(final_local_losses.values())))
+
+            # Store local losses for analysis
+            for w_id, loss in final_local_losses.items():
+                try:
+                    self.loss_history['local'][w_id].update({rounds: loss.item()})
+                except KeyError:
+                    self.loss_history['local'][w_id] = {rounds: loss.item()}
+
+            # Store global losses for analysis
+            self.loss_history['global'].update({rounds: global_loss.item()})
 
             global_stopper(global_loss, self.global_model)
             
@@ -556,7 +669,7 @@ class FederatedLearning:
         
         pbar.close()
 
-        return self.global_model
+        return self.global_model, self.local_models
 
     ##################
     # Core functions #
@@ -639,12 +752,48 @@ class FederatedLearning:
         Returns:
             Path-to-file (str)
         """
-        model_out_path = os.path.join(out_dir, "trained_global_model.pt")
-        th.save(self.global_model.state_dict(), model_out_path)
+        out_paths = {}
 
-        loss_out_path = os.path.join(out_dir, "loss_history.json")
-        with open(loss_out_path, 'w') as lp:
-            json.dump(self.loss_history, lp)
+        # Export global model to file
+        global_model_out_path = os.path.join(out_dir, "global_model.pt")
+        th.save(self.global_model.state_dict(), global_model_out_path)
 
-        return model_out_path, loss_out_path
-    
+        # Export global loss history to file
+        global_loss_out_path = os.path.join(out_dir, "global_loss_history.json")
+        with open(global_loss_out_path, 'w') as glp:
+            print("Global Loss History:", self.loss_history['global'])
+            json.dump(self.loss_history['global'], glp)
+
+        # Package global metadata for storage
+        out_paths['global'] = {
+            "origin": self.crypto_provider.id,
+            "path": global_model_out_path,
+            "loss_history": global_loss_out_path
+        }
+
+        for idx, (worker_id, local_model) in enumerate(self.local_models.items(), start=1):
+
+            # Export local model to file
+            local_model_out_path = os.path.join(
+                out_dir, 
+                f"local_model_{worker_id}.pt"
+            )
+            th.save(local_model.state_dict(), local_model_out_path)
+            
+            # Export local loss history to file
+            local_loss_out_path = os.path.join(
+                out_dir, 
+                f"local_loss_history_{worker_id}.json"
+            )
+            with open(local_loss_out_path, 'w') as llp:
+                print("Local Loss History:", self.loss_history['local'][worker_id])
+                json.dump(self.loss_history['local'][worker_id], llp)
+
+            # Package local metadata for storage
+            out_paths[f'local_{idx}'] = {
+                "origin": worker_id,
+                "path": local_model_out_path,
+                "loss_history": local_loss_out_path
+            }
+
+        return out_paths

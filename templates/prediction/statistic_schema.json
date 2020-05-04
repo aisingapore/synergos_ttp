@@ -1,0 +1,58 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Statistical validations/predictions of model(s) for a given Project-Experiment-Run combination (Payload)",
+    "description": "Abstracted payload schema for tracking statistical results of an experiment-run",
+    "type": "object",
+    "properties": {
+
+        "roc_auc": {
+            "description": "Computed ROC-AUC score of predictions given specified grid settings",
+            "type": "number"
+        },
+
+        "accuracy": {
+            "description": "Computed accuracy of predictions given specified grid settings",
+            "type": "number"
+        },
+
+        "specificity": {
+            "description": "Computed specificity of predictions given specified grid settings",
+            "type": "number"
+        },
+
+        "precision": {
+            "description": "Computed precision of predictions given specified grid settings",
+            "type": "number"
+        },
+
+        "recall": {
+            "description": "Computed recall of predictions given specified grid settings",
+            "type": "number"
+        },
+
+        "f_score": {
+            "description": "Computed f-score of predictions given specified grid settings",
+            "type": "number"
+        },
+
+        "tp": {
+            "description": "No. of true positives in predictions given specified grid settings",
+            "type": "integer"
+        },
+
+        "tn": {
+            "description": "No. of true negatives in predictions given specified grid settings",
+            "type": "integer"
+        },
+
+        "fp": {
+            "description": "No. of false positives in predictions given specified grid settings",
+            "type": "integer"
+        },
+
+        "fn": {
+            "description": "No. of false negatives in predictions given specified grid settings",
+            "type": "integer"
+        }
+    }
+}

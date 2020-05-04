@@ -28,10 +28,15 @@
         "verbose": {
             "description": "Toggles verbosity of messages logged",
             "type": "boolean"
+        },
+
+        "f_port": {
+            "description": "Port to specify for hosting Flask for REST-RPC",
+            "type": "integer"
         }
 
     },
 
-    "required": ["id", "host", "port"]
+    "required": ["id", "host", "port", "f_port"]
 }
  

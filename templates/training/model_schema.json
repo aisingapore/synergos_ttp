@@ -10,7 +10,8 @@
             "type": "object",
             "properties": {
                 "origin": {"type": "string"},
-                "path": {"type": "string"}
+                "path": {"type": "string"},
+                "loss_history": {"type": "string"}
             }
         }
     },
@@ -20,7 +21,8 @@
             "type": "object",
             "properties": {
                 "origin": {"type": "string"},
-                "path": {"type": "string"}
+                "path": {"type": "string"},
+                "loss_history": {"type": "string"}
             }
         }
     },

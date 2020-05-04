@@ -137,7 +137,7 @@ class Alignments(Resource):
     @ns_api.response(201, "New alignments have been created!")
     def post(self, project_id):
         """ Searches for all registered participant under project, and uses
-            theirr registered data tags to trigger the RPC for polling 
+            their registered data tags to trigger the RPC for polling 
             participant metadata for alignment
         """
         try:

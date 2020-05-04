@@ -116,9 +116,9 @@ model_output_model = ns_api.inherit(
             ns_api.model(
                 name='key',
                 model={
-                    'project_id': project_id,
-                    'expt_id': expt_id,
-                    'run_id': run_id
+                    'project_id': fields.String(),
+                    'expt_id': fields.String(),
+                    'run_id': fields.String()
                 }
             ),
             required=True
@@ -137,7 +137,7 @@ payload_formatter = TopicalPayload(SUBJECT, ns_api, model_output_model)
 @ns_api.route('/')
 @ns_api.response(404, 'model not found')
 @ns_api.response(500, 'Internal failure')
-class Model(Resource):
+class Models(Resource):
     """ Handles model training within the PySyft grid. Since model training is
         deterministic, there will NOT be a resource to cater to a collection of 
         models 
@@ -174,7 +174,8 @@ class Model(Resource):
                 message=f"Model does not exist for Run {run_id} under Experiment {expt_id} under Project '{project_id}'!"
             )
 
-    @ns_api.doc("trigger_training")
+
+    @ns_api.doc("trigger_single_training")
     @ns_api.expect(input_model)
     #@ns_api.marshal_with(payload_formatter.singular_model)
     def post(self, project_id, expt_id, run_id):
@@ -187,7 +188,8 @@ class Model(Resource):
             expt_records.read(
                 project_id=project_id, 
                 expt_id=expt_id
-            )
+            ),
+            concise=True
         )
 
         retrieved_run = rpc_formatter.strip_keys(
@@ -195,7 +197,8 @@ class Model(Resource):
                 project_id=project_id, 
                 expt_id=expt_id,
                 run_id=run_id
-            )
+            ),
+            concise=True
         )
 
         all_relevant_registrations = [
@@ -217,29 +220,27 @@ class Model(Resource):
         }
         kwargs.update(init_params)
 
-        trained_model_path = start_proc(kwargs)[0]
+        completed_trainings = start_proc(kwargs)
 
-        data = {
-            'global':{
-                'path': trained_model_path,
-                'origin': 'ttp'
-            }
-        }
+        # Store output metadata into database
+        retrieved_models = []
+        for (expt_id, run_id), data in completed_trainings.items():
+            
+            new_model = model_records.create(
+                project_id=project_id,
+                expt_id=expt_id,
+                run_id=run_id,
+                details=data
+            )
 
-        new_model = model_records.create(
-            project_id=project_id,
-            expt_id=expt_id,
-            run_id=run_id,
-            details=data
-        )
-        
-        retrieved_model = model_records.read(
-            project_id=project_id,
-            expt_id=expt_id,
-            run_id=run_id
-        )
-        
-        assert new_model.doc_id == retrieved_model.doc_id
+            retrieved_model = model_records.read(
+                project_id=project_id,
+                expt_id=expt_id,
+                run_id=run_id
+            )
+
+            assert new_model.doc_id == retrieved_model.doc_id
+            retrieved_models.append(retrieved_model)
 
         success_payload = payload_formatter.construct_success_payload(
             status=200,
@@ -249,7 +250,7 @@ class Model(Resource):
                 'expt_id': expt_id,
                 'run_id': run_id    
             },
-            data=retrieved_model
+            data=retrieved_models
         )
         return success_payload, 200
 

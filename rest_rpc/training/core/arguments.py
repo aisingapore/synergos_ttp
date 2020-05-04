@@ -7,9 +7,9 @@
 # Generic
 
 # Libs
+import syft as sy
 import torch as th
 from torch import nn
-
 
 ##################
 # Configurations #
@@ -27,6 +27,9 @@ def fate_lr_decay(self, initial_lr, lr_decay, epochs):
     """
     lr = initial_lr / (1 + (lr_decay * epochs))
     return lr
+
+# Instantiate a local hook for anchoring resultant tensors
+#args_hook = sy.TorchHook(th)
     
 ###########################################
 # Parameter Abstraction class - Arguments #
@@ -68,13 +71,14 @@ class Arguments:
     """
     def __init__(self, input_size, output_size, batch_size=None, rounds=10, 
                  epochs=100, lr=0.001, lr_decay=0.1, weight_decay=0, seed=42,
-                 is_condensed=True, precision_fractional=5, use_CLR=True, mu=0.1,
-                 reduction='mean', l1_lambda=0, l2_lambda=0, optimizer=th.optim.SGD, 
-                 criterion=nn.BCELoss, dampening=0, lr_lambda=None, base_lr=0.001, 
-                 max_lr=0.1, step_size_up=2000, step_size_down=None, 
-                 mode='triangular', gamma=1.0, scale_fn=None, scale_mode='cycle', 
-                 cycle_momentum=True, base_momentum=0.8, max_momentum=0.9, 
-                 last_epoch=-1, patience=10, delta=0.0, cumulative_delta=False):
+                 is_condensed=True, is_snn=False, precision_fractional=5, 
+                 use_CLR=True, mu=0.1, reduction='mean', l1_lambda=0, l2_lambda=0, 
+                 optimizer=th.optim.SGD, criterion=nn.BCELoss, dampening=0, 
+                 lr_lambda=None, base_lr=0.001, max_lr=0.1, step_size_up=2000, 
+                 step_size_down=None, mode='triangular', gamma=1.0, scale_fn=None, 
+                 scale_mode='cycle', cycle_momentum=True, base_momentum=0.8, 
+                 max_momentum=0.9, last_epoch=-1, patience=10, delta=0.0, 
+                 cumulative_delta=False):
 
         # General Parameters
         self.input_size = input_size
@@ -84,6 +88,7 @@ class Arguments:
         self.epochs = epochs
         self.seed = seed
         self.is_condensed = is_condensed
+        self.is_snn = is_snn
         self.precision_fractional = precision_fractional
 
         # Optimizer Parameters

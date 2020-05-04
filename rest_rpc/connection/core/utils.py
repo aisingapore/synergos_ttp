@@ -63,10 +63,6 @@ These are the subject-id-class mappings for the main utility records:
     'Tag': {
         'id': 'tag_id',
         'class': TagRecords
-    },
-    'Alignment': {
-        'id': 'alignment_id',
-        'class': AlignmentRecords
     }
 }
 """

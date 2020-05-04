@@ -12,7 +12,7 @@ from flask_restx import Api
 
 # Custom
 from rest_rpc.training.alignments import ns_api as alignment_ns
-from rest_rpc.training.model import ns_api as model_ns
+from rest_rpc.training.models import ns_api as model_ns
 
 ##################
 # Configurations #
@@ -41,9 +41,21 @@ api.add_namespace(
 ########################
 """
 Supported routes:
-1) "/projects/<project_id>/experiments/<expt_id>/runs/<run_id>/models
+1) "/projects/<project_id>/models"
+2) "/projects/<project_id>/experiments/<expt_id>/models"
+3) "/projects/<project_id>/experiments/<expt_id>/runs/<run_id>/models"
 """
+"""
+api.add_namespace(
+    model_ns,
+    path="/projects/<project_id>/models"
+)
 
+api.add_namespace(
+    model_ns,
+    path="/projects/<project_id>/experiments/<expt_id>/models"
+)
+"""
 api.add_namespace(
     model_ns,
     path="/projects/<project_id>/experiments/<expt_id>/runs/<run_id>/models"

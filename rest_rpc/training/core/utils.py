@@ -39,6 +39,10 @@ worker_predict_route = app.config['WORKER_ROUTES']['predict']
 These are the subject-id-class mappings for the main utility records in 
 training:
 {
+    'Alignment': {
+        'id': 'alignment_id',
+        'class': AlignmentRecords
+    },
     'Model': {
         'id': 'model_id',
         'class': ModelRecords
@@ -150,11 +154,10 @@ class ModelRecords(AssociationRecords):
 
     def __init__(self, db_path=db_path):
         super().__init__(
-            "Model",  
-            "model_id", 
-            db_path,
-            [],
-            *["Project", "Experiment", "Run"]
+            subject="Model",  
+            identifier="model_id", 
+            db_path=db_path,
+            relations=["Project", "Experiment", "Run"]
         )
 
     def __generate_key(self, project_id, expt_id, run_id):
@@ -184,6 +187,14 @@ class ModelRecords(AssociationRecords):
         model_key = self.__generate_key(project_id, expt_id, run_id)
         return super().delete(model_key)
            
+#################################################
+# Data Storage Association class - StatsRecords #
+#################################################
+
+class StatsRecords(AssociationRecords):
+    def __init__(self, subject, identifier, db_path=db_path, relations=[], *associations):
+        super().__init__(subject, identifier, db_path=db_path, relations=relations, *associations)
+
 ##########################################
 # Data Augmentation class - RPCFormatter #
 ##########################################
@@ -325,12 +336,12 @@ class Poller:
         participant_details = reg_record['participant']
         participant_id = participant_details['id']
         participant_ip = participant_details['host']
-        participant_port = participant_details['port']
+        participant_f_port = participant_details.pop('f_port') # Flask port
 
         # Construct destination url for interfacing with worker REST-RPC
         destination_constructor = UrlConstructor(
             host=participant_ip,
-            port=participant_port
+            port=participant_f_port
         )
         destination_url = destination_constructor.construct_poll_url(
             project_id=self.project_id
@@ -427,6 +438,7 @@ class Governor:
             'host': "0.0.0.0",
             'port': 8020
         }
+        self.__rpc_formatter = RPCFormatter()
         self.project_id = project_id
         self.expt_id = expt_id
         self.run_id = run_id
@@ -440,7 +452,7 @@ class Governor:
     def is_live(status):
         return status['is_live']
 
-    async def _initialise_participant(reg_record):
+    async def _initialise_participant(self, reg_record):
         """ Parses a registration record for participant metadata, before
             posting to his/her corresponding worker node's REST-RPC service for
             WSSW initialisation
@@ -450,15 +462,15 @@ class Governor:
         Returns:
             State of WSSW object (dict)
         """
-        participant_details = reg_record['participant']
+        participant_details = reg_record['participant'].copy()
         participant_id = participant_details['id']
         participant_ip = participant_details['host']
-        participant_port = participant_details['port']
+        participant_f_port = participant_details.pop('f_port') # Flask port
 
         # Construct destination url for interfacing with worker REST-RPC
         destination_constructor = UrlConstructor(
             host=participant_ip,
-            port=participant_port
+            port=participant_f_port
         )
         destination_url = destination_constructor.construct_initialise_url(
             project_id=self.project_id,
@@ -469,19 +481,22 @@ class Governor:
         relevant_tags = reg_record['relations']['Tag'][0]
         self.__rpc_formatter.strip_keys(relevant_tags)
 
-        relevant_alignments = reg_records['relations']['Alignment'][0]
+        relevant_alignments = reg_record['relations']['Alignment'][0]
         self.__rpc_formatter.strip_keys(relevant_alignments)
 
         payload = {
             'tags': relevant_tags,
             'alignments': relevant_alignments            
         }
+        self.__rpc_formatter.strip_keys(participant_details)
         payload.update(participant_details)
         
         # If workers are dockerised, use default container mappings
         if self.dockerised:
             payload.update(self.__DEFAULT_SERVER_CONFIG)
 
+        logging.info(f"rest_rpc.utils.Governor._initialise_participant - Payload: {payload}")
+        
         # Initialise WSSW object on participant's worker node by posting tags &
         # alignments to `initialise` route in worker's REST-RPC
         async with aiohttp.ClientSession() as session:
@@ -494,7 +509,7 @@ class Governor:
         state = resp_json['data']
         return {participant_id: state}
 
-    async def _terminate_participant(reg_record):
+    async def _terminate_participant(self, reg_record):
         """ Parses a registration record for participant metadata, before
             posting to his/her corresponding worker node's REST-RPC service for
             WSSW initialisation
@@ -504,15 +519,15 @@ class Governor:
         Returns:
             State of WSSW object (dict)
         """
-        participant_details = reg_record['participant']
+        participant_details = reg_record['participant'].copy()
         participant_id = participant_details['id']
         participant_ip = participant_details['host']
-        participant_port = participant_details['port']
+        participant_f_port = participant_details.pop('f_port') # Flask port
 
         # Construct destination url for interfacing with worker REST-RPC
         destination_constructor = UrlConstructor(
             host=participant_ip,
-            port=participant_port
+            port=participant_f_port
         )
         destination_url = destination_constructor.construct_terminate_url(
             project_id=self.project_id,
@@ -540,9 +555,9 @@ class Governor:
         Returns:
             All participants' WSSW object states (dict)
         """
-        if op == "initialise":
+        if operation == "initialise":
             method = self._initialise_participant
-        elif op == "terminate":
+        elif operation == "terminate":
             method = self._terminate_participant
         else:
             raise ValueError("Invalid operation specified")
