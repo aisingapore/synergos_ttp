@@ -244,11 +244,11 @@ class Models(Resource):
 
         success_payload = payload_formatter.construct_success_payload(
             status=200,
-            method="model.get",
+            method="model.post",
             params={
-                'project_id': fields.String(), 
-                'expt_id': fields.String(),
-                'run_id': fields.String()    
+                'project_id': project_id, 
+                'expt_id': expt_id,
+                'run_id': run_id    
             },
             data=retrieved_models
         )

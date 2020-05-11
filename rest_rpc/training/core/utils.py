@@ -37,7 +37,7 @@ worker_predict_route = app.config['WORKER_ROUTES']['predict']
 
 """
 These are the subject-id-class mappings for the main utility records in 
-training:
+Training:
 {
     'Alignment': {
         'id': 'alignment_id',
@@ -187,14 +187,6 @@ class ModelRecords(AssociationRecords):
         model_key = self.__generate_key(project_id, expt_id, run_id)
         return super().delete(model_key)
            
-#################################################
-# Data Storage Association class - StatsRecords #
-#################################################
-
-class StatsRecords(AssociationRecords):
-    def __init__(self, subject, identifier, db_path=db_path, relations=[], *associations):
-        super().__init__(subject, identifier, db_path=db_path, relations=relations, *associations)
-
 ##########################################
 # Data Augmentation class - RPCFormatter #
 ##########################################

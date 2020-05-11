@@ -74,40 +74,4 @@ if __name__ == "__main__":
     # Step 2: TTP commences model training for specified experiment-run set
     model_resp = execute_post(url=model_init_url, payload=init_params)
     logging.debug(f"New model: {model_resp}")
-
-    """
-    payload = {
-        "host": "0.0.0.0",
-        "port": 8020,
-        "id": "test_worker_1",
-        "log_msgs": False,
-        "verbose": False,
-        "tags": {
-            "evaluate": [
-                [
-                    "edge_test_missing_coecerable_vals"
-                ]
-            ],
-            "train": [
-                [
-                    "iid_1"
-                ],
-                [
-                    "non_iid_1"
-                ]
-            ]
-        },
-        "alignments": {
-            "evaluate": {
-                "X": [],
-                "y": []
-            },
-            "train": {
-                "X": [],
-                "y": []
-            }
-        }
-    }
-
-    execute_post(url=wssw_init_url, payload=payload)
-    """
+    

@@ -153,9 +153,11 @@ def terminate_connections(workers):
         # which caches the websocketclient objects when the auto_add variable is
         # set to True. This registry is indexed by the websocketclient ID and 
         # thus, recreation of the websocketclient object will not get replaced 
-        # in the registry if the ID is the same. Therefore, this explains the 
-        # 'socket is already closed' issue since it's referencing to the 
-        # previous websocketclient connection that I have closed. The solution 
+        # in the registry if the ID is the same. If obj is not removed from
+        # local registry before the WS connection is closed, this will cause a 
+        # `websocket._exceptions.WebSocketConnectionClosedException: socket is 
+        # already closed.` error since it is still referencing to the previous 
+        # websocketclient connection that was closed. The solution 
         # was to simply call the remove_worker_from_local_worker_registry() 
         # method on the websocketclient object before closing its connection.
         worker.remove_worker_from_local_worker_registry()
