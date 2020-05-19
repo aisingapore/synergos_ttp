@@ -28,16 +28,14 @@ import requests
 logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.DEBUG)
 
 # Relevant IDs
-project_id = "mmm_project"
-expt_id = "mmm_experiment_1"
-run_id = "mmm_run_1_2"
+project_id = "fedlearn_project"
+expt_id = "fedlearnexperiment_1"
+run_id = "fedlearn_run_1_1"
 participant_id_1 = "fedlearn_worker_1"
 participant_id_2 = "fedlearn_worker_2"
 
 # Relevant Training Endpoints
-#ttp_host = "0.0.0.0"#"localhost"
 ttp_host = "localhost"   #distrib
-#ttp_port = 5000#15000
 ttp_port = 15000  #distrib
 base_ttp_train_url = f"http://{ttp_host}:{ttp_port}/ttp/train"
 project_train_url = f"{base_ttp_train_url}/projects/{project_id}"
