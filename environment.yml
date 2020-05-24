@@ -28,6 +28,7 @@ dependencies:
         - diffprivlib==0.2.0
         - flask==1.1.1
         - flask-restx==0.2.0
+        - pathos==0.2.5
         - pytorch-ignite==0.3.0
         - ray==0.7.7
         - syft==0.2.4
