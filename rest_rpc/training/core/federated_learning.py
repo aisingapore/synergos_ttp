@@ -8,29 +8,20 @@
 import asyncio
 import copy
 import json
-import math
+import logging
 import os
-import random
-import sys
-import time
 from collections import OrderedDict
+from multiprocessing import Manager
 from pathlib import Path
 
 # Libs
-import numpy as np
-import pandas as pd
 import syft as sy
 import torch as th
 import tensorflow as tft
-from ray import tune
-from ray.tune.schedulers import ASHAScheduler
 from sklearn.metrics import mean_squared_error, accuracy_score, roc_auc_score
 from sklearn.model_selection import train_test_split, StratifiedShuffleSplit
-from torch import nn
 from torch.optim.lr_scheduler import LambdaLR, CyclicLR
-from torch.utils.data import TensorDataset, DataLoader
-from tqdm import tqdm, tnrange, tqdm_notebook
-from tqdm.notebook import trange
+from tqdm import tqdm
 
 # Custom
 from .arguments import Arguments
@@ -69,7 +60,7 @@ class FederatedLearning:
         local_models (dict(str,Models)): Most recent cache of local models
         loss_history (dict): Local & global losses tracked throughout FL training
     """
-    def __init__(self, arguments, crypto_provider, workers, model):
+    def __init__(self, arguments, crypto_provider, workers, model, loop=None):
         
         # Network attributes
         self.arguments = arguments
@@ -87,7 +78,9 @@ class FederatedLearning:
         self.global_model = model
         self.local_models = {}
         self.loss_history = {'local': {}, 'global': {}}
-        self.cache = []
+
+        # Optimisation attributes
+        self.loop = loop
 
     ############
     # Checkers #
@@ -122,8 +115,8 @@ class FederatedLearning:
                 requires_grad=True
             )
         )
-    
-    
+
+
     def setup_FL_env(self, is_shared=False):
         """ Sets up a basic federated learning environment using virtual workers,
             with a allocated arbiter (i.e. TTP) to faciliate in model development
@@ -163,7 +156,7 @@ class FederatedLearning:
             return datasets
 
         # Ensure that TTP does not have residual tensors
-        self.crypto_provider.clear_objects()
+        #self.crypto_provider.clear_objects()
         assert len(self.crypto_provider._objects) == 0
         
         # Retrieve Pointer Tensors to remote datasets
@@ -180,9 +173,12 @@ class FederatedLearning:
             (NOTE: This is based on the assumption that querying database size does
                    not break FL abstraction (i.e. not willing to share quantity))
         Args:
-            train_datasets (dict(sy.BaseDataset)): Distributed datasets for training
-            eval_datasets  (dict(sy.BaseDataset)): Distributed dataset for verifying performance
-            test_datasets  (dict(sy.BaseDataset)): Distributed dataset for to be tested on
+            train_datasets (dict(sy.BaseDataset)): 
+                Distributed datasets for training
+            eval_datasets  (dict(sy.BaseDataset)): 
+                Distributed dataset for verifying performance
+            test_datasets  (dict(sy.BaseDataset)): 
+                Distributed dataset for to be tested on
         Returns:
             train_loader (sy.FederatedDataLoader)
             eval_loader  (sy.FederatedDataLoader)
@@ -207,12 +203,13 @@ class FederatedLearning:
                     else len(federated_dataset)
                 ), 
                 shuffle=True,
-                iter_per_worker=False,#True, # for subsequent parallelization
+                iter_per_worker=True,   # for LVL 1A parallelization
+                #iter_per_worker=False,  # for LVL 1B parallelization
                 **kwargs
             )
 
             return federated_data_loader
-        """
+
         # Load training datasets into a configured federated dataloader
         train_loader = construct_FL_loader(train_datasets.values())
 
@@ -223,116 +220,23 @@ class FederatedLearning:
         test_loader = construct_FL_loader(test_datasets.values())
         
         return train_loader, eval_loader, test_loader
-        """
-        train_loaders = {
-            worker: construct_FL_loader([dataset]) 
-            for worker, dataset in train_datasets.items()
-        }
 
-        eval_loaders = {
-            worker: construct_FL_loader([dataset]) 
-            for worker, dataset in eval_datasets.items()
-        }
+        # train_loaders = {
+        #     worker: construct_FL_loader([dataset]) 
+        #     for worker, dataset in train_datasets.items()
+        # }
 
-        test_loaders = {
-            worker: construct_FL_loader([dataset]) 
-            for worker, dataset in test_datasets.items()
-        }
+        # eval_loaders = {
+        #     worker: construct_FL_loader([dataset]) 
+        #     for worker, dataset in eval_datasets.items()
+        # }
 
-        return train_loaders, eval_loaders, test_loaders
-        
+        # test_loaders = {
+        #     worker: construct_FL_loader([dataset]) 
+        #     for worker, dataset in test_datasets.items()
+        # }
 
-    def distribute_federated_datasets(self, train_loader, test_loader):
-        """ Adds batches of datasets constructed from deep object retrieval via
-            grid search in to workers' dataset caches for subsequent 
-            asynchronous training.
-            
-            Fine details:
-            There are 2 main data cataloguing mechanisms at play in PySyft, Tags
-            and Datasets. Adding adding a tagged tensor integrates the tensor
-            deep into the worker's object registry. On the other hand, adding a
-            set of tensors via `worker.add_dataset()` is a shallow operation in
-            that the Dataset object is not integrated into the worker's object
-            registry as its own dataset, but is merely cached in a dictionary
-            attribute for subsequent retrieval/operation.
-
-        Args: 
-            train_loader (sy.FederatedDataLoader): Training batched datasets
-            eval_loader  (sy.FederatedDataLoader): Evaluation batched datasets
-            test_loader  (sy.FederatedDataLoader): Testing batched datasets
-        Returns:
-
-        """
-
-        def distribute_batches(data_loader, workers, meta):
-            for batch_idx, batch in enumerate(data_loader):
-                pass
-        pass
-
-
-    async def fit_model_on_worker(self, worker, local_model, global_model, criterion):
-        """Send the model to the worker and fit the model on the worker's training data.
-        Args:
-            worker: Remote location, where the model shall be trained.
-            traced_model: Model which shall be trained.
-            batch_size: Batch size of each training step.
-            curr_round: Index of the current training round (for logging purposes).
-            max_nr_batches: If > 0, training on worker will stop at min(max_nr_batches, nr_available_batches).
-            lr: Learning rate of each training step.
-        Returns:
-            A tuple containing:
-                * worker_id: Union[int, str], id of the worker.
-                * improved model: torch.jit.ScriptModule, model after training at the worker.
-                * loss: Loss on last training batch, torch.tensor.
-        """
-
-        def reparsed_criterion(target, pred):
-            """ Reparse custom surrogate criterion to accept `target` &
-                `pred` as keyword arguments for `_fit` in 
-                `WebsocketServerWorker`, when `async_fit` is called
-            """
-            if self.arguments.is_condensed:
-                print("Is condensed?", self.arguments.is_condensed)
-                return criterion(
-                    outputs=pred, 
-                    labels=target.float(),
-                    w=local_model.state_dict(),
-                    wt=global_model.state_dict()
-                )
-            else:
-                # To handle multinomial context
-                return criterion(
-                    outputs=pred, 
-                    labels=th.max(target, 1)[1],
-                    w=local_model.state_dict(),
-                    wt=global_model.state_dict()
-                )
-
-
-        # Serialise model into TorchScript object
-        traced_model = th.jit.script(local_model)
-
-        # Serialise criterion into TorchScript object
-        traced_criterion = th.jit.script(reparsed_criterion)
-
-        train_config = sy.TrainConfig(
-            model=traced_model,
-            loss_fn=traced_criterion,
-            batch_size=self.arguments.batch_size,
-            shuffle=True,
-            #max_nr_batches=max_nr_batches,
-            epochs=1,
-            optimizer="SGD",
-            optimizer_args=self.arguments.optimizer_params
-        )
-        train_config.send(worker)
-
-        loss = await worker.async_fit(dataset_key="#train", return_ids=[0])
-        
-        updated_model = train_config.model_ptr.get().obj
-        updated_criterion = train_config.loss_fn_ptr.get().obj
-        print("Updated Criterion:", updated_criterion)
-        return updated_model, criterion, loss
+        # return train_loaders, eval_loaders, test_loaders
 
 
     def perform_FL_training(self, datasets, is_shared=False):
@@ -367,9 +271,6 @@ class FederatedLearning:
             def forward(self, outputs, labels, w, wt):
                 # Calculate normal criterion loss
                 loss = super().forward(outputs, labels)
-                print("loss", loss, loss.clone().detach().get())
-
-                print("Mu:", self.mu, "L1:", self.l1_lambda, "L2:", self.l2_lambda)
 
                 # Calculate regularisation terms
                 fedprox_reg_terms = []
@@ -379,16 +280,6 @@ class FederatedLearning:
                     
                     # Extract corresponding global layer weights
                     layer_wt = wt[layer]
-
-                    print("Layer W:", layer_w.clone().detach().get())
-                    print("Layer WT:", layer_wt.clone().detach().get())
-                    print("layer W - Layer WT:", layer_w.clone().detach().get() - layer_wt.clone().detach().get())
-                    print("Norm diff:", th.norm(layer_w.clone().detach().get() - layer_wt.clone().detach().get()))
-
-                    print("Layer w - layer wt --> pointer:", layer_w - layer_wt)
-                    print("Layer w - layer wt (retrieved):", (layer_w - layer_wt).clone().detach().get())
-                    print("Norm diff --> pointer:", th.norm(layer_w - layer_wt))
-                    print("Max value --> pointer:", th.max(layer_w -layer_wt))
 
                     # Note: In syft==0.2.4, 
                     # 1) `th.norm(<PointerTensor>)` will always return 
@@ -404,9 +295,9 @@ class FederatedLearning:
                     fp_reg_term = self.mu * 0.5 * (norm_diff**2)
                     """
                     norm_diff = th.pow((layer_w - layer_wt), 2).sum()
-                    print("Manual norm diff:", norm_diff.clone().detach().get())
+                    # print("Manual norm diff:", norm_diff.clone().detach().get())
                     fp_reg_term = self.mu * 0.5 * norm_diff # exp cancelled out
-                    print("Manual calculation of fedprox reg term:", fp_reg_term, fp_reg_term.clone().detach().get())
+                    # print("Manual calculation of fedprox reg term:", fp_reg_term, fp_reg_term.clone().detach().get())
                     fedprox_reg_terms.append(fp_reg_term)
                     
                     # Calculate L1 regularisation
@@ -416,9 +307,9 @@ class FederatedLearning:
                     l1_reg_term = self.l1_lambda * l1_norm
                     """
                     l1_norm = layer_w.abs().sum()
-                    print("Manual L1 Norm:", l1_norm)
+                    # print("Manual L1 Norm:", l1_norm)
                     l1_reg_term = self.l1_lambda * l1_norm
-                    print("Manual calculation of l1 reg term:", l1_reg_term, l1_reg_term.clone().detach().get())
+                    # print("Manual calculation of l1 reg term:", l1_reg_term, l1_reg_term.clone().detach().get())
                     l1_reg_terms.append(l1_reg_term)
                     
                     # Calculate L2 regularisation
@@ -428,39 +319,30 @@ class FederatedLearning:
                     l2_reg_term = self.l2_lambda * 0.5 * (l2_norm)**2
                     """
                     l2_norm = th.pow(layer_w, 2).sum()
-                    print("Manual L2 Norm:", l2_norm)
+                    # print("Manual L2 Norm:", l2_norm)
                     l2_reg_term = self.l2_lambda * 0.5 * l2_norm
-                    print("Manual calculation of l2 reg term:", l2_reg_term, l2_reg_term.clone().detach().get())
+                    # print("Manual calculation of l2 reg term:", l2_reg_term, l2_reg_term.clone().detach().get())
                     l2_reg_terms.append(l2_reg_term)
-                
-                print("Fedprox reg terms", fedprox_reg_terms)
-                print("l1 reg terms", l1_reg_terms)
-                print("l2 reg terms", l2_reg_terms)
-
-                # Retrieve worker involved
-                assert outputs.location is labels.location
-                worker = labels.location
                 
                 # Summing up from a list instead of in-place changes 
                 # prevents the breaking of the autograd's computation graph
                 fedprox_loss = th.stack(fedprox_reg_terms).sum().requires_grad_()
-                print("Fedprox contribution", fedprox_loss, fedprox_loss.numel())
+                # print("Fedprox contribution", fedprox_loss, fedprox_loss.numel())
 
                 l1_loss = th.stack(l1_reg_terms).sum().requires_grad_()
-                print("l1 contribution", l1_loss, l1_loss.numel())
-
+                # print("l1 contribution", l1_loss, l1_loss.numel())
 
                 l2_loss = th.stack(l2_reg_terms).sum().requires_grad_()
-                print("l2 contribution", l2_loss, l2_loss.numel())
+                # print("l2 contribution", l2_loss, l2_loss.numel())
                         
                 # Add up all losses involved
                 surrogate_loss = loss + fedprox_loss + l1_loss + l2_loss
-                print("Surrogate loss", surrogate_loss.clone().detach().get(), surrogate_loss.numel())
+                # print("Surrogate loss", surrogate_loss.clone().detach().get(), surrogate_loss.numel())
                 # Store result in cache
                 self.__temp.append(surrogate_loss.clone().detach().get())
                 
                 return surrogate_loss
-            
+
             def log(self):
                 """ Computes mean loss across all current runs & caches the result """
                 avg_loss = th.mean(th.stack(self.__temp))
@@ -472,8 +354,7 @@ class FederatedLearning:
                 self.__temp = []
                 self._cache = []
                 return self
-            
-            
+
         def generate_local_models(is_snn=False):
             """ Abstracts the generation of local models in a federated learning
                 context. For default FL training (i.e. non-SNN/FedAvg/Fedprox),
@@ -498,15 +379,14 @@ class FederatedLearning:
                 raise NotImplementedError("SNN training not yet supported!")
             
             return local_models
-
-
+        
         def perform_parallel_training(datasets, models, cache, optimizers, 
                                       schedulers, criterions, stoppers, epochs):
             """ Parallelizes training across each distributed dataset 
                 (i.e. simulated worker) Parallelization here refers to the 
                 training of all distributed models per epoch.
                 Note: All objects involved in this set of operations have
-                      already been distributed to their respective workers
+                    already been distributed to their respective workers
 
             Args:
                 datasets   (dict(DataLoader)): Distributed training datasets
@@ -521,97 +401,94 @@ class FederatedLearning:
                 trained local models
             """ 
             # Tracks which workers have reach an optimal/stagnated model
-            WORKERS_STOPPED = []
+            WORKERS_STOPPED = Manager().list()
 
-            async def train_worker(worker, data_loader):
-                """
-                """
+            async def train_worker(batch):
+                """ Train a worker on its single batch """ 
+                worker, (data, labels) =  batch
+
                 # Extract essentials for training
                 curr_global_model = cache[worker]
                 curr_local_model = models[worker]
                 curr_optimizer = optimizers[worker]
                 curr_criterion = criterions[worker]
 
+                # Check if worker has been stopped
+                if worker.id not in WORKERS_STOPPED:
+
+                    # Zero gradients to prevent accumulation  
+                    curr_local_model.train()
+                    curr_optimizer.zero_grad()
+
+                    # Forward Propagation
+                    predictions = curr_local_model(data.float())
+
+                    if self.arguments.is_condensed:
+                        # To handle binomial context
+                        loss = curr_criterion(
+                            predictions, 
+                            labels.float(),
+                            w=curr_local_model.state_dict(),
+                            wt=curr_global_model.state_dict()
+                        )
+                    else:
+                        # To handle multinomial context
+                        loss = curr_criterion(
+                            predictions, 
+                            th.max(labels, 1)[1],
+                            w=curr_local_model.state_dict(),
+                            wt=curr_global_model.state_dict()
+                        )
+
+                    # Backward propagation
+                    loss.backward()
+                    curr_optimizer.step()
+
+                # Update all involved objects
+                models[worker] = curr_local_model
+                optimizers[worker] = curr_optimizer
+                criterions[worker] = curr_criterion
+
+            async def train_batch(batch):
+                """ Train all workers on their respective allocated batches """
+                for worker_future in asyncio.as_completed(
+                    map(train_worker, batch.items())
+                ):
+                    await worker_future
+
+            async def check_for_stagnation(worker):
+                """ After a full epoch, check if training for worker has stagnated """
                 # Extract essentials for adaptation
+                curr_local_model = models[worker]
+                curr_criterion = criterions[worker]
                 curr_scheduler = schedulers[worker]
                 curr_stopper = stoppers[worker]
 
-                print(f"{worker} - Current GM:", [p.clone().detach().get() for p in list(curr_global_model.parameters())])
-                print(f"{worker} - Current LM:", [p.clone().detach().get() for p in list(curr_local_model.parameters())])
+                # If model is deemed to have stagnated, stop training
+                if curr_stopper.early_stop:
+                    WORKERS_STOPPED.append(worker.id)
+                    
+                # else, perform learning rate decay
+                else:
+                    curr_scheduler.step()
 
-                # Check if worker has been stopped
-                if worker not in WORKERS_STOPPED:
+                # Retrieve final loss computed for this epoch for evaluation
+                final_batch_loss = curr_criterion.log()
+                curr_stopper(final_batch_loss, curr_local_model)
 
-                    for data, labels in data_loader:
-                        
-                        # Zero gradients to prevent accumulation  
-                        curr_local_model.train()
-                        curr_optimizer.zero_grad()
+                schedulers[worker] = curr_scheduler
+                stoppers[worker] = curr_stopper 
 
-                        # Forward Propagation
-                        print("Data shape:", data.clone().detach().get().shape)
-                        print("Labels shape:", labels.clone().detach().get().shape)
-                        print("Curr_local model:", curr_local_model)
-                        predictions = curr_local_model(data.float())
+            async def train_datasets(datasets):
+                """ Train all batches in a composite federated dataset """
+                batch_futures = [train_batch(batch) for batch in datasets]
+                await asyncio.gather(*batch_futures)
 
-                        print("Prediction shape:", predictions.clone().detach().get().shape)
-
-                        if self.arguments.is_condensed:
-                            print("Is condensed?", self.arguments.is_condensed)
-                            loss = curr_criterion(
-                                predictions, 
-                                labels.float(),
-                                w=curr_local_model.state_dict(),
-                                wt=curr_global_model.state_dict()
-                            )
-                        else:
-                            # To handle multinomial context
-                            loss = curr_criterion(
-                                predictions, 
-                                th.max(labels, 1)[1],
-                                w=curr_local_model.state_dict(),
-                                wt=curr_global_model.state_dict()
-                            )
-
-                        print("Updated loss:", loss)
-
-                        # Backward propagation
-                        loss.backward()
-                        curr_optimizer.step()
-                        
-                    # Retrieve final loss computed for this epoch for evaluation
-                    final_batch_loss = curr_criterion.log()
-                    curr_stopper(final_batch_loss, curr_local_model)
-
-                    # If model is deemed to have stagnated, stop training
-                    if curr_stopper.early_stop:
-                        WORKERS_STOPPED.append(worker)
-                        
-                    # else, perform learning rate decay
-                    else:
-                        curr_scheduler.step()
-
-                    # Update models, optimisers & losses
-                    models[worker] = curr_local_model
-                    optimizers[worker] = curr_optimizer
-                    criterions[worker] = curr_criterion
-
-                    assert (models[worker] == curr_local_model and 
-                            optimizers[worker] == curr_optimizer and 
-                            criterions[worker] == curr_criterion)
-
-            async def train_on_batch(datasets):
-                """
-                """
-                # Apply asynchronous training to each batch
-                futures = [
-                    train_worker(
-                        worker=worker, 
-                        data_loader=data_loader
-                    ) for worker, data_loader in datasets.items()
+                stagnation_futures = [
+                    check_for_stagnation(worker) 
+                    for worker in self.workers
                 ]
-                await asyncio.gather(*futures)
-
+                await asyncio.gather(*stagnation_futures)
 
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
@@ -620,7 +497,7 @@ class FederatedLearning:
                 for e in range(epochs):
 
                     asyncio.get_event_loop().run_until_complete(
-                        train_on_batch(datasets=datasets)
+                        train_datasets(datasets=datasets)
                     )
 
             finally:
@@ -630,8 +507,8 @@ class FederatedLearning:
             trained_models = {w: m.get() for w,m in models.items()}
 
             return trained_models, optimizers, schedulers, criterions, stoppers
-        
-        
+
+    
         def calculate_global_params(global_model, models, datasets):
             """ Aggregates weights from trained locally trained models after a round.
 
@@ -647,16 +524,15 @@ class FederatedLearning:
 
             # Find size of all distributed datasets for calculating scaling factor
             obs_counts = {}
-            for worker, data_loader in datasets.items():
-                for data, labels in data_loader:
-                    curr_count = len(data)
-                    if worker in obs_counts.keys():
-                        obs_counts[worker] += curr_count
-                    else:
-                        obs_counts[worker] = curr_count
+            for batch in datasets:
+                for worker, (data, labels) in batch.items():
+                    obs_counts[worker] = obs_counts.get(worker, 0) + len(data)
 
             # Calculate scaling factors for each worker
-            scale_coeffs = {w: c/sum(obs_counts.values()) for w,c in obs_counts.items()}
+            scale_coeffs = {
+                worker: local_count/sum(obs_counts.values()) 
+                for worker, local_count in obs_counts.items()
+            }
 
             # PyTorch models can only swap weights of the same structure
             # Hence, aggregate weights while maintaining original layering structure
@@ -672,14 +548,13 @@ class FederatedLearning:
 
                 layer_shape = tuple(global_model.state_dict()[p_type].shape)
 
-                #aggregated_params[p_type] = th.add(*param_states).view(*layer_shape)
                 aggregated_params[p_type] = th.stack(
                     param_states,
                     dim=0
                 ).sum(dim=0).view(*layer_shape)
 
             return aggregated_params
-        
+    
         th.manual_seed(self.arguments.seed)
 
         ###########################
@@ -697,7 +572,7 @@ class FederatedLearning:
         # mechanics.
         
         global_train_stopper = EarlyStopping(**self.arguments.early_stopping_params)
-        global_val_stopper = EarlyStopping(**self.arguments.early_stopping_params)
+        # global_val_stopper = EarlyStopping(**self.arguments.early_stopping_params)
 
         rounds = 0
         pbar = tqdm(total=self.arguments.rounds, desc='Rounds', leave=True)
@@ -731,21 +606,14 @@ class FederatedLearning:
 
             schedulers = {
                 w: CyclicLR(optimizer, **self.arguments.lr_decay_params) 
-                if self.arguments.use_CLR
-                else LambdaLR(optimizer, **self.arguments.lr_decay_params)
+                   if self.arguments.use_CLR
+                   else LambdaLR(optimizer, **self.arguments.lr_decay_params)
                 for w, optimizer in optimizers.items()
             }
 
-            """
             criterions = {
                 w: SurrogateCriterion(
-                    **self.arguments.criterion_params
-                ) for w,m in local_models.items()
-            }
-            """
-
-            criterions = {
-                w: SurrogateCriterion(**self.arguments.criterion_params)
+                    **self.arguments.criterion_params)
                 for w,m in local_models.items()
             }
             
@@ -755,7 +623,7 @@ class FederatedLearning:
                 ) for w,m in local_models.items()
             }
             
-            trained_models, _, _, _, _= perform_parallel_training(
+            (trained_models, _, _, _, _) = perform_parallel_training(
                 datasets=datasets, 
                 models=local_models,
                 cache=prev_models,
@@ -772,7 +640,7 @@ class FederatedLearning:
                 datasets
             )
 
-            # Update weights with aggregated parameters 
+            # # Update weights with aggregated parameters 
             self.global_model.load_state_dict(aggregated_params)
             
             # Update cache for local models
@@ -787,50 +655,27 @@ class FederatedLearning:
 
             # Store local losses for analysis
             for w_id, loss in final_local_losses.items():
-                try:
-                    self.loss_history['local'][w_id].update({rounds: loss.item()})
-                except KeyError:
-                    self.loss_history['local'][w_id] = {rounds: loss.item()}
+                local_archive = self.loss_history['local'].get(w_id, {})
+                local_archive.update({rounds: loss.item()})
+                self.loss_history['local'][w_id] = local_archive
 
             # Store global losses for analysis
             self.loss_history['global'].update({rounds: global_loss.item()})
 
-
-            """
-                        predictions = curr_local_model(data.float())
-
-                        print("Prediction shape:", predictions.clone().detach().get().shape)
-
-                        if self.arguments.is_condensed:
-                            print("Is condensed?", self.arguments.is_condensed)
-                            loss = curr_criterion(
-                                predictions, 
-                                labels.float(),
-                                w=curr_local_model.state_dict(),
-                                wt=curr_global_model.state_dict()
-                            )
-                        else:
-                            # To handle multinomial context
-                            loss = curr_criterion(
-                                predictions, 
-                                th.max(labels, 1)[1],
-                                w=curr_local_model.state_dict(),
-                                wt=curr_global_model.state_dict()
-                            )
-            """
-
-
             global_train_stopper(global_loss, self.global_model)
-            global_val_stopper(global_loss, self.global_model)
+            # global_val_stopper(global_loss, self.global_model)
             
             # If global model is deemed to have stagnated, stop training
-            if global_train_stopper.early_stop or global_val_stopper.early_stop:
+            if global_train_stopper.early_stop:# or global_val_stopper.early_stop:
                 break
-            
+
             rounds += 1
             pbar.update(1)
         
         pbar.close()
+
+        logging.info(f"Objects in TTP: {self.crypto_provider}, {len(self.crypto_provider._objects)}")
+        logging.info(f"Objects in sy.local_worker: {sy.local_worker}, {len(sy.local_worker._objects)}")
 
         return self.global_model, self.local_models
 
@@ -972,18 +817,3 @@ class FederatedLearning:
             }
 
         return out_paths
-
-
-
-
-
-
-
-
-##############
-# Deprecated #
-##############
-
-"""
-
-"""

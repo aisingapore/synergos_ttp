@@ -134,7 +134,9 @@ payload_formatter = TopicalPayload(SUBJECT, ns_api, model_output_model)
 
 # Insert Models representation here for mass automation
 
-@ns_api.route('/')
+@ns_api.route('/', defaults={'expt_id': None, 'run_id': None})
+@ns_api.route('/<expt_id>', defaults={'run_id': None})
+@ns_api.route('/<expt_id>/<run_id>')
 @ns_api.response(404, 'model not found')
 @ns_api.response(500, 'Internal failure')
 class Models(Resource):
@@ -143,19 +145,18 @@ class Models(Resource):
         models 
     """
     
-    @ns_api.doc("get_model")
-    #@ns_api.marshal_with(payload_formatter.singular_model)
+    @ns_api.doc("get_models")
+    @ns_api.marshal_with(payload_formatter.plural_model)
     def get(self, project_id, expt_id, run_id):
         """ Retrieves global model corresponding to experiment and run 
             parameters for a specified project
         """
-        retrieved_model = model_records.read(
-            project_id=project_id,
-            expt_id=expt_id,
-            run_id=run_id
-        )
+        filter = {k:v for k,v in request.view_args.items() if v is not None}
+
+        retrieved_models = model_records.read_all(filter=filter)
         
-        if retrieved_model:
+        if retrieved_models:
+            
             success_payload = payload_formatter.construct_success_payload(
                 status=200,
                 method="model.get",
@@ -164,59 +165,63 @@ class Models(Resource):
                     'expt_id': expt_id,
                     'run_id': run_id    
                 },
-                data=retrieved_model
+                data=retrieved_models
             )
             return success_payload, 200
 
         else:
             ns_api.abort(
                 code=404, 
-                message=f"Model does not exist for Run {run_id} under Experiment {expt_id} under Project '{project_id}'!"
+                message=f"Models does not exist for specified keyword filters!"
             )
 
 
-    @ns_api.doc("trigger_single_training")
+    @ns_api.doc("trigger_training")
     @ns_api.expect(input_model)
-    #@ns_api.marshal_with(payload_formatter.singular_model)
+    @ns_api.marshal_with(payload_formatter.plural_model)
     def post(self, project_id, expt_id, run_id):
         """ Triggers FL training for specified experiment & run parameters by
             initialising a PySyft FL grid
         """
+        # Populate grid-initialising parameters
         init_params = request.json
 
-        retrieved_expt = rpc_formatter.strip_keys(
-            expt_records.read(
+        # Retrieves expt-run supersets (i.e. before filtering for relevancy)
+        retrieved_project = project_records.read(project_id=project_id)
+        experiments = retrieved_project['relations']['Experiment']
+        runs = retrieved_project['relations']['Run']
+
+        # If specific experiment was declared, collapse training space
+        if expt_id:
+
+            retrieved_expt = expt_records.read(
                 project_id=project_id, 
                 expt_id=expt_id
-            ),
-            concise=True
+            )
+            runs = retrieved_expt.pop('relations')['Run']
+            experiments = [retrieved_expt]
+
+            # If specific run was declared, further collapse training space
+            if run_id:
+
+                retrieved_run = run_records.read(
+                    project_id=project_id, 
+                    expt_id=expt_id,
+                    run_id=run_id
+                )
+                retrieved_run.pop('relations')
+                runs = [retrieved_run]
+
+        # Retrieve all participants' metadata
+        registrations = registration_records.read_all(
+            filter={'project_id': project_id}
         )
 
-        retrieved_run = rpc_formatter.strip_keys(
-            run_records.read(
-                project_id=project_id, 
-                expt_id=expt_id,
-                run_id=run_id
-            ),
-            concise=True
-        )
-
-        all_relevant_registrations = [
-            rpc_formatter.strip_keys(record)
-            for record in registration_records.read_all(
-                filter={'project_id': project_id}
-            ) 
-        ]
-
+        # Template for starting FL grid and initialising training
         kwargs = {
-            'keys': {
-                'project_id': project_id,
-                'expt_id': expt_id,
-                'run_id': run_id
-            },
-            'experiments': {expt_id: retrieved_expt['model']},
-            'runs': {run_id: retrieved_run},
-            'registrations': all_relevant_registrations
+            'experiments': experiments,
+            'runs': runs,
+            'registrations': registrations
         }
         kwargs.update(init_params)
 
@@ -224,7 +229,7 @@ class Models(Resource):
 
         # Store output metadata into database
         retrieved_models = []
-        for (expt_id, run_id), data in completed_trainings.items():
+        for (project_id, expt_id, run_id), data in completed_trainings.items():
             
             new_model = model_records.create(
                 project_id=project_id,
@@ -245,12 +250,7 @@ class Models(Resource):
         success_payload = payload_formatter.construct_success_payload(
             status=200,
             method="model.post",
-            params={
-                'project_id': project_id, 
-                'expt_id': expt_id,
-                'run_id': run_id    
-            },
+            params=request.view_args,
             data=retrieved_models
         )
         return success_payload, 200
-
