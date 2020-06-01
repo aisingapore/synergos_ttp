@@ -6,6 +6,7 @@
 
 # Generic/Built-in
 import asyncio
+import copy
 import json
 import logging
 import uuid
@@ -199,21 +200,23 @@ class RPCFormatter:
     """
     def strip_keys(self, record, concise=False):
         """ Remove db-specific keys and descriptors
+            Note: This is an in-place operation!
 
         Args:
             record (tinydb.database.Document): Target record to strip
         Returns:
             Stripped record (tinydb.database.Document)
         """
-        record.pop('key')
-        record.pop('created_at')
+        copied_record = copy.deepcopy(record)
+        copied_record.pop('key')
+        copied_record.pop('created_at')
         try:
-            record.pop('link')
+            copied_record.pop('link')
         except KeyError:
             pass
         if concise:
-            record.pop('relations')
-        return record
+            copied_record.pop('relations')
+        return copied_record
 
     def aggregate_metadata(self, all_metadata):
         """ Takes a series of metadata and aggregates them in preparation for
@@ -341,8 +344,8 @@ class Poller:
 
         # Search for tags using composite project + participant
         relevant_tags = reg_record['relations']['Tag'][0]
-        self.__rpc_formatter.strip_keys(relevant_tags)
-        payload = {'tags': relevant_tags}
+        stripped_tags = self.__rpc_formatter.strip_keys(relevant_tags)
+        payload = {'tags': stripped_tags}
 
         # Poll for headers by posting tags to `Poll` route in worker
         async with aiohttp.ClientSession() as session:
@@ -471,17 +474,17 @@ class Governor:
         )
 
         relevant_tags = reg_record['relations']['Tag'][0]
-        self.__rpc_formatter.strip_keys(relevant_tags)
+        stripped_tags = self.__rpc_formatter.strip_keys(relevant_tags)
 
         relevant_alignments = reg_record['relations']['Alignment'][0]
-        self.__rpc_formatter.strip_keys(relevant_alignments)
+        stripped_alignments = self.__rpc_formatter.strip_keys(relevant_alignments)
 
         payload = {
-            'tags': relevant_tags,
-            'alignments': relevant_alignments            
+            'tags': stripped_tags,
+            'alignments': stripped_alignments            
         }
-        self.__rpc_formatter.strip_keys(participant_details)
-        payload.update(participant_details)
+        stripped_participant_details = self.__rpc_formatter.strip_keys(participant_details)
+        payload.update(stripped_participant_details)
         
         # If workers are dockerised, use default container mappings
         if self.dockerised:
