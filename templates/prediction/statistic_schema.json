@@ -15,6 +15,11 @@
             "type": "number"
         },
 
+        "sensitivity": {
+            "description": "Computed sensitivity of predictions given specified grid settings",
+            "type": "number"
+        },
+
         "specificity": {
             "description": "Computed specificity of predictions given specified grid settings",
             "type": "number"
@@ -22,11 +27,6 @@
 
         "precision": {
             "description": "Computed precision of predictions given specified grid settings",
-            "type": "number"
-        },
-
-        "recall": {
-            "description": "Computed recall of predictions given specified grid settings",
             "type": "number"
         },
 
