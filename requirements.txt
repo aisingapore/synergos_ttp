@@ -25,3 +25,5 @@ tinyrecord==0.1.5
 tqdm==4.40.2
 werkzeug==1.0.1
 xgboost==0.90
+syft==0.2.4
+syft-proto==0.2.5a1

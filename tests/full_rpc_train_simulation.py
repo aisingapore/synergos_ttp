@@ -41,7 +41,8 @@ base_ttp_train_url = f"http://{ttp_host}:{ttp_port}/ttp/train"
 project_train_url = f"{base_ttp_train_url}/projects/{project_id}"
 
 alignment_init_url = f"{project_train_url}/alignments"
-model_init_url = f"{project_train_url}/experiments/{expt_id}/runs/{run_id}/models"
+#model_init_url = f"{project_train_url}/experiments/{expt_id}/runs/{run_id}/models"
+model_init_url = f"{project_train_url}/models/{expt_id}/{run_id}"
 
 wssw_init_url = f"http://172.19.152.152:5001/worker/initialise/{project_id}/{expt_id}/{run_id}"
 
