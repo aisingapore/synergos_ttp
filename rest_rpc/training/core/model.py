@@ -5,7 +5,6 @@
 ####################
 
 # Generic
-import json
 from collections import OrderedDict
 
 # Libs

@@ -7,7 +7,6 @@
 # Generic
 
 # Libs
-import syft as sy
 import torch as th
 from torch import nn
 
@@ -27,9 +26,6 @@ def fate_lr_decay(self, initial_lr, lr_decay, epochs):
     """
     lr = initial_lr / (1 + (lr_decay * epochs))
     return lr
-
-# Instantiate a local hook for anchoring resultant tensors
-#args_hook = sy.TorchHook(th)
     
 ###########################################
 # Parameter Abstraction class - Arguments #

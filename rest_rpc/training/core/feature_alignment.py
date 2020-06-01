@@ -1,26 +1,11 @@
 #!/usr/bin/env python
 
 # Generic
-import copy
 import logging
-import math
-import os
-import random
-import sys
-import time
-from collections import OrderedDict, Counter
-from statistics import mode
-from pathlib import Path
+from collections import Counter
 
 # Libs
 import itertools
-import numpy as np
-import pandas as pd
-import syft as sy
-import torch as th
-import tensorflow as tft
-from tqdm import tqdm, tnrange, tqdm_notebook
-from tqdm.notebook import trange
 
 ##################
 # Configurations #
