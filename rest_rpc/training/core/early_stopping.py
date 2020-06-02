@@ -78,7 +78,7 @@ class EarlyStopping:
 
         else:
             self.best_score = score
-            #self.save_checkpoint(val_loss, model)
+            self.save_checkpoint(val_loss, model)
             self.counter = 0
 
     ###########
@@ -91,7 +91,7 @@ class EarlyStopping:
         if self.verbose:
             logging.info(f'Validation loss decreased ({self.val_loss_min:.6f} --> {val_loss:.6f}).  Saving model ...')
 
-        th.save(model.state_dict(), 'checkpoint.pt')
+        # th.save(model.state_dict(), 'checkpoint.pt')
         self.val_loss_min = val_loss
 
 ##############

@@ -56,7 +56,7 @@ base_ttp_train_url = f"http://{ttp_host}:{ttp_port}/ttp/train"
 project_train_url = f"{base_ttp_train_url}/projects/{project_id}"
 
 alignment_init_url = f"{project_train_url}/alignments"
-model_init_url = f"{project_train_url}/models/{expt_id_2}"#/{run_id_3}"
+model_init_url = f"{project_train_url}/models/{expt_id_2}/{run_id_2}"
 
 # Project Simulation
 test_project = {
@@ -131,12 +131,14 @@ test_run_2 = {
     "output_size": 1,
     "batch_size": 32,
     "rounds": 2,
-    "epochs": 1,
+    "epochs": 4,
     "lr": 0.2,
     "weight_decay": 0.02,
     "mu": 0.15,
     "l1_lambda": 0.2,
     "l2_lambda": 0.3,
+    "patience": 2,
+    "delta": 0.0001
 }
 
 test_run_3 = {
@@ -179,10 +181,10 @@ for p_idx in range(1, participant_count+1):
     tags_payload = (
         { 
             "train": [
-                # ["iid_1"], 
-                # ["non_iid_1"], 
-                # ["edge_test_misalign"],
-                ["edge_test_na_slices"]
+                ["iid_1"], 
+                ["non_iid_1"]
+                # ["edge_test_misalign"]
+                # ["edge_test_na_slices"]
             ],
             "evaluate": [["edge_test_missing_coecerable_vals"]]
         } 

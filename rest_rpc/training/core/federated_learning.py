@@ -336,16 +336,17 @@ class FederatedLearning:
                 # print("l2 contribution", l2_loss, l2_loss.numel())
                         
                 # Add up all losses involved
-                surrogate_loss = loss + fedprox_loss + l1_loss + l2_loss
+                surrogate_loss = (loss + fedprox_loss + l1_loss + l2_loss).get()
                 # print("Surrogate loss", surrogate_loss.clone().detach().get(), surrogate_loss.numel())
                 # Store result in cache
-                self.__temp.append(surrogate_loss.clone().detach().get())
+                logging.debug(f"Surrogate loss: {surrogate_loss}, {type(surrogate_loss)}")
+                self.__temp.append(surrogate_loss)#.clone().detach().get())
                 
                 return surrogate_loss
 
             def log(self):
                 """ Computes mean loss across all current runs & caches the result """
-                avg_loss = th.mean(th.stack(self.__temp))
+                avg_loss = th.mean(th.stack(self.__temp), dim=0)
                 self._cache.append(avg_loss)
                 self.__temp.clear()
                 return avg_loss
@@ -403,9 +404,17 @@ class FederatedLearning:
             # Tracks which workers have reach an optimal/stagnated model
             WORKERS_STOPPED = Manager().list()
 
-            async def train_worker(batch):
-                """ Train a worker on its single batch """ 
-                worker, (data, labels) =  batch
+            async def train_worker(packet):
+                """ Train a worker on its single batch, and does an in-place 
+                    updates for its local model, optimizer & criterion 
+                
+                Args:
+                    packet (dict):
+                        A single packet of data containing the worker and its
+                        data to be trained on 
+
+                """ 
+                worker, (data, labels) = packet
 
                 # Extract essentials for training
                 curr_global_model = cache[worker]
@@ -445,56 +454,77 @@ class FederatedLearning:
                     curr_optimizer.step()
 
                 # Update all involved objects
-                models[worker] = curr_local_model
-                optimizers[worker] = curr_optimizer
-                criterions[worker] = curr_criterion
+                assert models[worker] is curr_local_model
+                assert optimizers[worker] is curr_optimizer
+                assert criterions[worker] is curr_criterion
 
             async def train_batch(batch):
-                """ Train all workers on their respective allocated batches """
+                """ Asynchronously train all workers on their respective 
+                    allocated batches 
+
+                Args:
+                    batch (dict): 
+                        A single batch from a sliced dataset stratified by
+                        workers and their respective packets. A packet is a
+                        tuple pairing of the worker and its data slice
+                        i.e. (worker, (data, labels))
+                """
                 for worker_future in asyncio.as_completed(
                     map(train_worker, batch.items())
                 ):
                     await worker_future
 
             async def check_for_stagnation(worker):
-                """ After a full epoch, check if training for worker has stagnated """
+                """ After a full epoch, check if training for worker has 
+                    stagnated
+
+                Args:
+                    worker (WebsocketServerWorker): Worker to be evaluated
+                """
                 # Extract essentials for adaptation
                 curr_local_model = models[worker]
                 curr_criterion = criterions[worker]
                 curr_scheduler = schedulers[worker]
                 curr_stopper = stoppers[worker]
 
-                # If model is deemed to have stagnated, stop training
-                if curr_stopper.early_stop:
-                    WORKERS_STOPPED.append(worker.id)
-                    
-                # else, perform learning rate decay
-                else:
-                    curr_scheduler.step()
+                # Check if worker has been stopped
+                if worker.id not in WORKERS_STOPPED:
 
-                # Retrieve final loss computed for this epoch for evaluation
-                final_batch_loss = curr_criterion.log()
-                curr_stopper(final_batch_loss, curr_local_model)
+                    # Retrieve final loss computed for this epoch for evaluation
+                    final_batch_loss = curr_criterion.log()
+                    curr_stopper(final_batch_loss, curr_local_model)
 
-                schedulers[worker] = curr_scheduler
-                stoppers[worker] = curr_stopper 
+                    # If model is deemed to have stagnated, stop training
+                    if curr_stopper.early_stop:
+                        WORKERS_STOPPED.append(worker.id)
+                        
+                    # else, perform learning rate decay
+                    else:
+                        curr_scheduler.step()
+
+                assert schedulers[worker] is curr_scheduler
+                assert stoppers[worker] is curr_stopper 
 
             async def train_datasets(datasets):
                 """ Train all batches in a composite federated dataset """
-                batch_futures = [train_batch(batch) for batch in datasets]
-                await asyncio.gather(*batch_futures)
-
+                # Note: All TRAINING must be synchronous w.r.t. each batch, so
+                #       that weights can be updated sequentially!
+                for batch in datasets:
+                    await train_batch(batch)
+                
+                logging.debug(f"Before stagnation evaluation: Workers stopped: {WORKERS_STOPPED}")
                 stagnation_futures = [
                     check_for_stagnation(worker) 
                     for worker in self.workers
                 ]
                 await asyncio.gather(*stagnation_futures)
+                logging.debug(f"After stagnation evaluation: Workers stopped: {WORKERS_STOPPED}")
 
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
 
             try:
-                for e in range(epochs):
+                for _ in range(epochs):
 
                     asyncio.get_event_loop().run_until_complete(
                         train_datasets(datasets=datasets)
@@ -503,10 +533,7 @@ class FederatedLearning:
             finally:
                 loop.close()
 
-            # Retrieve all models from their respective workers
-            trained_models = {w: m.get() for w,m in models.items()}
-
-            return trained_models, optimizers, schedulers, criterions, stoppers
+            return models, optimizers, schedulers, criterions, stoppers
 
     
         def calculate_global_params(global_model, models, datasets):
@@ -525,7 +552,7 @@ class FederatedLearning:
             # Find size of all distributed datasets for calculating scaling factor
             obs_counts = {}
             for batch in datasets:
-                for worker, (data, labels) in batch.items():
+                for worker, (data, _) in batch.items():
                     obs_counts[worker] = obs_counts.get(worker, 0) + len(data)
 
             # Calculate scaling factors for each worker
@@ -577,6 +604,8 @@ class FederatedLearning:
         rounds = 0
         pbar = tqdm(total=self.arguments.rounds, desc='Rounds', leave=True)
         while rounds < self.arguments.rounds:
+
+            logging.debug(f"Current global model: {self.global_model.state_dict()}")
 
             # Generate K copies of template model, representing local models for
             # each worker in preparation for parallel training, and send them to
@@ -634,9 +663,12 @@ class FederatedLearning:
                 epochs=self.arguments.epochs
             )
 
+            # Retrieve all models from their respective workers
+            retrieved_models = {w: m.get() for w,m in trained_models.items()}
+
             aggregated_params = calculate_global_params(
                 self.global_model, 
-                trained_models, 
+                retrieved_models, 
                 datasets
             )
 
@@ -644,7 +676,7 @@ class FederatedLearning:
             self.global_model.load_state_dict(aggregated_params)
             
             # Update cache for local models
-            self.local_models = {w.id:lm for w,lm in trained_models.items()}
+            self.local_models = {w.id:lm for w,lm in retrieved_models.items()}
 
             # Check if early stopping is possible for global model
             final_local_losses = {
