@@ -271,8 +271,12 @@ class FederatedLearning:
             def forward(self, outputs, labels, w, wt):
                 # Calculate normal criterion loss
                 loss = super().forward(outputs, labels)
+                logging.debug(f"BCE Loss: {loss.location}")
 
                 # Calculate regularisation terms
+                # Note: All regularisation terms have to be collected in some 
+                #       iterable first before summing up because in-place 
+                #       operation break PyTorch's computation graph
                 fedprox_reg_terms = []
                 l1_reg_terms = []
                 l2_reg_terms = []
@@ -295,9 +299,7 @@ class FederatedLearning:
                     fp_reg_term = self.mu * 0.5 * (norm_diff**2)
                     """
                     norm_diff = th.pow((layer_w - layer_wt), 2).sum()
-                    # print("Manual norm diff:", norm_diff.clone().detach().get())
                     fp_reg_term = self.mu * 0.5 * norm_diff # exp cancelled out
-                    # print("Manual calculation of fedprox reg term:", fp_reg_term, fp_reg_term.clone().detach().get())
                     fedprox_reg_terms.append(fp_reg_term)
                     
                     # Calculate L1 regularisation
@@ -307,9 +309,7 @@ class FederatedLearning:
                     l1_reg_term = self.l1_lambda * l1_norm
                     """
                     l1_norm = layer_w.abs().sum()
-                    # print("Manual L1 Norm:", l1_norm)
                     l1_reg_term = self.l1_lambda * l1_norm
-                    # print("Manual calculation of l1 reg term:", l1_reg_term, l1_reg_term.clone().detach().get())
                     l1_reg_terms.append(l1_reg_term)
                     
                     # Calculate L2 regularisation
@@ -319,28 +319,20 @@ class FederatedLearning:
                     l2_reg_term = self.l2_lambda * 0.5 * (l2_norm)**2
                     """
                     l2_norm = th.pow(layer_w, 2).sum()
-                    # print("Manual L2 Norm:", l2_norm)
                     l2_reg_term = self.l2_lambda * 0.5 * l2_norm
-                    # print("Manual calculation of l2 reg term:", l2_reg_term, l2_reg_term.clone().detach().get())
                     l2_reg_terms.append(l2_reg_term)
                 
                 # Summing up from a list instead of in-place changes 
                 # prevents the breaking of the autograd's computation graph
-                fedprox_loss = th.stack(fedprox_reg_terms).sum().requires_grad_()
-                # print("Fedprox contribution", fedprox_loss, fedprox_loss.numel())
+                fedprox_loss = th.stack(fedprox_reg_terms).sum()
+                l1_loss = th.stack(l1_reg_terms).sum()
+                l2_loss = th.stack(l2_reg_terms).sum()
 
-                l1_loss = th.stack(l1_reg_terms).sum().requires_grad_()
-                # print("l1 contribution", l1_loss, l1_loss.numel())
-
-                l2_loss = th.stack(l2_reg_terms).sum().requires_grad_()
-                # print("l2 contribution", l2_loss, l2_loss.numel())
-                        
                 # Add up all losses involved
-                surrogate_loss = (loss + fedprox_loss + l1_loss + l2_loss).get()
-                # print("Surrogate loss", surrogate_loss.clone().detach().get(), surrogate_loss.numel())
+                surrogate_loss = loss + fedprox_loss + l1_loss + l2_loss
+
                 # Store result in cache
-                logging.debug(f"Surrogate loss: {surrogate_loss}, {type(surrogate_loss)}")
-                self.__temp.append(surrogate_loss)#.clone().detach().get())
+                self.__temp.append(surrogate_loss)
                 
                 return surrogate_loss
 
@@ -372,7 +364,7 @@ class FederatedLearning:
             """
             if not is_snn:
                 local_models = {
-                    w: copy.deepcopy(self.global_model).send(w)
+                    w: copy.deepcopy(self.global_model)#.send(w)
                     for w in self.workers
                 }
 
@@ -425,6 +417,10 @@ class FederatedLearning:
                 # Check if worker has been stopped
                 if worker.id not in WORKERS_STOPPED:
 
+                    logging.debug(f"Before training - Local Gradients for {worker}:\n {list(curr_local_model.parameters())[0].grad}")
+                    curr_global_model = curr_global_model.send(worker.id)
+                    curr_local_model = curr_local_model.send(worker.id)
+
                     # Zero gradients to prevent accumulation  
                     curr_local_model.train()
                     curr_optimizer.zero_grad()
@@ -452,6 +448,10 @@ class FederatedLearning:
                     # Backward propagation
                     loss.backward()
                     curr_optimizer.step()
+
+                    curr_global_model = curr_global_model.get()
+                    curr_local_model = curr_local_model.get()
+                    logging.debug(f"After training - Local Gradients for {worker}:\n {list(curr_local_model.parameters())[0].grad}")
 
                 # Update all involved objects
                 assert models[worker] is curr_local_model
@@ -510,6 +510,7 @@ class FederatedLearning:
                 # Note: All TRAINING must be synchronous w.r.t. each batch, so
                 #       that weights can be updated sequentially!
                 for batch in datasets:
+                    logging.debug("-"*90)
                     await train_batch(batch)
                 
                 logging.debug(f"Before stagnation evaluation: Workers stopped: {WORKERS_STOPPED}")
@@ -605,7 +606,8 @@ class FederatedLearning:
         pbar = tqdm(total=self.arguments.rounds, desc='Rounds', leave=True)
         while rounds < self.arguments.rounds:
 
-            logging.debug(f"Current global model: {self.global_model.state_dict()}")
+            logging.debug(f"Current global model:\n {self.global_model.state_dict()}")
+            logging.debug(f"Global Gradients:\n {list(self.global_model.parameters())[0].grad}")
 
             # Generate K copies of template model, representing local models for
             # each worker in preparation for parallel training, and send them to
@@ -652,7 +654,7 @@ class FederatedLearning:
                 ) for w,m in local_models.items()
             }
             
-            (trained_models, _, _, _, _) = perform_parallel_training(
+            (retrieved_models, _, _, _, _) = perform_parallel_training(
                 datasets=datasets, 
                 models=local_models,
                 cache=prev_models,
@@ -663,9 +665,9 @@ class FederatedLearning:
                 epochs=self.arguments.epochs
             )
 
-            # Retrieve all models from their respective workers
-            retrieved_models = {w: m.get() for w,m in trained_models.items()}
-
+            # # Retrieve all models from their respective workers
+            # retrieved_models = {w: m.get() for w,m in trained_models.items()}
+            logging.debug(f"Current global model:\n {self.global_model.state_dict()}")
             aggregated_params = calculate_global_params(
                 self.global_model, 
                 retrieved_models, 
@@ -674,16 +676,20 @@ class FederatedLearning:
 
             # # Update weights with aggregated parameters 
             self.global_model.load_state_dict(aggregated_params)
-            
+            logging.debug(f"New global model:\n {self.global_model.state_dict()}")
+
             # Update cache for local models
             self.local_models = {w.id:lm for w,lm in retrieved_models.items()}
 
             # Check if early stopping is possible for global model
             final_local_losses = {
-                w.id: c._cache[-1]
+                w.id: c._cache[-1].get()
                 for w,c in criterions.items()
             }
-            global_loss = th.mean(th.stack(tuple(final_local_losses.values())))
+            global_loss = th.mean(
+                th.stack(list(final_local_losses.values())),
+                dim=0
+            )
 
             # Store local losses for analysis
             for w_id, loss in final_local_losses.items():
@@ -694,12 +700,12 @@ class FederatedLearning:
             # Store global losses for analysis
             self.loss_history['global'].update({rounds: global_loss.item()})
 
-            global_train_stopper(global_loss, self.global_model)
-            # global_val_stopper(global_loss, self.global_model)
+            # global_train_stopper(global_loss, self.global_model)
+            # # global_val_stopper(global_loss, self.global_model)
             
-            # If global model is deemed to have stagnated, stop training
-            if global_train_stopper.early_stop:# or global_val_stopper.early_stop:
-                break
+            # # If global model is deemed to have stagnated, stop training
+            # if global_train_stopper.early_stop:# or global_val_stopper.early_stop:
+            #     break
 
             rounds += 1
             pbar.update(1)
