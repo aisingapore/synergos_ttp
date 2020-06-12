@@ -56,7 +56,13 @@ base_ttp_train_url = f"http://{ttp_host}:{ttp_port}/ttp/train"
 project_train_url = f"{base_ttp_train_url}/projects/{project_id}"
 
 alignment_init_url = f"{project_train_url}/alignments"
-model_init_url = f"{project_train_url}/models/{expt_id_2}/{run_id_2}"
+model_init_url = f"{project_train_url}/models/{expt_id_2}"#/{run_id_1}"
+
+# Relevant Evaluation Endpoints
+base_ttp_eval_url = f"http://{ttp_host}:{ttp_port}/ttp/evaluate"
+project_eval_url = f"{base_ttp_eval_url}/participants/test_participant_1"
+
+prediction_init_url = f"{project_eval_url}/predictions/"
 
 # Project Simulation
 test_project = {
@@ -115,7 +121,7 @@ test_run_1 = {
     "run_id": run_id_1,
     "input_size": 28,
     "output_size": 1,
-    "batch_size": 32,
+    "batch_size": 1000,
     "rounds": 1,
     "epochs": 1,
     "lr": 0.15,
@@ -130,8 +136,8 @@ test_run_2 = {
     "input_size": 28,
     "output_size": 1,
     "batch_size": 32,
-    "rounds": 2,
-    "epochs": 4,
+    "rounds": 1,
+    "epochs": 1,
     "lr": 0.2,
     "weight_decay": 0.02,
     "mu": 0.15,
@@ -181,7 +187,7 @@ for p_idx in range(1, participant_count+1):
     tags_payload = (
         { 
             "train": [
-                ["iid_1"], 
+                #["iid_1"], 
                 ["non_iid_1"]
                 # ["edge_test_misalign"]
                 # ["edge_test_na_slices"]
@@ -189,7 +195,12 @@ for p_idx in range(1, participant_count+1):
             "evaluate": [["edge_test_missing_coecerable_vals"]]
         } 
         if (p_idx % 2) == 1 else 
-        {"train": [["iid_2"], ["non_iid_2"]]}
+        {
+            "train": [
+                #["iid_2"], 
+                ["non_iid_2"]
+            ]
+        }
     )
 
     metadata = {
@@ -202,8 +213,16 @@ for p_idx in range(1, participant_count+1):
 # Model initialisation simulation
 init_params = {
     "dockerised": True,
-    "verbose": False,
-    "log_msgs": False
+    "verbose": True,
+    "log_msgs": True
+}
+
+# Inference initialisation simulation
+infer_params = {
+    "dockerised": True,
+    "tags": {
+        "test_project": [["non_iid_2"]]
+    }
 }
 
 ###################
@@ -279,12 +298,16 @@ if __name__ == "__main__":
     align_resp = execute_post(url=alignment_init_url, payload=None)
     logging.debug(f"New alignments: {align_resp}")
 
-    # # Step 2: TTP commences model training for specified experiment-run set
+    # Step 2: TTP commences model training for specified experiment-run set
     model_resp = execute_post(url=model_init_url, payload=init_params)
     logging.debug(f"New model: {model_resp}")
 
-    # # Step 3: TTP commences post-mortem model validation
+    ##############
+    # Evaluation #
+    ##############
 
-    ##############
-    # Prediction #
-    ##############
+    # Step 1: TTP commences post-mortem model validation
+
+    # Step 2: Participant requests trained global models from TTP for inference
+    predict_resp = execute_post(url=prediction_init_url, payload=infer_params)
+    logging.debug(f"New prediction: {predict_resp}")

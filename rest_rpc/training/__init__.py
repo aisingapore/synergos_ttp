@@ -43,19 +43,8 @@ api.add_namespace(
 """
 Supported routes:
 1) "/projects/<project_id>/models"
-2) "/projects/<project_id>/experiments/<expt_id>/models"
-3) "/projects/<project_id>/experiments/<expt_id>/runs/<run_id>/models"
-"""
-"""
-api.add_namespace(
-    model_ns,
-    path="/projects/<project_id>/experiments/<expt_id>/models"
-)
-
-api.add_namespace(
-    model_ns,
-    path="/projects/<project_id>/experiments/<expt_id>/runs/<run_id>/models"
-)
+2) "/projects/<project_id>/models/<expt_id>"
+3) "/projects/<project_id>/models/<expt_id>/<run_id>"
 """
 
 api.add_namespace(

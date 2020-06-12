@@ -1,32 +1,22 @@
 {
     "$schema": "http://json-schema.org/draft-07/schema#",
-    "title": "Statistical validations/predictions of model(s) for a given Project-Experiment-Run combination (Payload)",
+    "title": "Statistical predictions of model(s) for a given Project-Experiment-Run combination (Payload)",
     "description": "Abstracted payload schema for tracking statistical results of an experiment-run",
     "type": "object",
     "properties": {
-
-        "roc_auc": {
-            "description": "Computed ROC-AUC score of predictions given specified grid settings",
-            "type": "number"
-        },
 
         "accuracy": {
             "description": "Computed accuracy of predictions given specified grid settings",
             "type": "number"
         },
 
-        "sensitivity": {
-            "description": "Computed sensitivity of predictions given specified grid settings",
+        "roc_auc_score": {
+            "description": "Computed ROC-AUC score of predictions given specified grid settings",
             "type": "number"
         },
 
-        "specificity": {
-            "description": "Computed specificity of predictions given specified grid settings",
-            "type": "number"
-        },
-
-        "precision": {
-            "description": "Computed precision of predictions given specified grid settings",
+        "pr_auc_score": {
+            "description": "Computed area under the Precision-Recall curve given specified grid settings",
             "type": "number"
         },
 
@@ -35,22 +25,57 @@
             "type": "number"
         },
 
-        "tp": {
+        "TPR": {
+            "description": "Computed sensitivity of predictions given specified grid settings",
+            "type": "number"
+        },
+
+        "TNR": {
+            "description": "Computed specificity of predictions given specified grid settings",
+            "type": "number"
+        },
+
+        "PPV": {
+            "description": "Computed precision of predictions given specified grid settings",
+            "type": "number"
+        },
+
+        "NPV": {
+            "description": "Negative predictive value of predictions given specified grid settings",
+            "type": "number"
+        },
+
+        "FPR": {
+            "description": "Computed precision of predictions given specified grid settings",
+            "type": "number"
+        },
+
+        "FNR": {
+            "description": "Computed precision of predictions given specified grid settings",
+            "type": "number"
+        },
+
+        "FDR": {
+            "description": "Computed precision of predictions given specified grid settings",
+            "type": "number"
+        },
+
+        "TP": {
             "description": "No. of true positives in predictions given specified grid settings",
             "type": "integer"
         },
 
-        "tn": {
+        "TN": {
             "description": "No. of true negatives in predictions given specified grid settings",
             "type": "integer"
         },
 
-        "fp": {
+        "FP": {
             "description": "No. of false positives in predictions given specified grid settings",
             "type": "integer"
         },
 
-        "fn": {
+        "FN": {
             "description": "No. of false negatives in predictions given specified grid settings",
             "type": "integer"
         }

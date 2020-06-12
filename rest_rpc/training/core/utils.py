@@ -106,6 +106,17 @@ class UrlConstructor:
         )
         return custom_terminate_url
 
+    def construct_predict_url(self, project_id, expt_id, run_id):
+        destination_url = self.construct_url(route=worker_predict_route)
+        custom_predict_url = destination_url.replace(
+            "<project_id>", project_id
+        ).replace(
+            "<expt_id>", expt_id
+        ).replace(
+            "<run_id", run_id
+        )
+        return custom_predict_url
+
 #####################################################
 # Data Storage Association class - AlignmentRecords #
 #####################################################
@@ -158,7 +169,7 @@ class ModelRecords(AssociationRecords):
             subject="Model",  
             identifier="model_id", 
             db_path=db_path,
-            relations=["Project", "Experiment", "Run"]
+            relations=["Validation", "Prediction"]
         )
 
     def __generate_key(self, project_id, expt_id, run_id):
@@ -311,8 +322,8 @@ class Poller:
     to obtain aligned headers alongside a super schema for subsequent reference
     """
     def __init__(self, project_id):
-        self.project_id = project_id
         self.__rpc_formatter = RPCFormatter()
+        self.project_id = project_id
 
     ###########
     # Helpers #
@@ -328,7 +339,7 @@ class Poller:
         Returns:
             headers (dict)
         """
-        participant_details = reg_record['participant']
+        participant_details = reg_record['participant'].copy()
         participant_id = participant_details['id']
         participant_ip = participant_details['host']
         participant_f_port = participant_details.pop('f_port') # Flask port

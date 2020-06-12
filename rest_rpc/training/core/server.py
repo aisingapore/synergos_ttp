@@ -21,6 +21,7 @@ import syft as sy
 import torch as th
 from pathos.multiprocessing import ProcessingPool
 from syft.workers.websocket_client import WebsocketClientWorker
+from syft.workers.node_client import NodeClient
 
 # Custom
 from rest_rpc import app
@@ -63,6 +64,7 @@ sy.workers.websocket_client.TIMEOUT_INTERVAL = 3600
 #sy.workers.websocket_client.websocket.enableTrace(True)
 REF_WORKER = sy.local_worker
 
+# Patching WebsocketClientWorker
 
 #############
 # Functions #
@@ -91,6 +93,9 @@ def connect_to_ttp(log_msgs=False, verbose=False):
         verbose=verbose    
     )
 
+    # Make sure that generated TTP is self-aware! 
+    ttp.add_worker(ttp)
+
     # Replace point of reference within federated hook with TTP
     sy.local_worker = ttp
     grid_hook.local_worker = ttp
@@ -99,6 +104,7 @@ def connect_to_ttp(log_msgs=False, verbose=False):
 
     logging.debug(f"Local worker w.r.t grid hook: {grid_hook.local_worker}")
     logging.debug(f"Local worker w.r.t env      : {sy.local_worker}")
+    logging.debug(f"Local worker's known workers: {grid_hook.local_worker._known_workers}")
 
     return grid_hook.local_worker
 
@@ -135,14 +141,16 @@ def connect_to_workers(keys, reg_records, dockerised=True, log_msgs=False, verbo
             # tensors back to the worker node. This ensures that the grid is
             # self-contained at the TTP, and that the workers' local grid is not
             # polluted with unncessary tensors. Doing so optimizes tag searches.
-            is_client_worker=False, 
+            is_client_worker=True, 
 
             **config
         )
         workers.append(curr_worker)
-
+        logging.debug(f"Participant's known workers: {curr_worker._known_workers}")
+    
     logging.debug(f"Participants: {[w.id for w in workers]}")
-
+    logging.debug(f"Local worker's known workers: {grid_hook.local_worker._known_workers}")
+    
     return workers
 
 
@@ -331,6 +339,7 @@ def start_expt_run_training(keys: dict, registrations: list,
         terminate_connections(ttp=ttp, workers=workers)
 
         logging.debug(f"After termination - Reference worker: {REF_WORKER}")
+        logging.debug(f"After termination - Reference worker's known workers: {REF_WORKER._known_workers}")
         logging.debug(f"After termination - Registered workers in grid: {grid_hook.local_worker._known_workers}")
         logging.debug(f"After termination - Registered workers in env : {sy.local_worker._known_workers}")
         

@@ -1,0 +1,19 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Statistical predictions of model(s) for a given Project-Experiment-Run combination (Payload)",
+    "description": "Abstracted payload schema for tracking statistical results of an experiment-run",
+    "type": "object",
+    "patternProperties": {
+
+        "epoch_": {
+            "type": "object",
+            "properties": {
+                "origin": {"type": "string"},
+                "path": {"type": "string"},
+                "loss_history": {"type": "string"}
+            }
+        }
+    },
+
+    "additionalProperties": false
+}

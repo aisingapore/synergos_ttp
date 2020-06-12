@@ -5,6 +5,7 @@
 ####################
 
 # Generic
+import aiohttp
 import asyncio
 import copy
 import json
@@ -18,19 +19,178 @@ from pathlib import Path
 import syft as sy
 import torch as th
 import tensorflow as tft
-from sklearn.metrics import mean_squared_error, accuracy_score, roc_auc_score
-from sklearn.model_selection import train_test_split, StratifiedShuffleSplit
+from sklearn.metrics import (
+    accuracy_score, 
+    roc_curve,
+    roc_auc_score, 
+    auc, 
+    precision_recall_curve, 
+    precision_score,
+    recall_score,
+    f1_score, 
+    confusion_matrix
+)
+from sklearn.metrics.cluster import contingency_matrix
+from syft.messaging.message import ObjectMessage
 from torch.optim.lr_scheduler import LambdaLR, CyclicLR
 from tqdm import tqdm
 
 # Custom
 from .arguments import Arguments
 from .early_stopping import EarlyStopping
+from .utils import RPCFormatter, UrlConstructor
 
 ##################
 # Configurations #
 ##################
 
+class Inferencer:
+    """ 
+    Takes in a list of minibatch IDs and sends them to worker nodes. Workers
+    will use these IDs to reconstruct their aggregated test datasets with 
+    prediction labels mapped appropriately.
+
+    Attributes:
+        registrations
+        inferences (dict(worker_id, dict(str, int)))
+    """
+    def __init__(self, project_id, expt_id, run_id, inferences):
+        self.__rpc_formatter = RPCFormatter()
+        self.project_id = project_id
+        self.expt_id = expt_id
+        self.run_id = run_id
+        self.inferences = inferences
+
+    ###########
+    # Helpers #
+    ###########
+
+    async def _infer_stats(self, reg_record, inference):
+        """ Parses a registration record for participant metadata, before
+            submitting minibatch IDs of inference objects to corresponding 
+            worker node's REST-RPC service for calculating descriptive
+            statistics and prediction exports
+
+        Args:
+            reg_record (tinydb.database.Document): Participant-project details
+            minibatch_ids (list): List of dicts containing inference object IDs
+        Returns:
+            Statistics (dict)
+        """
+        participant_details = reg_record['participant'].copy()
+        participant_id = participant_details['id']
+        participant_ip = participant_details['host']
+        participant_f_port = participant_details.pop('f_port') # Flask port
+
+        # Construct destination url for interfacing with worker REST-RPC
+        destination_constructor = UrlConstructor(
+            host=participant_ip,
+            port=participant_f_port
+        )
+        destination_url = destination_constructor.construct_predict_url(
+            project_id=self.project_id,
+            expt_id=self.expt_id,
+            run_id=self.run_id
+        )
+
+        relevant_alignments = reg_record['relations']['Alignment'][0]
+        stripped_alignments = self.__rpc_formatter.strip_keys(relevant_alignments)
+
+        logging.debug(f"inference: {inference}")
+        # minibatch_ids = [
+        #     {
+        #         t_type: tensor.id_at_location 
+        #         for t_type, tensor in mb_tensors.items()
+        #     } 
+        #     for mb_tensors in inference
+        # ]
+        # minibatch_ids = [
+        #     {
+        #         t_type: tensor.id_at_location 
+        #         for t_type, tensor in inference.items()
+        #     }
+        # ]
+
+        payload = {
+            'alignments': stripped_alignments,
+            'id_mappings': [inference]#minibatch_ids       
+        }
+
+        # Trigger remote inference by posting alignments & ID mappings to 
+        # `Predict` route in worker
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                destination_url,
+                json=payload
+            ) as response:
+                resp_json = await response.json(content_type='application/json')
+        
+        metadata = resp_json['data']
+        return {participant_id: metadata}
+
+    async def _collect_all_stats(self, reg_records):
+        """ Asynchroneous function to submit inference data to registered
+            participant servers in return for remote performance statistics
+
+        Args:
+            reg_records (list(tinydb.database.Document))): Participant Registry
+        Returns:
+            All participants' statistics (dict)
+        """
+        sorted_reg_records = sorted(
+            reg_records, 
+            key=lambda x: x['participant']['id']
+        )
+        sorted_inferences = sorted(
+            self.inferences.items(), 
+            key=lambda x: x[0]
+        )
+
+        logging.debug(f"Sorted inferences: {sorted_inferences}")
+
+        mapped_pairs = [
+            (record, inference) 
+            for record, (p_id, inference) in zip(
+                sorted_reg_records, 
+                sorted_inferences
+            )
+        ]
+
+        all_statistics = {}
+        for future in asyncio.as_completed(
+            map(lambda args: self._infer_stats(*args), mapped_pairs)
+        ):
+            result = await future
+            all_statistics.update(result)
+
+        return all_statistics
+
+    ##################
+    # Core Functions #
+    ##################
+
+    def infer(self, reg_records):
+        """ Wrapper function for triggering asychroneous remote inferencing of
+            participant nodes
+
+        Args:
+            reg_records (list(tinydb.database.Document))): Participant Registry
+        Returns:
+            All participants' statistics (dict)
+        """
+        # loop = asyncio.new_event_loop()
+        # asyncio.set_event_loop(loop)
+        loop = asyncio.get_event_loop()
+
+        try:
+            all_stats = loop.run_until_complete(
+                self._collect_all_stats(reg_records)
+            )
+        finally:
+            # loop.close()
+            pass
+
+        return all_stats
 
 ###############################################
 # Abstract Training Class - FederatedLearning #
@@ -150,14 +310,14 @@ class FederatedLearning:
 
                 curr_worker = self._aliases[worker_id]
                 data_ptr = sy.BaseDataset(*sorted_data)
-                #datasets[self._aliases[worker_id]] = data_ptr
                 datasets[curr_worker] = data_ptr
 
             return datasets
 
         # Ensure that TTP does not have residual tensors
-        #self.crypto_provider.clear_objects()
-        assert len(self.crypto_provider._objects) == 0
+        # #self.crypto_provider.clear_objects()
+        # logging.debug(f"Crypto provider objects: {self.crypto_provider._objects}")
+        # assert len(self.crypto_provider._objects) == 0
         
         # Retrieve Pointer Tensors to remote datasets
         train_datasets = convert_to_datasets("#train")
@@ -408,6 +568,12 @@ class FederatedLearning:
                 """ 
                 worker, (data, labels) = packet
 
+                logging.debug(f"Data: {data}, {type(data)}, {data.shape}")
+                logging.debug(f"Labels: {labels}, {type(labels)}, {labels.shape}")
+
+                for i in list(self.global_model.parameters()):
+                    logging.debug(f"Model parameters: {i}, {type(i)}, {i.shape}")
+
                 # Extract essentials for training
                 curr_global_model = cache[worker]
                 curr_local_model = models[worker]
@@ -418,8 +584,10 @@ class FederatedLearning:
                 if worker.id not in WORKERS_STOPPED:
 
                     logging.debug(f"Before training - Local Gradients for {worker}:\n {list(curr_local_model.parameters())[0].grad}")
-                    curr_global_model = curr_global_model.send(worker.id)
-                    curr_local_model = curr_local_model.send(worker.id)
+                    # curr_global_model = self.secret_share(curr_global_model)
+                    # curr_local_model = self.secret_share(curr_local_model)
+                    curr_global_model = curr_global_model.send(worker)
+                    curr_local_model = curr_local_model.send(worker)
 
                     # Zero gradients to prevent accumulation  
                     curr_local_model.train()
@@ -717,6 +885,285 @@ class FederatedLearning:
 
         return self.global_model, self.local_models
 
+
+    def perform_FL_testing(self, datasets, workers=[], is_shared=True, **   kwargs): 
+        """ Obtains predictions given a validation/test dataset upon 
+            a specified trained global model.
+            
+        Args:
+            datasets (tuple(th.Tensor)): A validation/test dataset
+            model   (nn.Module): Trained global model
+        Returns:
+            Tagged prediction tensor (sy.PointerTensor)
+        """    
+        async def evaluate_worker(packet):
+            """ Train a worker on its single batch, and does an in-place 
+                updates for its local model, optimizer & criterion 
+            
+            Args:
+                packet (dict):
+                    A single packet of data containing the worker and its
+                    data to be trained on 
+
+            """ 
+
+            try:
+                worker, (data, labels) = packet
+            except TypeError:
+                (data, labels) = packet
+                assert data.location is labels.location
+                worker = data.location
+
+            logging.debug(f"Data: {data}, {type(data)}, {data.shape}")
+            logging.debug(f"Labels: {labels}, {type(labels)}, {labels.shape}")
+
+            for i in list(self.global_model.parameters()):
+                logging.debug(f"Model parameters: {i}, {type(i)}, {i.shape}")
+
+            # Skip predictions if filter was specified, and current worker was
+            # not part of the selected workers
+            if workers and (worker.id not in workers):
+                return {}
+
+            self.global_model = self.global_model.send(worker)
+
+            self.global_model.eval()
+            with th.no_grad():
+
+                outputs = self.global_model(data).detach()
+
+                if self.arguments.is_condensed:
+                    predictions = (outputs > 0.5).float()
+                    
+                else:
+                    # Find best predicted class label representative of sample
+                    _, predicted_labels = outputs.max(axis=1)
+                    
+                    # One-hot encode predicted labels
+                    predictions = th.FloatTensor(labels.shape)
+                    predictions.zero_()
+                    predictions.scatter_(1, predicted_labels.view(-1,1), 1)
+
+            #############################################
+            # Inference V1: Assume TTP's role is robust #
+            #############################################
+            # In this version, TTP's coordination is not deemed to be breaking
+            # FL rules. Hence predictions & labels can be pulled in locally for
+            # calculating statistics, before sending the labels back to worker.
+
+            labels = labels.get()
+            outputs = outputs.get()
+            predictions = predictions.get()
+
+            logging.debug(f"labels: {labels}, outputs: {outputs}, predictions: {predictions}")
+
+            # Calculate accuracy of predictions
+            accuracy = accuracy_score(labels.numpy(), predictions.numpy())
+            
+            # Calculate ROC-AUC for each label
+            roc = roc_auc_score(labels.numpy(), outputs.numpy())
+            fpr, tpr, _ = roc_curve(labels.numpy(), outputs.numpy())
+            
+            # Calculate Area under PR curve
+            pc_vals, rc_vals, _ = precision_recall_curve(labels.numpy(), outputs.numpy())
+            auc_pr_score = auc(rc_vals, pc_vals)
+            
+            # Calculate F-score
+            f_score = f1_score(labels.numpy(), predictions.numpy())
+
+            # Calculate contingency matrix
+            ct_matrix = contingency_matrix(labels.numpy(), predictions.numpy())
+            
+            # Calculate confusion matrix
+            cf_matrix = confusion_matrix(labels.numpy(), predictions.numpy())
+            logging.debug(f"Confusion matrix: {cf_matrix}")
+
+            TN, FP, FN, TP = cf_matrix.ravel()
+            logging.debug(f"TN: {TN}, FP: {FP}, FN: {FN}, TP: {TP}")
+
+            # Sensitivity, hit rate, recall, or true positive rate
+            TPR = TP/(TP+FN) if (TP+FN) != 0 else 0
+            # Specificity or true negative rate
+            TNR = TN/(TN+FP) if (TN+FP) != 0 else 0
+            # Precision or positive predictive value
+            PPV = TP/(TP+FP) if (TP+FP) != 0 else 0
+            # Negative predictive value
+            NPV = TN/(TN+FN) if (TN+FN) != 0 else 0
+            # Fall out or false positive rate
+            FPR = FP/(FP+TN) if (FP+TN) != 0 else 0
+            # False negative rate
+            FNR = FN/(TP+FN) if (TP+FN) != 0 else 0
+            # False discovery rate
+            FDR = FP/(TP+FP) if (TP+FP) != 0 else 0
+
+            statistics = {
+                'accuracy': accuracy,
+                'roc_auc_score': roc,
+                'pr_auc_score': auc_pr_score,
+                'f_score': f_score,
+                'TPR': TPR,
+                'TNR': TNR,
+                'PPV': PPV,
+                'NPV': NPV,
+                'FPR': FPR,
+                'FNR': FNR,
+                'FDR': FDR,
+                'TP': TP,
+                'TN': TN,
+                'FP': FP,
+                'FN': FN
+            }
+
+            labels = labels.send(worker)
+            outputs = outputs.send(worker)
+            predictions = predictions.send(worker)
+
+            self.global_model = self.global_model.get()
+
+            return {worker: statistics}
+            
+            ####################################################################
+            # Inference V2: Strictly enforce federated procedures in inference #
+            ####################################################################
+
+            # Override garbage collection to allow for post-inference tracking
+            # data.set_garbage_collect_data(False)
+            # labels.set_garbage_collect_data(False)
+            # outputs.set_garbage_collect_data(False)
+            # predictions.set_garbage_collect_data(False)
+
+            # data_id = data.id_at_location
+            # labels_id = labels.id_at_location
+            # outputs_id = outputs.id_at_location
+            # predictions_id = predictions.id_at_location
+
+            # data = data.get()
+            # labels = labels.get()
+            # outputs = outputs.get()
+            # # predictions = predictions.get()
+
+            # logging.debug(f"Before transfer - Worker: {worker}")
+
+            # worker._send_msg_and_deserialize("register_obj", obj=data.tag("#minibatch"))#, obj_id=data_id)
+            # worker._send_msg_and_deserialize("register_obj", obj=labels.tag("#minibatch"))#, obj_id=labels_id)
+            # worker._send_msg_and_deserialize("register_obj", obj=outputs.tag("#minibatch"))#, obj_id=outputs_id)
+            # worker._send_msg_and_deserialize("register_obj", obj=predictions.tag("#minibatch"))#, obj_id=predictions_id)
+
+            # logging.debug(f"After transfer - Worker: {worker}")
+
+            # inferences = {
+            #     worker: {
+            #         'data': 1,
+            #         'labels': 2,
+            #         'outputs': 3,
+            #         'predictions': 4 
+            #     }
+            # }
+
+            # # Convert collection of object IDs accumulated from minibatch 
+            # inferencer = Inferencer(inferences=inferences, **kwargs["keys"])
+            # # converted_stats = inferencer.infer(reg_records=kwargs["registrations"])
+            # converted_stats = await inferencer._collect_all_stats(reg_records=kwargs["registrations"])
+
+            # self.global_model = self.global_model.get()
+            # return converted_stats
+
+        async def evaluate_batch(batch):
+            """ Asynchronously train all workers on their respective 
+                allocated batches 
+
+            Args:
+                batch (dict): 
+                    A single batch from a sliced dataset stratified by
+                    workers and their respective packets. A packet is a
+                    tuple pairing of the worker and its data slice
+                    i.e. (worker, (data, labels))
+            """
+            logging.debug(f"Batch: {batch}, {type(batch)}")
+
+            batch_evaluations = {}
+
+            # If multiple prediction sets have been declared across all workers,
+            # batch will be a dictionary i.e. {<worker_1>: (data, labels), ...}
+            if isinstance(batch, dict):
+
+                for worker_future in asyncio.as_completed(
+                    map(evaluate_worker, batch)
+                ):
+                    evaluated_worker_batch = await worker_future
+                    batch_evaluations.update(evaluated_worker_batch)
+
+            # If only 1 prediction set is declared (i.e. only 1 guest present), 
+            # batch will be a tuple i.e. (data, label)
+            elif isinstance(batch, tuple):
+
+                evaluated_worker_batch = await evaluate_worker(batch)
+                batch_evaluations.update(evaluated_worker_batch)
+
+            return batch_evaluations
+
+        async def evaluate_datasets(datasets):
+            """ Train all batches in a composite federated dataset """
+            # Note: Unlike in training, inference does not require any weight
+            #       tracking, thus each batch can be processed asynchronously 
+            #       as well!
+            batch_futures = [evaluate_batch(batch) for batch in datasets]
+            all_batch_evaluations = await asyncio.gather(*batch_futures)
+
+            all_worker_stats = {}
+
+            ##########################################################
+            # Inference V1: Exercise TTP's role as secure aggregator #
+            ##########################################################
+
+            for b_count, batch_evaluations in enumerate(
+                all_batch_evaluations, 
+                start=1
+            ):
+                for worker, batch_stats in batch_evaluations.items():
+
+                    aggregated_stats = all_worker_stats.get(worker.id, {})
+                    for stat, value in batch_stats.items():
+                        
+                        if stat in ["TN", "FP", "FN", "TP"]:
+                            total_val = aggregated_stats.get(stat, 0.0) + value
+                            aggregated_stats[stat] = total_val
+
+                        else:
+                            sliding_stat_avg = (
+                                aggregated_stats.get(stat, 0.0)*(b_count-1) + value
+                            ) / b_count
+                            aggregated_stats[stat] = sliding_stat_avg
+
+                    all_worker_stats[worker.id] = aggregated_stats
+
+            ####################################################################
+            # Inference V2: Strictly enforce federated procedures in inference #
+            ####################################################################
+
+            # for batch_evaluations in all_batch_evaluations:
+            #     for worker, batch_obj_ids in batch_evaluations.items():
+
+            #         minibatch_ids = all_worker_stats.get(worker.id, [])
+            #         minibatch_ids.append(batch_obj_ids)
+            #         all_worker_stats[worker.id] = minibatch_ids
+
+            return all_worker_stats
+                    
+
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+        try:
+            all_worker_stats = asyncio.get_event_loop().run_until_complete(
+                evaluate_datasets(datasets=datasets)
+            )
+
+        finally:
+            loop.close()
+
+        return all_worker_stats
+
     ##################
     # Core functions #
     ##################
@@ -770,16 +1217,27 @@ class FederatedLearning:
         return self.global_model
 
     
-    def validate(self):
-        """ Performs validation on the global model using pre-specified 
-            validation datasets
+    def evaluate(self, query=[], **kwargs):
+        """ Using the current instance of the global model, performs inference 
+            on pre-specified datasets
 
         Returns:
-            
+            Predictions (sy.PointerTensor)
         """
-        pass
-        
+        if not self.is_data_loaded():
+            raise RuntimeError("Grid data has not been aggregated! Call '.load()' first & try again.")
 
+        # Evaluate global model using aggregated testing data
+        statistics = self.perform_FL_testing(
+            datasets=self.test_loader, 
+            workers=query,
+            is_shared=True,
+            **kwargs
+        )
+        
+        return statistics
+      
+    
     def reset(self):
         """ Original intention was to make this class reusable, but it seems 
             like remote modification of remote datasets is not allowed/does not

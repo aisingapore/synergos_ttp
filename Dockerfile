@@ -57,6 +57,9 @@
 
 FROM python:3.7.4-slim-buster
 
+RUN apt-get update
+RUN DEBIAN_FRONTEND=noninteractive apt-get install -y build-essential
+
 COPY requirements.txt ./
 
 RUN pip install --upgrade pip setuptools wheel \

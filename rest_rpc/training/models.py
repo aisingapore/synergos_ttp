@@ -78,31 +78,21 @@ input_model = ns_api.model(
 )
 
 # Marshalling Outputs
-output_model = ns_api.model(
-    name="output",
-    model={
-        'participants': fields.Nested(participant_model),
-        'registration': fields.Nested(registration_model),
-        'tags': fields.Nested(tag_model),
-        'alignments': fields.Nested(alignment_model),
-        'project': fields.Nested(project_model),
-        'experiment': fields.Nested(expt_model),
-        'run': fields.Nested(config_model)
-    }
-)
-
 model_meta_model = ns_api.model(
     name="model_meta",
     model={
         'origin': fields.String(required=True),
-        'path': fields.String(required=True)
+        'path': fields.String(required=True),
+        'loss_history': fields.String(required=True)
     }
 )
 
+local_model_field = fields.Wildcard(fields.Nested(model_meta_model))
 model_model = ns_api.model(
     name="model",
     model={
-        "global": fields.Nested(model_meta_model, required=True)
+        'global': fields.Nested(model_meta_model, required=True),
+        'local_*': local_model_field
     }
 )
 
@@ -122,7 +112,22 @@ model_output_model = ns_api.inherit(
                 }
             ),
             required=True
-        )
+        )#,
+        # 'relations': fields.Nested(
+        #     ns_api.model(
+        #         name='model_relations',
+        #         model={
+        #             'Validation': fields.List(
+        #                 fields.Nested(expt_output_model, skip_none=True)
+        #             ),
+        #             'Prediction': fields.List(
+        #                 fields.Nested(run_output_model, skip_none=True)
+        #             )
+        #         }
+        #     ),
+        #     default={},
+        #     required=True
+        # )
     }
 )
 

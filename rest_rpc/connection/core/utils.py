@@ -586,7 +586,16 @@ class ProjectRecords(TopicalRecords):
             "Project", 
             "project_id", 
             db_path,
-            *["Experiment", "Run", "Registration", "Tag", "Alignment"]
+            *[
+                "Experiment", 
+                "Run", 
+                "Registration", 
+                "Tag", 
+                "Alignment", 
+                "Model",
+                "Validation",
+                "Prediction"
+            ]
         )
 
     def __generate_key(self, project_id):
@@ -661,7 +670,7 @@ class ExperimentRecords(TopicalRecords):
             "Experiment", 
             "expt_id", 
             db_path,
-            *["Run"]
+            *["Run", "Model", "Validation", "Prediction"]
         )
 
     def __generate_key(self, project_id, expt_id):
@@ -695,9 +704,10 @@ class RunRecords(TopicalRecords):
 
     def __init__(self, db_path=db_path):
         super().__init__(
-            subject="Run",  
-            identifier="run_id", 
-            db_path=db_path
+            "Run",  
+            "run_id", 
+            db_path,
+            *["Model", "Validation", "Prediction"]
         )
 
     def __generate_key(self, project_id, expt_id, run_id):
