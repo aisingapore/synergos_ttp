@@ -62,7 +62,7 @@ model_init_url = f"{project_train_url}/models/{expt_id_2}"#/{run_id_1}"
 base_ttp_eval_url = f"http://{ttp_host}:{ttp_port}/ttp/evaluate"
 project_eval_url = f"{base_ttp_eval_url}/participants/test_participant_1"
 
-prediction_init_url = f"{project_eval_url}/predictions/"
+prediction_init_url = f"{project_eval_url}/predictions"
 
 # Project Simulation
 test_project = {
@@ -137,7 +137,7 @@ test_run_2 = {
     "output_size": 1,
     "batch_size": 32,
     "rounds": 1,
-    "epochs": 1,
+    "epochs": 2,
     "lr": 0.2,
     "weight_decay": 0.02,
     "mu": 0.15,
@@ -153,7 +153,7 @@ test_run_3 = {
     "output_size": 1,
     "batch_size": 32,
     "rounds": 1,
-    "epochs": 1,
+    "epochs": 2,
     "lr": 0.3,
     "weight_decay": 0.03,
     "mu": 0.2,

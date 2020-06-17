@@ -34,7 +34,7 @@ from rest_rpc.training.core.server import (
     load_selected_run,
     terminate_connections
 )
-from rest_rpc.evaluation.core.utils import Inferencer
+from rest_rpc.evaluation.core.utils import Analyser
 
 ##################
 # Configurations #
@@ -53,36 +53,85 @@ rpc_formatter = RPCFormatter()
 # Functions #
 #############
 
-def convert_to_stats(keys, registrations, inferences):
-    """ Automates the submission of inference objects within a collection to
-        their respective workers, retrieving descriptive statistics in return
+def enumerate_expt_run_conbinations(
+    experiments: list,
+    runs: list,
+    registrations: list,
+    dockerised: bool = True,
+    log_msgs: bool = True,
+    verbose: bool = True,
+) -> dict:
+    """ Enumerates all registered combinations of experiment models and run
+        configurations for a SINGLE project in preparation for bulk operations.
 
     Args:
-        keys (dict): Relevant Project ID, Expt ID & Run ID
-        registrations (list(tinydb.database.Document))): Participant registry
-        inferences (dict(worker_id, dict(str, int)))
+        experiments (list): All experimental models to be reconstructed
+        runs (dict): All hyperparameter sets to be used during grid FL inference
+        registrations (list): Registry of all participants involved
+        dockerised (bool): Toggles if current FL grid is containerised or not. 
+            If true (default), hosts & ports of all participants are locked at
+            "0.0.0.0" & 8020 respectively. Otherwise, participant specified
+            configurations will be used (grid architecture has to be finalised).
+        log_msgs (bool): Toggles if messages are to be logged
+        verbose (bool): Toggles verbosity of logs for WSCW objects
     Returns:
-        Converted statistics (dict(key, dict(worker_id, dict(str, float))))
+        Combinations (dict)
     """
-    inferencer = Inferencer(inferences=inferences, **keys)
-    converted_stats = inferencer.infer(reg_records=registrations)
+    combinations = {}
+    for expt_record in experiments:
+        curr_expt_id = expt_record['key']['expt_id']
 
-    return converted_stats
+        for run_record in runs:
+            run_key = run_record['key']
+            r_project_id = run_key['project_id']
+            r_expt_id = run_key['expt_id']
+            r_run_id = run_key['run_id']
+
+            if r_expt_id == curr_expt_id:
+
+                combination_key = (r_project_id, r_expt_id, r_run_id)
+                project_expt_run_params = {
+                    'keys': run_key,
+                    'registrations': registrations,
+                    'experiment': expt_record,
+                    'run': run_record,
+                    'dockerised': dockerised, 
+                    'log_msgs': log_msgs, 
+                    'verbose': verbose
+                }
+                combinations[combination_key] = project_expt_run_params
+
+    return combinations
 
 
-def start_expt_run_inference(keys: dict, participant: str, registrations: list, 
-                             experiment: dict, run: dict, 
-                             dockerised: bool, log_msgs: bool, verbose: bool):
+def start_expt_run_inference(
+    keys: dict, 
+    participants: list, 
+    registrations: list, 
+    experiment: dict, 
+    run: dict, 
+    metas: list = ['train', 'evaluate', 'predict'],
+    dockerised: bool = True, 
+    log_msgs: bool = True, 
+    verbose: bool = True
+) -> dict:
     """ Trains a model corresponding to a SINGLE experiment-run combination
 
     Args:
         keys (dict): Relevant Project ID, Expt ID & Run ID
-        ttp (sy.VirtualWorker): Allocated trusted third party in the FL grid
-        workers (list(WebsocketClientWorker)): All WSCWs for each participant
+        participants (str): Specified IDs of participants requesting predictions
+        registrations (list): Registry of all participants involved
         experiment (dict): Parameters for reconstructing experimental model
-        run (dict): Hyperparameters to be used during grid FL training
+        run (dict): Hyperparameters to be used during grid FL inference
+        metas (list): Type(s) of datasets to perform inference on
+        dockerised (bool): Toggles if current FL grid is containerised or not. 
+            If true (default), hosts & ports of all participants are locked at
+            "0.0.0.0" & 8020 respectively. Otherwise, participant specified
+            configurations will be used (grid architecture has to be finalised).
+        log_msgs (bool): Toggles if messages are to be logged
+        verbose (bool): Toggles verbosity of logs for WSCW objects
     Returns:
-        Path-to-trained-models (dict(str))
+        Statistics (dict)
     """
 
     def infer_combination():
@@ -116,37 +165,26 @@ def start_expt_run_inference(keys: dict, participant: str, registrations: list,
             #############################################
 
             fl_expt = FederatedLearning(args, ttp, workers, model)
-            fl_expt.load()
-            participant_stats = fl_expt.evaluate(query=[participant])
-
-            ####################################################################
-            # Inference V2: Strictly enforce federated procedures in inference #
-            ####################################################################
-            # Inference is integrated into the evaluation cycle directly
-
-            # participant_stats = fl_expt.evaluate(
-            #     query=[participant],
-            #     keys=keys,
-            #     registrations=[
-            #         record 
-            #         for record in registrations
-            #         if record['participant']['id'] == participant
-            #     ]
-            # )
+            fl_expt.load(shuffle=False) # for re-assembly during inference
+            
+            # Only infer for specified participant on his/her own test dataset
+            participants_inferences = fl_expt.evaluate(
+                metas=metas,
+                workers=participants
+            )
 
         else:
-            participant_stats = {participant: {}} # no trained model, no stats!
-
-        # # Convert collection of object IDs accumulated from minibatch 
-        # inferencer = Inferencer(inferences=participant_stats, **keys)
-        # converted_stats = inferencer.infer(reg_records=registrations)
+            # No trained model --> No available results
+            participants_inferences = {
+                participant: {} 
+                for participant in participants
+            }
 
         # Close WSCW local objects once training process is completed (if possible)
         # (i.e. graceful termination)
         terminate_connections(ttp=ttp, workers=workers)
 
-        # return converted_stats
-        return participant_stats
+        return participants_inferences
 
     logging.info(f"Current combination: {keys}")
 
@@ -154,64 +192,46 @@ def start_expt_run_inference(keys: dict, participant: str, registrations: list,
     governor = Governor(dockerised=dockerised, **keys)
     governor.initialise(reg_records=registrations)
 
-    results = infer_combination()
+    participants_inferences = infer_combination()
+    logging.debug(f"Aggregated predictions: {participants_inferences}")
+
+    # Convert collection of object IDs accumulated from minibatch 
+    analyser = Analyser(**keys, inferences=participants_inferences, metas=metas)
+    polled_stats = analyser.infer(reg_records=registrations)
+    logging.debug(f"Polled statistics: {polled_stats}")
 
     # Send terminate signal to all participants' worker nodes
     governor = Governor(dockerised=dockerised, **keys)
     governor.terminate(reg_records=registrations)
 
-    return results
+    return polled_stats
 
 
-def start_proc(multi_kwargs):
+def start_proc(multi_kwargs: dict) -> dict:
     """ Automates the inference of Federated models of different architectures
         and parameter sets
 
     Args:
-        kwargs (dict): Experiments & models to be tested
+        multi_kwargs (dict): Experiments & models to be tested
     Returns:
-        Path-to-trained-models (list(str))
+        Statistics of each specified project-expt-run configuration (dict)
     """
     all_statistics = {}
-    for project_id, kwargs in multi_kwargs.items():
+    for _, kwargs in multi_kwargs.items():
 
-        participant = kwargs['participant']
-        experiments = kwargs['experiments']
-        runs = kwargs['runs']
-        registrations = kwargs['registrations']
-        is_dockerised = kwargs['dockerised']
+        participants = kwargs.pop('participants')
+        metas = kwargs.pop('metas')
+        project_combinations = enumerate_expt_run_conbinations(**kwargs)
 
-        logging.debug(f"registrations: {registrations}")
-        inference_combinations = {}
-        for expt_record in experiments:
-            curr_expt_id = expt_record['key']['expt_id']
-
-            for run_record in runs:
-                run_key = run_record['key']
-                r_project_id = run_key['project_id']
-                r_expt_id = run_key['expt_id']
-                r_run_id = run_key['run_id']
-
-                if (r_project_id == project_id) and (r_expt_id == curr_expt_id):
-
-                    combination_key = (r_project_id, r_expt_id, r_run_id)
-                    project_expt_run_params = {
-                        'participant': participant,
-                        'keys': run_key,
-                        'registrations': registrations,
-                        'experiment': expt_record,
-                        'run': run_record,
-                        'dockerised': is_dockerised, 
-                        'log_msgs': True, 
-                        'verbose': True
-                    }
-                    inference_combinations[combination_key] = project_expt_run_params
-
-        logging.info(f"{inference_combinations}")
+        for _, combination in project_combinations.items(): 
+            combination.update({
+                'participants': participants, 
+                "metas": metas
+            })
 
         completed_project_inferences = {
             combination_key: start_expt_run_inference(**kwargs) 
-            for combination_key, kwargs in inference_combinations.items()
+            for combination_key, kwargs in project_combinations.items()
         }
 
         all_statistics.update(completed_project_inferences)

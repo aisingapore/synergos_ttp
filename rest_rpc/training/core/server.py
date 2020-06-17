@@ -145,6 +145,23 @@ def connect_to_workers(keys, reg_records, dockerised=True, log_msgs=False, verbo
 
             **config
         )
+
+        #####################################################################
+        # Optimal Setup -  Use NodeClient objects for in-house SMPC support #
+        #####################################################################
+        # Issue: Unable to connect to WSSW object remotely, raises the 
+        #        `binascii.Error: Non-hexadecimal digit found` exception.
+        # # Solution: K.I.V until issue is resolved
+
+        # curr_worker = NodeClient(
+        #     hook=grid_hook,
+        #     address=f"ws://{config['host']}:{config['port']}",
+        #     id=config['id'],
+        #     is_client_worker=True, 
+        #     log_msgs=config['log_msgs'],
+        #     verbose=config['verbose']
+        # )
+
         workers.append(curr_worker)
         logging.debug(f"Participant's known workers: {curr_worker._known_workers}")
     
@@ -369,7 +386,8 @@ def start_expt_run_training(keys: dict, registrations: list,
         logging.debug(f"All remaining ObjectPointers un-collected: {magic_method(ObjectPointer)}")
 
         logging.info(f"Objects left in env: {sy.local_worker._objects}, {sy.local_worker._known_workers}")
-    except OSError:
+    except OSError as o:
+        logging.debug(f"{o}")
         print("Caught this OS problem...")
 
     # Send terminate signal to all participants' worker nodes

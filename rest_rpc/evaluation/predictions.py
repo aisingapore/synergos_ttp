@@ -42,7 +42,7 @@ logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.DEBUG)
 
 ns_api = Namespace(
     "predictions", 
-    description='API to faciliate model inference in a PySyft Grid.'
+    description='API to faciliate model inference in a REST-RPC Grid.'
 )
 
 SUBJECT = "Prediction"
@@ -94,16 +94,31 @@ stats_model = ns_api.model(
         'FPR': fields.Float(),
         'FNR': fields.Float(),
         'FDR': fields.Float(),
-        'tp': fields.Integer(),
-        'tn': fields.Integer(),
-        'fp': fields.Integer(),
-        'fn': fields.Integer()
+        'TP': fields.Integer(),
+        'TN': fields.Integer(),
+        'FP': fields.Integer(),
+        'FN': fields.Integer()
+    }
+)
+
+meta_stats_model = ns_api.model(
+    name="meta_statistics",
+    model={
+        'statistics': fields.Nested(stats_model, skip_none=True),
+        'res_path': fields.String(skip_none=True)
+    }
+)
+
+pred_inferences_model = ns_api.model(
+    name="prediction_inferences",
+    model={
+        'predict': fields.Nested(meta_stats_model, required=True)
     }
 )
 
 pred_output_model = ns_api.inherit(
     "prediction_output",
-    stats_model,
+    pred_inferences_model,
     {
         'doc_id': fields.String(),
         'kind': fields.String(),
@@ -111,6 +126,7 @@ pred_output_model = ns_api.inherit(
             ns_api.model(
                 name='key',
                 model={
+                    'participant_id': fields.String(),
                     'project_id': fields.String(),
                     'expt_id': fields.String(),
                     'run_id': fields.String()
@@ -173,9 +189,9 @@ class Predictions(Resource):
             )
 
 
-    @ns_api.doc("trigger_prediction")
+    @ns_api.doc("trigger_predictions")
     @ns_api.expect(pred_input_model)
-    # @ns_api.marshal_with(payload_formatter.plural_model)
+    @ns_api.marshal_with(payload_formatter.plural_model)
     def post(self, participant_id, project_id, expt_id, run_id):
         """ Triggers FL inference for specified project-experiment-run
             combination within a PySyft FL grid. 
@@ -305,7 +321,8 @@ class Predictions(Resource):
                 'experiments': experiments,
                 'runs': runs,
                 'registrations': updated_project_registrations,
-                'participant': participant_id
+                'participants': [participant_id],
+                'metas': ['predict']
             }
             project_combinations[registered_project_id] = kwargs
 

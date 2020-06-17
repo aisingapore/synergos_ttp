@@ -50,6 +50,7 @@ Training:
     }
 }
 """
+
 #################################
 # Helper Class - UrlConstructor #
 #################################
@@ -91,7 +92,7 @@ class UrlConstructor:
         ).replace(
             "<expt_id>", expt_id
         ).replace(
-            "<run_id", run_id
+            "<run_id>", run_id
         )
         return custom_intialise_url
 
@@ -102,7 +103,7 @@ class UrlConstructor:
         ).replace(
             "<expt_id>", expt_id
         ).replace(
-            "<run_id", run_id
+            "<run_id>", run_id
         )
         return custom_terminate_url
 
@@ -113,7 +114,7 @@ class UrlConstructor:
         ).replace(
             "<expt_id>", expt_id
         ).replace(
-            "<run_id", run_id
+            "<run_id>", run_id
         )
         return custom_predict_url
 

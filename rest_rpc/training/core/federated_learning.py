@@ -14,6 +14,7 @@ import os
 from collections import OrderedDict
 from multiprocessing import Manager
 from pathlib import Path
+from typing import Tuple, List, Dict, Union
 
 # Libs
 import syft as sy
@@ -252,7 +253,11 @@ class FederatedLearning:
         Returns:
             loaded state (bool)
         """
-        return (self.train_loader is not None and self.test_loader is not None)
+        return (
+            self.train_loader is not None and 
+            self.eval_loader is not None and 
+            self.test_loader is not None
+        )
 
     ###########
     # Helpers #
@@ -277,7 +282,11 @@ class FederatedLearning:
         )
 
 
-    def setup_FL_env(self, is_shared=False):
+    def setup_FL_env(
+        self, 
+        is_shared: bool=False
+    ) -> Tuple[Dict[sy.WebsocketClientWorker, sy.BaseDataset], ...]:
+
         """ Sets up a basic federated learning environment using virtual workers,
             with a allocated arbiter (i.e. TTP) to faciliate in model development
             & utilisation, and deploys datasets to their respective workers
@@ -314,10 +323,12 @@ class FederatedLearning:
 
             return datasets
 
-        # Ensure that TTP does not have residual tensors
-        # #self.crypto_provider.clear_objects()
-        # logging.debug(f"Crypto provider objects: {self.crypto_provider._objects}")
-        # assert len(self.crypto_provider._objects) == 0
+        ###########################
+        # Implementation Footnote # 
+        ###########################
+    
+        # TTP should not have residual tensors during training, but will have
+        # them during evaluation, as a result of trained models being loaded.
         
         # Retrieve Pointer Tensors to remote datasets
         train_datasets = convert_to_datasets("#train")
@@ -327,11 +338,15 @@ class FederatedLearning:
         return train_datasets, eval_datasets, test_datasets
     
     
-    def convert_to_FL_batches(self, train_datasets, eval_datasets, test_datasets): 
-        """ Supplementary function to convert initialised datasets into their
-            SGD compatible dataloaders in the context of PySyft's federated learning
-            (NOTE: This is based on the assumption that querying database size does
-                   not break FL abstraction (i.e. not willing to share quantity))
+    def convert_to_FL_batches(self, 
+        train_datasets: dict, 
+        eval_datasets: dict, 
+        test_datasets: dict,
+        shuffle: bool=True
+    ) -> Tuple[sy.FederatedDataLoader, ...]: 
+        """ Supplementary function to convert initialised datasets into SGD
+            compatible dataloaders in the context of PySyft's federated learning
+            
         Args:
             train_datasets (dict(sy.BaseDataset)): 
                 Distributed datasets for training
@@ -339,6 +354,7 @@ class FederatedLearning:
                 Distributed dataset for verifying performance
             test_datasets  (dict(sy.BaseDataset)): 
                 Distributed dataset for to be tested on
+            shuffle (bool): Toggles the way the minibatches are generated
         Returns:
             train_loader (sy.FederatedDataLoader)
             eval_loader  (sy.FederatedDataLoader)
@@ -362,7 +378,7 @@ class FederatedLearning:
                     if self.arguments.batch_size 
                     else len(federated_dataset)
                 ), 
-                shuffle=True,
+                shuffle=shuffle,
                 iter_per_worker=True,   # for LVL 1A parallelization
                 #iter_per_worker=False,  # for LVL 1B parallelization
                 **kwargs
@@ -370,13 +386,9 @@ class FederatedLearning:
 
             return federated_data_loader
 
-        # Load training datasets into a configured federated dataloader
+        # Load datasets into a configured federated dataloader
         train_loader = construct_FL_loader(train_datasets.values())
-
-        # Load validation datasets into a configured federated dataloader
         eval_loader = construct_FL_loader(eval_datasets.values())
-
-        # Load testing datasets into a configured federated dataloader
         test_loader = construct_FL_loader(test_datasets.values())
         
         return train_loader, eval_loader, test_loader
@@ -706,19 +718,24 @@ class FederatedLearning:
 
     
         def calculate_global_params(global_model, models, datasets):
-            """ Aggregates weights from trained locally trained models after a round.
+            """ Aggregates weights from locally trained models after a round.
+
+                Note: 
+                    This is based on the assumption that querying database size 
+                    does not break FL abstraction (i.e. unwilling to share 
+                    quantity)
 
             Args:
-                global_model   (nn.Module): Global model to be trained federatedly
-                models   (dict(nn.Module)): Simulated local models (after distribution)
-                datasets (dict(th.utils.data.DataLoader)): Distributed training datasets
+                global_model (nn.Module): Global model to be trained federatedly
+                models (dict(nn.Module)): Trained local models
+                datasets (dict(sy.FederatedDataLoader)): Distributed datasets
             Returns:
                 Aggregated parameters (OrderedDict)
             """
             param_types = global_model.state_dict().keys()
             model_states = {w: m.state_dict() for w,m in models.items()}
 
-            # Find size of all distributed datasets for calculating scaling factor
+            # Find size of all distributed datasets for computing scaling factor
             obs_counts = {}
             for batch in datasets:
                 for worker, (data, _) in batch.items():
@@ -730,8 +747,8 @@ class FederatedLearning:
                 for worker, local_count in obs_counts.items()
             }
 
-            # PyTorch models can only swap weights of the same structure
-            # Hence, aggregate weights while maintaining original layering structure
+            # PyTorch models can only swap weights of the same structure. Hence,
+            # aggregate weights while maintaining original layering structure
             aggregated_params = OrderedDict()
             for p_type in param_types:
 
@@ -886,13 +903,15 @@ class FederatedLearning:
         return self.global_model, self.local_models
 
 
-    def perform_FL_testing(self, datasets, workers=[], is_shared=True, **   kwargs): 
+    def perform_FL_testing(self, datasets, workers=[], is_shared=True, **kwargs): 
         """ Obtains predictions given a validation/test dataset upon 
             a specified trained global model.
             
         Args:
             datasets (tuple(th.Tensor)): A validation/test dataset
-            model   (nn.Module): Trained global model
+            workers (list(str)): Filter to select specific workers to infer on
+            is_shared (bool): Toggles whether SMPC is turned on
+            **kwargs: Miscellaneous keyword arguments for future use
         Returns:
             Tagged prediction tensor (sy.PointerTensor)
         """    
@@ -944,6 +963,8 @@ class FederatedLearning:
                     predictions.zero_()
                     predictions.scatter_(1, predicted_labels.view(-1,1), 1)
 
+            self.global_model = self.global_model.get()
+
             #############################################
             # Inference V1: Assume TTP's role is robust #
             #############################################
@@ -951,77 +972,90 @@ class FederatedLearning:
             # FL rules. Hence predictions & labels can be pulled in locally for
             # calculating statistics, before sending the labels back to worker.
 
-            labels = labels.get()
+            # labels = labels.get()
+            # outputs = outputs.get()
+            # predictions = predictions.get()
+
+            # logging.debug(f"labels: {labels}, outputs: {outputs}, predictions: {predictions}")
+
+            # # Calculate accuracy of predictions
+            # accuracy = accuracy_score(labels.numpy(), predictions.numpy())
+            
+            # # Calculate ROC-AUC for each label
+            # roc = roc_auc_score(labels.numpy(), outputs.numpy())
+            # fpr, tpr, _ = roc_curve(labels.numpy(), outputs.numpy())
+            
+            # # Calculate Area under PR curve
+            # pc_vals, rc_vals, _ = precision_recall_curve(labels.numpy(), outputs.numpy())
+            # auc_pr_score = auc(rc_vals, pc_vals)
+            
+            # # Calculate F-score
+            # f_score = f1_score(labels.numpy(), predictions.numpy())
+
+            # # Calculate contingency matrix
+            # ct_matrix = contingency_matrix(labels.numpy(), predictions.numpy())
+            
+            # # Calculate confusion matrix
+            # cf_matrix = confusion_matrix(labels.numpy(), predictions.numpy())
+            # logging.debug(f"Confusion matrix: {cf_matrix}")
+
+            # TN, FP, FN, TP = cf_matrix.ravel()
+            # logging.debug(f"TN: {TN}, FP: {FP}, FN: {FN}, TP: {TP}")
+
+            # # Sensitivity, hit rate, recall, or true positive rate
+            # TPR = TP/(TP+FN) if (TP+FN) != 0 else 0
+            # # Specificity or true negative rate
+            # TNR = TN/(TN+FP) if (TN+FP) != 0 else 0
+            # # Precision or positive predictive value
+            # PPV = TP/(TP+FP) if (TP+FP) != 0 else 0
+            # # Negative predictive value
+            # NPV = TN/(TN+FN) if (TN+FN) != 0 else 0
+            # # Fall out or false positive rate
+            # FPR = FP/(FP+TN) if (FP+TN) != 0 else 0
+            # # False negative rate
+            # FNR = FN/(TP+FN) if (TP+FN) != 0 else 0
+            # # False discovery rate
+            # FDR = FP/(TP+FP) if (TP+FP) != 0 else 0
+
+            # statistics = {
+            #     'accuracy': accuracy,
+            #     'roc_auc_score': roc,
+            #     'pr_auc_score': auc_pr_score,
+            #     'f_score': f_score,
+            #     'TPR': TPR,
+            #     'TNR': TNR,
+            #     'PPV': PPV,
+            #     'NPV': NPV,
+            #     'FPR': FPR,
+            #     'FNR': FNR,
+            #     'FDR': FDR,
+            #     'TP': TP,
+            #     'TN': TN,
+            #     'FP': FP,
+            #     'FN': FN
+            # }
+
+            # labels = labels.send(worker)
+
+            # return {worker: statistics}
+
+            ####################################################################
+            # Inference V1.5: Assume TTP's role is robust, but avoid violation #
+            ####################################################################
+            # In this version, while TTP's coordination is also not deemed to be
+            # breaking FL rules, the goal is to violate the minimum no. of
+            # federated procedures. Here, only outputs & predictions can be 
+            # pulled in locally, since they are deemed to be TTP-generated.
+            # However, statistical calculation will be orchestrated to be done
+            # at worker nodes, and be sent back via a flask payload. This way,
+            # the TTP avoids even looking at client's raw data, only interacting
+            # with derivative information. 
+
             outputs = outputs.get()
             predictions = predictions.get()
 
-            logging.debug(f"labels: {labels}, outputs: {outputs}, predictions: {predictions}")
+            return {worker: {"y_pred": predictions, "y_score": outputs}}
 
-            # Calculate accuracy of predictions
-            accuracy = accuracy_score(labels.numpy(), predictions.numpy())
-            
-            # Calculate ROC-AUC for each label
-            roc = roc_auc_score(labels.numpy(), outputs.numpy())
-            fpr, tpr, _ = roc_curve(labels.numpy(), outputs.numpy())
-            
-            # Calculate Area under PR curve
-            pc_vals, rc_vals, _ = precision_recall_curve(labels.numpy(), outputs.numpy())
-            auc_pr_score = auc(rc_vals, pc_vals)
-            
-            # Calculate F-score
-            f_score = f1_score(labels.numpy(), predictions.numpy())
-
-            # Calculate contingency matrix
-            ct_matrix = contingency_matrix(labels.numpy(), predictions.numpy())
-            
-            # Calculate confusion matrix
-            cf_matrix = confusion_matrix(labels.numpy(), predictions.numpy())
-            logging.debug(f"Confusion matrix: {cf_matrix}")
-
-            TN, FP, FN, TP = cf_matrix.ravel()
-            logging.debug(f"TN: {TN}, FP: {FP}, FN: {FN}, TP: {TP}")
-
-            # Sensitivity, hit rate, recall, or true positive rate
-            TPR = TP/(TP+FN) if (TP+FN) != 0 else 0
-            # Specificity or true negative rate
-            TNR = TN/(TN+FP) if (TN+FP) != 0 else 0
-            # Precision or positive predictive value
-            PPV = TP/(TP+FP) if (TP+FP) != 0 else 0
-            # Negative predictive value
-            NPV = TN/(TN+FN) if (TN+FN) != 0 else 0
-            # Fall out or false positive rate
-            FPR = FP/(FP+TN) if (FP+TN) != 0 else 0
-            # False negative rate
-            FNR = FN/(TP+FN) if (TP+FN) != 0 else 0
-            # False discovery rate
-            FDR = FP/(TP+FP) if (TP+FP) != 0 else 0
-
-            statistics = {
-                'accuracy': accuracy,
-                'roc_auc_score': roc,
-                'pr_auc_score': auc_pr_score,
-                'f_score': f_score,
-                'TPR': TPR,
-                'TNR': TNR,
-                'PPV': PPV,
-                'NPV': NPV,
-                'FPR': FPR,
-                'FNR': FNR,
-                'FDR': FDR,
-                'TP': TP,
-                'TN': TN,
-                'FP': FP,
-                'FN': FN
-            }
-
-            labels = labels.send(worker)
-            outputs = outputs.send(worker)
-            predictions = predictions.send(worker)
-
-            self.global_model = self.global_model.get()
-
-            return {worker: statistics}
-            
             ####################################################################
             # Inference V2: Strictly enforce federated procedures in inference #
             ####################################################################
@@ -1110,32 +1144,63 @@ class FederatedLearning:
             batch_futures = [evaluate_batch(batch) for batch in datasets]
             all_batch_evaluations = await asyncio.gather(*batch_futures)
 
-            all_worker_stats = {}
-
             ##########################################################
             # Inference V1: Exercise TTP's role as secure aggregator #
             ##########################################################
+            
+            # all_worker_stats = {}
+            # all_worker_preds = {}
 
-            for b_count, batch_evaluations in enumerate(
-                all_batch_evaluations, 
-                start=1
-            ):
-                for worker, batch_stats in batch_evaluations.items():
+            # for b_count, (batch_evaluations, batch_predictions) in enumerate(
+            #     all_batch_evaluations, 
+            #     start=1
+            # ):
+            #     for worker, batch_stats in batch_evaluations.items():
 
-                    aggregated_stats = all_worker_stats.get(worker.id, {})
-                    for stat, value in batch_stats.items():
+            #         # Manage statistical aggregation
+            #         aggregated_stats = all_worker_stats.get(worker.id, {})
+            #         for stat, value in batch_stats.items():
                         
-                        if stat in ["TN", "FP", "FN", "TP"]:
-                            total_val = aggregated_stats.get(stat, 0.0) + value
-                            aggregated_stats[stat] = total_val
+            #             if stat in ["TN", "FP", "FN", "TP"]:
+            #                 total_val = aggregated_stats.get(stat, 0.0) + value
+            #                 aggregated_stats[stat] = total_val
 
-                        else:
-                            sliding_stat_avg = (
-                                aggregated_stats.get(stat, 0.0)*(b_count-1) + value
-                            ) / b_count
-                            aggregated_stats[stat] = sliding_stat_avg
+            #             else:
+            #                 sliding_stat_avg = (
+            #                     aggregated_stats.get(stat, 0.0)*(b_count-1) + value
+            #                 ) / b_count
+            #                 aggregated_stats[stat] = sliding_stat_avg
 
-                    all_worker_stats[worker.id] = aggregated_stats
+            #         all_worker_stats[worker.id] = aggregated_stats
+
+            ####################################################################
+            # Inference V1.5: Assume TTP's role is robust, but avoid violation #
+            ####################################################################
+
+            all_worker_outputs = {}
+
+            for batch_evaluations in all_batch_evaluations:
+                for worker, outputs in batch_evaluations.items():
+
+                    aggregated_outputs = all_worker_outputs.get(worker.id, {})
+                    for _type, result in outputs.items():
+
+                        aggregated_results = aggregated_outputs.get(_type, [])
+                        aggregated_results.append(result)
+                        aggregated_outputs[_type] = aggregated_results
+
+                    all_worker_outputs[worker.id] = aggregated_outputs
+
+            # Concatenate all batch outputs for each worker
+            all_combined_outputs = {
+                worker_id: {
+                    _type: th.cat(res_collection, dim=0).numpy().tolist()
+                    for _type, res_collection in batch_outputs.items()
+                }
+                for worker_id, batch_outputs in all_worker_outputs.items()
+            }
+            
+            return all_combined_outputs
 
             ####################################################################
             # Inference V2: Strictly enforce federated procedures in inference #
@@ -1148,34 +1213,44 @@ class FederatedLearning:
             #         minibatch_ids.append(batch_obj_ids)
             #         all_worker_stats[worker.id] = minibatch_ids
 
-            return all_worker_stats
-                    
 
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
 
         try:
-            all_worker_stats = asyncio.get_event_loop().run_until_complete(
+            all_combined_outputs = asyncio.get_event_loop().run_until_complete(
                 evaluate_datasets(datasets=datasets)
             )
 
         finally:
             loop.close()
 
-        return all_worker_stats
+        return all_combined_outputs
 
     ##################
     # Core functions #
     ##################
     
-    def load(self):
+    def load(self, shuffle=True):
         """ Load all remote datasets into Federated dataloaders for batch
             operations if data has not already been loaded. Note that loading 
             is only done once, since searching for datasets within a grid will
             cause query results to accumulate exponentially on TTP. Hence, this
             function will only load datasets ONLY if it has NOT already been
             loaded.
+
+            Note:
+                When `shuffle=True`, federated dataloaders will SHUFFLE datasets
+                to ensure that proper class representation is covered in each
+                minibatch generated. This an important aspect during training.
+
+                When `shuffle=False`, federated dataloaders will NOT shuffle 
+                datasets before minibatching. This is to ensure that the
+                prediction labels can be re-assembled, aligned and restored on
+                the worker nodes during evaluation/inference
             
+        Args:
+            shuffle (bool): Toggles the way the minibatches are generated
         Returns:
             train_loader (sy.FederatedLoader): Training data in configured batches
             test_loader (sy.FederatedLoader): Testing data in configured batches
@@ -1189,7 +1264,8 @@ class FederatedLearning:
             train_loader, eval_loader, test_loader = self.convert_to_FL_batches(
                 train_datasets, 
                 eval_datasets,
-                test_datasets
+                test_datasets,
+                shuffle=shuffle
             )
 
             # Store federated data loaders for subsequent use
@@ -1217,25 +1293,49 @@ class FederatedLearning:
         return self.global_model
 
     
-    def evaluate(self, query=[], **kwargs):
+    def evaluate(self, metas=[], workers=[], **kwargs):
         """ Using the current instance of the global model, performs inference 
             on pre-specified datasets
 
         Returns:
-            Predictions (sy.PointerTensor)
+            Inferences (dict(str, th.tensor))
         """
         if not self.is_data_loaded():
             raise RuntimeError("Grid data has not been aggregated! Call '.load()' first & try again.")
 
-        # Evaluate global model using aggregated testing data
-        statistics = self.perform_FL_testing(
-            datasets=self.test_loader, 
-            workers=query,
-            is_shared=True,
-            **kwargs
-        )
+        DATA_MAP = {
+            'train': self.train_loader,
+            'evaluate': self.eval_loader,
+            'predict': self.test_loader
+        }
+
+        # If no meta filters are specified, evaluate all datasets 
+        metas = list(DATA_MAP.keys()) if not metas else metas
+
+        # If no worker filter are specified, evaluate all workers
+        workers = [w.id for w in self.workers] if not workers else workers
+
+        # Evaluate global model using datasets conforming to specified metas
+        inferences = {}
+        for meta, dataset in DATA_MAP.items():
+
+            if meta in metas:
+
+                worker_meta_inference = self.perform_FL_testing(
+                    datasets=dataset,
+                    workers=workers,
+                    is_shared=True,
+                    **kwargs
+                )
+
+                # inference = worker -> meta -> (y_pred, y_score)
+                for worker_id, meta_result in worker_meta_inference.items():
+
+                    worker_results = inferences.get(worker_id, {})
+                    worker_results[meta] = meta_result
+                    inferences[worker_id] = worker_results
         
-        return statistics
+        return inferences
       
     
     def reset(self):

@@ -44,6 +44,13 @@ Prediction:
 }
 """
 
+####################
+# Helper Functions #
+####################
+
+def replicate_combination_key(expt_id, run_id):
+    return str((expt_id, run_id))
+
 ######################################################
 # Data Storage Association class - ValidationRecords #
 ######################################################
@@ -175,22 +182,29 @@ class PredictionRecords(AssociationRecords):
         )
         return super().delete(prediction_key)
 
-##############################################
-# Inference Orchestration class - Inferencer #
-##############################################
+############################################
+# Inference Orchestration class - Analyser #
+############################################
 
-class Inferencer:
+class Analyser:
     """ 
     Takes in a list of minibatch IDs and sends them to worker nodes. Workers
     will use these IDs to reconstruct their aggregated test datasets with 
     prediction labels mapped appropriately.
 
     Attributes:
-        registrations
-        inferences (dict(worker_id, dict(str, int)))
+        inferences (dict(str, dict(str, dict(str, th.tensor)))
     """
-    def __init__(self, project_id, expt_id, run_id, inferences):
+    def __init__(
+        self, 
+        project_id: str,
+        expt_id: str, 
+        run_id: str,
+        inferences: dict,
+        metas: list = ['train', 'evaluate', 'predict']
+    ):
         self.__rpc_formatter = RPCFormatter()
+        self.metas = metas
         self.project_id = project_id
         self.expt_id = expt_id
         self.run_id = run_id
@@ -200,7 +214,7 @@ class Inferencer:
     # Helpers #
     ###########
 
-    async def _infer_stats(self, reg_record, inference):
+    async def _poll_for_stats(self, reg_record, inferences):
         """ Parses a registration record for participant metadata, before
             submitting minibatch IDs of inference objects to corresponding 
             worker node's REST-RPC service for calculating descriptive
@@ -208,7 +222,7 @@ class Inferencer:
 
         Args:
             reg_record (tinydb.database.Document): Participant-project details
-            minibatch_ids (list): List of dicts containing inference object IDs
+            inferences (dict): List of dicts containing inference object IDs
         Returns:
             Statistics (dict)
         """
@@ -216,6 +230,9 @@ class Inferencer:
         participant_id = participant_details['id']
         participant_ip = participant_details['host']
         participant_f_port = participant_details.pop('f_port') # Flask port
+
+        if not inferences:
+            return {participant_id: {meta:{} for meta in self.metas}}
 
         # Construct destination url for interfacing with worker REST-RPC
         destination_constructor = UrlConstructor(
@@ -227,22 +244,8 @@ class Inferencer:
             expt_id=self.expt_id,
             run_id=self.run_id
         )
-
-        relevant_alignments = reg_record['relations']['Alignment'][0]
-        stripped_alignments = self.__rpc_formatter.strip_keys(relevant_alignments)
-
-        minibatch_ids = [
-            {
-                t_type: tensor.id_at_location 
-                for t_type, tensor in mb_tensors.items()
-            } 
-            for mb_tensors in inference
-        ]
-
-        payload = {
-            'alignments': stripped_alignments,
-            'id_mappings': minibatch_ids       
-        }
+        
+        payload = {'inferences': inferences}
 
         # Trigger remote inference by posting alignments & ID mappings to 
         # `Predict` route in worker
@@ -253,11 +256,21 @@ class Inferencer:
             ) as response:
                 resp_json = await response.json(content_type='application/json')
         
-        metadata = resp_json['data']
-        return {participant_id: metadata}
+        # Extract the relevant expt-run results
+        expt_run_key = replicate_combination_key(self.expt_id, self.run_id)
+        metadata = resp_json['data']['results'][expt_run_key]
+
+        # Filter by selected meta-datasets
+        filtered_statistics = {
+            meta: stats 
+            for meta, stats in metadata.items()
+            if meta in self.metas
+        }
+
+        return {participant_id: filtered_statistics}
 
     async def _collect_all_stats(self, reg_records):
-        """ Asynchroneous function to submit inference data to registered
+        """ Asynchronous function to submit inference data to registered
             participant servers in return for remote performance statistics
 
         Args:
@@ -277,8 +290,8 @@ class Inferencer:
         logging.debug(f"Sorted inferences: {sorted_inferences}")
 
         mapped_pairs = [
-            (record, inference) 
-            for record, (p_id, inference) in zip(
+            (record, inferences) 
+            for record, (_, inferences) in zip(
                 sorted_reg_records, 
                 sorted_inferences
             )
@@ -286,7 +299,7 @@ class Inferencer:
 
         all_statistics = {}
         for future in asyncio.as_completed(
-            map(lambda args: self._infer_stats(*args), mapped_pairs)
+            map(lambda args: self._poll_for_stats(*args), mapped_pairs)
         ):
             result = await future
             all_statistics.update(result)
