@@ -210,7 +210,7 @@ class RPCFormatter:
     form compatible with the interfaces defined by the worker node's REST-RPC 
     service.
     """
-    def strip_keys(self, record, concise=False):
+    def strip_keys(self, record, concise: bool = False):
         """ Remove db-specific keys and descriptors
             Note: This is an in-place operation!
 

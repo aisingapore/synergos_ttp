@@ -148,27 +148,28 @@ def start_expt_run_inference(
             verbose=verbose
         )
 
-        # Restore model from archive (must differentiate between Normal & SNN)
+        # Instantiate grid environment
         model = load_selected_experiment(expt_record=experiment)
-        archived_weight_paths = model_records.read(**keys)
+        args = load_selected_run(run_record=run)
 
-        # Check if a trained model exists
-        if archived_weight_paths:
+        # Check if current expt-run combination has already been trained
+        combination_archive = model_records.read(**keys)
+        if combination_archive:
 
-            archived_global_weights = th.load(archived_weight_paths['global']['path'])
-            model.load_state_dict(archived_global_weights)
+            stripped_archive = rpc_formatter.strip_keys(
+                combination_archive, 
+                concise=True
+            )
 
-            args = load_selected_run(run_record=run)
-        
-            #############################################
-            # Inference V1: Assume TTP's role is robust #
-            #############################################
-
+            # Restore models from archive (differentiated between Normal & SNN)
             fl_expt = FederatedLearning(args, ttp, workers, model)
-            fl_expt.load(shuffle=False) # for re-assembly during inference
-            
+            fl_expt.load(
+                archive=stripped_archive,
+                shuffle=False   # for re-assembly during inference
+            ) 
+                    
             # Only infer for specified participant on his/her own test dataset
-            participants_inferences = fl_expt.evaluate(
+            participants_inferences, _ = fl_expt.evaluate(
                 metas=metas,
                 workers=participants
             )

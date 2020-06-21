@@ -327,11 +327,6 @@ def start_expt_run_training(keys: dict, registrations: list,
         model = load_selected_experiment(expt_record=experiment)
         args = load_selected_run(run_record=run)
     
-        # Perform a Federated Learning experiment
-        fl_expt = FederatedLearning(args, ttp, workers, model)
-        fl_expt.load()
-        fl_expt.fit()
-
         # Export trained model weights/biases for persistence
         res_dir = os.path.join(
             out_dir, 
@@ -340,6 +335,11 @@ def start_expt_run_training(keys: dict, registrations: list,
             keys['run_id']
         )
         Path(res_dir).mkdir(parents=True, exist_ok=True)
+
+        # Perform a Federated Learning experiment
+        fl_expt = FederatedLearning(args, ttp, workers, model, out_dir=res_dir)
+        fl_expt.load()
+        fl_expt.fit()
 
         out_paths = fl_expt.export(res_dir)
 

@@ -11,7 +11,7 @@ import copy
 import json
 import logging
 import os
-from collections import OrderedDict
+from collections import OrderedDict, defaultdict
 from multiprocessing import Manager
 from pathlib import Path
 from typing import Tuple, List, Dict, Union
@@ -37,161 +37,16 @@ from torch.optim.lr_scheduler import LambdaLR, CyclicLR
 from tqdm import tqdm
 
 # Custom
-from .arguments import Arguments
-from .early_stopping import EarlyStopping
-from .utils import RPCFormatter, UrlConstructor
+from config import seed_everything
+from rest_rpc.training.core.arguments import Arguments
+from rest_rpc.training.core.early_stopping import EarlyStopping
+from rest_rpc.training.core.model import Model
 
 ##################
 # Configurations #
 ##################
 
-class Inferencer:
-    """ 
-    Takes in a list of minibatch IDs and sends them to worker nodes. Workers
-    will use these IDs to reconstruct their aggregated test datasets with 
-    prediction labels mapped appropriately.
-
-    Attributes:
-        registrations
-        inferences (dict(worker_id, dict(str, int)))
-    """
-    def __init__(self, project_id, expt_id, run_id, inferences):
-        self.__rpc_formatter = RPCFormatter()
-        self.project_id = project_id
-        self.expt_id = expt_id
-        self.run_id = run_id
-        self.inferences = inferences
-
-    ###########
-    # Helpers #
-    ###########
-
-    async def _infer_stats(self, reg_record, inference):
-        """ Parses a registration record for participant metadata, before
-            submitting minibatch IDs of inference objects to corresponding 
-            worker node's REST-RPC service for calculating descriptive
-            statistics and prediction exports
-
-        Args:
-            reg_record (tinydb.database.Document): Participant-project details
-            minibatch_ids (list): List of dicts containing inference object IDs
-        Returns:
-            Statistics (dict)
-        """
-        participant_details = reg_record['participant'].copy()
-        participant_id = participant_details['id']
-        participant_ip = participant_details['host']
-        participant_f_port = participant_details.pop('f_port') # Flask port
-
-        # Construct destination url for interfacing with worker REST-RPC
-        destination_constructor = UrlConstructor(
-            host=participant_ip,
-            port=participant_f_port
-        )
-        destination_url = destination_constructor.construct_predict_url(
-            project_id=self.project_id,
-            expt_id=self.expt_id,
-            run_id=self.run_id
-        )
-
-        relevant_alignments = reg_record['relations']['Alignment'][0]
-        stripped_alignments = self.__rpc_formatter.strip_keys(relevant_alignments)
-
-        logging.debug(f"inference: {inference}")
-        # minibatch_ids = [
-        #     {
-        #         t_type: tensor.id_at_location 
-        #         for t_type, tensor in mb_tensors.items()
-        #     } 
-        #     for mb_tensors in inference
-        # ]
-        # minibatch_ids = [
-        #     {
-        #         t_type: tensor.id_at_location 
-        #         for t_type, tensor in inference.items()
-        #     }
-        # ]
-
-        payload = {
-            'alignments': stripped_alignments,
-            'id_mappings': [inference]#minibatch_ids       
-        }
-
-        # Trigger remote inference by posting alignments & ID mappings to 
-        # `Predict` route in worker
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                destination_url,
-                json=payload
-            ) as response:
-                resp_json = await response.json(content_type='application/json')
-        
-        metadata = resp_json['data']
-        return {participant_id: metadata}
-
-    async def _collect_all_stats(self, reg_records):
-        """ Asynchroneous function to submit inference data to registered
-            participant servers in return for remote performance statistics
-
-        Args:
-            reg_records (list(tinydb.database.Document))): Participant Registry
-        Returns:
-            All participants' statistics (dict)
-        """
-        sorted_reg_records = sorted(
-            reg_records, 
-            key=lambda x: x['participant']['id']
-        )
-        sorted_inferences = sorted(
-            self.inferences.items(), 
-            key=lambda x: x[0]
-        )
-
-        logging.debug(f"Sorted inferences: {sorted_inferences}")
-
-        mapped_pairs = [
-            (record, inference) 
-            for record, (p_id, inference) in zip(
-                sorted_reg_records, 
-                sorted_inferences
-            )
-        ]
-
-        all_statistics = {}
-        for future in asyncio.as_completed(
-            map(lambda args: self._infer_stats(*args), mapped_pairs)
-        ):
-            result = await future
-            all_statistics.update(result)
-
-        return all_statistics
-
-    ##################
-    # Core Functions #
-    ##################
-
-    def infer(self, reg_records):
-        """ Wrapper function for triggering asychroneous remote inferencing of
-            participant nodes
-
-        Args:
-            reg_records (list(tinydb.database.Document))): Participant Registry
-        Returns:
-            All participants' statistics (dict)
-        """
-        # loop = asyncio.new_event_loop()
-        # asyncio.set_event_loop(loop)
-        loop = asyncio.get_event_loop()
-
-        try:
-            all_stats = loop.run_until_complete(
-                self._collect_all_stats(reg_records)
-            )
-        finally:
-            # loop.close()
-            pass
-
-        return all_stats
+infinite_nested_dict = lambda: defaultdict(infinite_nested_dict)
 
 ###############################################
 # Abstract Training Class - FederatedLearning #
@@ -221,8 +76,15 @@ class FederatedLearning:
         local_models (dict(str,Models)): Most recent cache of local models
         loss_history (dict): Local & global losses tracked throughout FL training
     """
-    def __init__(self, arguments, crypto_provider, workers, model, loop=None):
-        
+    def __init__(
+        self, 
+        arguments: Arguments, 
+        crypto_provider: sy.VirtualWorker, 
+        workers: list, 
+        model: Model,
+        out_dir: str = '.',
+        loop=None
+    ):
         # Network attributes
         self.arguments = arguments
         self.crypto_provider = crypto_provider
@@ -238,10 +100,23 @@ class FederatedLearning:
         # Model attributes
         self.global_model = model
         self.local_models = {}
-        self.loss_history = {'local': {}, 'global': {}}
+        self.loss_history = {
+            'global': {
+                'train': {},
+                'evaluate': {}
+            },
+            'local': {}
+        }
 
         # Optimisation attributes
         self.loop = loop
+
+        # Export Attributes
+        self.out_dir = out_dir
+        self.checkpoints = {}
+
+        # Lock random states within server
+        seed_everything(seed=self.arguments.seed)
 
     ############
     # Checkers #
@@ -411,16 +286,13 @@ class FederatedLearning:
         # return train_loaders, eval_loaders, test_loaders
 
 
-    def perform_FL_training(self, datasets, is_shared=False):
-        """ Performs a remote federated learning cycle leveraging PySyft.
+    def build_custom_criterion(self):
+        """ Augments a selected criterion with the ability to use FedProx
 
-        Args:
-            datasets (sy.FederatedDataLoader): Distributed training datasets
         Returns:
-            trained global model (Model)
-            Cached local models  (dict(Model))
+            Surrogate criterion (SurrogateCriterion)
         """
-        
+
         class SurrogateCriterion(self.arguments.criterion):
             """ A wrapper class to augment a specified PyTorch criterion to 
                 suppport FedProx 
@@ -520,6 +392,19 @@ class FederatedLearning:
                 self._cache = []
                 return self
 
+        return SurrogateCriterion
+
+
+    def perform_FL_training(self, datasets, is_shared=False):
+        """ Performs a remote federated learning cycle leveraging PySyft.
+
+        Args:
+            datasets (sy.FederatedDataLoader): Distributed training datasets
+        Returns:
+            trained global model (Model)
+            Cached local models  (dict(Model))
+        """
+        
         def generate_local_models(is_snn=False):
             """ Abstracts the generation of local models in a federated learning
                 context. For default FL training (i.e. non-SNN/FedAvg/Fedprox),
@@ -545,8 +430,17 @@ class FederatedLearning:
             
             return local_models
         
-        def perform_parallel_training(datasets, models, cache, optimizers, 
-                                      schedulers, criterions, stoppers, epochs):
+        def perform_parallel_training(
+            datasets: dict, 
+            models: dict, 
+            cache: dict, 
+            optimizers: dict, 
+            schedulers: dict, 
+            criterions: dict, 
+            stoppers: dict, 
+            rounds: int,
+            epochs: int
+        ):
             """ Parallelizes training across each distributed dataset 
                 (i.e. simulated worker) Parallelization here refers to the 
                 training of all distributed models per epoch.
@@ -561,6 +455,7 @@ class FederatedLearning:
                 schedulers (dict(lr_scheduler)): Local LR schedulers
                 criterions (dict(th.nn)): Custom local objective function
                 stoppers   (dict(EarlyStopping)): Local early stopping drivers
+                rounds (int): Current round of training
                 epochs (int): No. of epochs to train each local model
             Returns:
                 trained local models
@@ -705,11 +600,36 @@ class FederatedLearning:
             asyncio.set_event_loop(loop)
 
             try:
-                for _ in range(epochs):
+                for epoch in range(epochs):
 
                     asyncio.get_event_loop().run_until_complete(
                         train_datasets(datasets=datasets)
                     )
+
+                    # Update cache for local models
+                    self.local_models = {w.id:lm for w,lm in models.items()}
+
+                    # Export ONLY local models. Losses will be accumulated and
+                    # cached. This is to prevent the autograd computation graph
+                    # from breaking and interfering with weight updates
+                    round_key = f"round_{rounds}"
+                    epoch_key = f"epoch_{epoch}"
+                    checkpoint_dir = os.path.join(
+                        self.out_dir, 
+                        "checkpoints",
+                        round_key, 
+                        epoch_key
+                    )
+                    Path(checkpoint_dir).mkdir(parents=True, exist_ok=True)
+                    grid_checkpoint = self.export(checkpoint_dir
+                    )
+                    for _, logs in grid_checkpoint.items():
+                        origin = logs.pop('origin')
+                        worker_archive = self.checkpoints.get(origin, {})
+                        round_archive = worker_archive.get(round_key, {})
+                        round_archive.update({epoch_key: logs})
+                        worker_archive.update(round_archive)
+                        self.checkpoints.update(worker_archive)
 
             finally:
                 loop.close()
@@ -767,9 +687,7 @@ class FederatedLearning:
                 ).sum(dim=0).view(*layer_shape)
 
             return aggregated_params
-    
-        th.manual_seed(self.arguments.seed)
-
+ 
         ###########################
         # Implementation Footnote #
         ###########################
@@ -783,9 +701,8 @@ class FederatedLearning:
         # Note: If MPC is requested, global model itself cannot be shared, only 
         # its copies are shared. This is due to restrictions in PointerTensor 
         # mechanics.
-        
-        global_train_stopper = EarlyStopping(**self.arguments.early_stopping_params)
-        # global_val_stopper = EarlyStopping(**self.arguments.early_stopping_params)
+
+        global_val_stopper = EarlyStopping(**self.arguments.early_stopping_params)
 
         rounds = 0
         pbar = tqdm(total=self.arguments.rounds, desc='Rounds', leave=True)
@@ -828,9 +745,9 @@ class FederatedLearning:
             }
 
             criterions = {
-                w: SurrogateCriterion(
-                    **self.arguments.criterion_params)
-                for w,m in local_models.items()
+                w: self.build_custom_criterion()(
+                    **self.arguments.criterion_params
+                ) for w,m in local_models.items()
             }
             
             stoppers = {
@@ -847,11 +764,11 @@ class FederatedLearning:
                 schedulers=schedulers,
                 criterions=criterions, 
                 stoppers=stoppers,
+                rounds=rounds,
                 epochs=self.arguments.epochs
             )
 
-            # # Retrieve all models from their respective workers
-            # retrieved_models = {w: m.get() for w,m in trained_models.items()}
+            # Retrieve all models from their respective workers
             logging.debug(f"Current global model:\n {self.global_model.state_dict()}")
             aggregated_params = calculate_global_params(
                 self.global_model, 
@@ -859,51 +776,59 @@ class FederatedLearning:
                 datasets
             )
 
-            # # Update weights with aggregated parameters 
+            # Update weights with aggregated parameters 
             self.global_model.load_state_dict(aggregated_params)
             logging.debug(f"New global model:\n {self.global_model.state_dict()}")
 
-            # Update cache for local models
-            self.local_models = {w.id:lm for w,lm in retrieved_models.items()}
-
-            # Check if early stopping is possible for global model
             final_local_losses = {
                 w.id: c._cache[-1].get()
                 for w,c in criterions.items()
             }
-            global_loss = th.mean(
+
+            # Store local losses for analysis
+            for w_id, loss in final_local_losses.items():
+                local_loss_archive = self.loss_history['local'].get(w_id, {})
+                local_loss_archive.update({rounds: loss.item()})
+                self.loss_history['local'][w_id] = local_loss_archive
+
+            global_train_loss = th.mean(
                 th.stack(list(final_local_losses.values())),
                 dim=0
             )
 
-            # Store local losses for analysis
-            for w_id, loss in final_local_losses.items():
-                local_archive = self.loss_history['local'].get(w_id, {})
-                local_archive.update({rounds: loss.item()})
-                self.loss_history['local'][w_id] = local_archive
+            # Validate the global model
+            _, evaluation_losses = self.evaluate(metas=['evaluate'])
+            global_val_loss = evaluation_losses['evaluate']
 
             # Store global losses for analysis
-            self.loss_history['global'].update({rounds: global_loss.item()})
+            global_loss_archive = self.loss_history['global']
+            global_train_losses = global_loss_archive.get('train', {})
+            global_train_losses.update({rounds: global_train_loss.item()})
+            global_val_losses = global_loss_archive.get('evaluate', {})
+            global_val_losses.update({rounds: global_val_loss.item()})
+            self.loss_history['global'] = {
+                'train': global_train_losses,
+                'evaluate': global_val_losses
+            }
 
-            # global_train_stopper(global_loss, self.global_model)
-            # # global_val_stopper(global_loss, self.global_model)
-            
-            # # If global model is deemed to have stagnated, stop training
-            # if global_train_stopper.early_stop:# or global_val_stopper.early_stop:
-            #     break
+            # If global model is deemed to have stagnated, stop training
+            global_val_stopper(global_val_loss, self.global_model)
+            if global_val_stopper.early_stop:
+                logging.info("Global model has stagnated. Training round terminated!\n")
+                break
 
             rounds += 1
             pbar.update(1)
         
         pbar.close()
 
-        logging.info(f"Objects in TTP: {self.crypto_provider}, {len(self.crypto_provider._objects)}")
-        logging.info(f"Objects in sy.local_worker: {sy.local_worker}, {len(sy.local_worker._objects)}")
+        logging.debug(f"Objects in TTP: {self.crypto_provider}, {len(self.crypto_provider._objects)}")
+        logging.debug(f"Objects in sy.local_worker: {sy.local_worker}, {len(sy.local_worker._objects)}")
 
         return self.global_model, self.local_models
 
 
-    def perform_FL_testing(self, datasets, workers=[], is_shared=True, **kwargs): 
+    def perform_FL_evaluation(self, datasets, workers=[], is_shared=True, **kwargs): 
         """ Obtains predictions given a validation/test dataset upon 
             a specified trained global model.
             
@@ -916,13 +841,12 @@ class FederatedLearning:
             Tagged prediction tensor (sy.PointerTensor)
         """    
         async def evaluate_worker(packet):
-            """ Train a worker on its single batch, and does an in-place 
-                updates for its local model, optimizer & criterion 
+            """ Evaluate a worker on its single packet of minibatch data
             
             Args:
                 packet (dict):
                     A single packet of data containing the worker and its
-                    data to be trained on 
+                    data to be evaluated upon 
 
             """ 
 
@@ -945,8 +869,10 @@ class FederatedLearning:
                 return {}
 
             self.global_model = self.global_model.send(worker)
+            self.local_models[worker.id] = self.local_models[worker.id].send(worker)
 
             self.global_model.eval()
+            self.local_models[worker.id].eval()
             with th.no_grad():
 
                 outputs = self.global_model(data).detach()
@@ -963,6 +889,28 @@ class FederatedLearning:
                     predictions.zero_()
                     predictions.scatter_(1, predicted_labels.view(-1,1), 1)
 
+                # Compute loss
+                surrogate_criterion = self.build_custom_criterion()(
+                    **self.arguments.criterion_params
+                )
+                if self.arguments.is_condensed:
+                    # To handle binomial context
+                    loss = surrogate_criterion(
+                        outputs, 
+                        labels.float(),
+                        w=self.local_models[worker.id].state_dict(),
+                        wt=self.global_model.state_dict()
+                    )
+                else:
+                    # To handle multinomial context
+                    loss = surrogate_criterion(
+                        outputs, 
+                        th.max(labels, 1)[1],
+                        w=self.local_models[worker.id].state_dict(),
+                        wt=self.global_model.state_dict()
+                    )
+
+            self.local_models[worker.id] = self.local_models[worker.id].get()
             self.global_model = self.global_model.get()
 
             #############################################
@@ -1053,8 +1001,9 @@ class FederatedLearning:
 
             outputs = outputs.get()
             predictions = predictions.get()
+            loss = loss.get()
 
-            return {worker: {"y_pred": predictions, "y_score": outputs}}
+            return {worker: {"y_pred": predictions, "y_score": outputs}}, loss
 
             ####################################################################
             # Inference V2: Strictly enforce federated procedures in inference #
@@ -1116,6 +1065,7 @@ class FederatedLearning:
             logging.debug(f"Batch: {batch}, {type(batch)}")
 
             batch_evaluations = {}
+            batch_losses = []
 
             # If multiple prediction sets have been declared across all workers,
             # batch will be a dictionary i.e. {<worker_1>: (data, labels), ...}
@@ -1124,17 +1074,19 @@ class FederatedLearning:
                 for worker_future in asyncio.as_completed(
                     map(evaluate_worker, batch)
                 ):
-                    evaluated_worker_batch = await worker_future
+                    evaluated_worker_batch, loss = await worker_future
                     batch_evaluations.update(evaluated_worker_batch)
+                    batch_losses.append(loss)
 
             # If only 1 prediction set is declared (i.e. only 1 guest present), 
             # batch will be a tuple i.e. (data, label)
             elif isinstance(batch, tuple):
 
-                evaluated_worker_batch = await evaluate_worker(batch)
+                evaluated_worker_batch, loss = await evaluate_worker(batch)
                 batch_evaluations.update(evaluated_worker_batch)
+                batch_losses.append(loss)
 
-            return batch_evaluations
+            return batch_evaluations, batch_losses
 
         async def evaluate_datasets(datasets):
             """ Train all batches in a composite federated dataset """
@@ -1178,8 +1130,9 @@ class FederatedLearning:
             ####################################################################
 
             all_worker_outputs = {}
+            all_losses = []
+            for batch_evaluations, batch_losses in all_batch_evaluations:
 
-            for batch_evaluations in all_batch_evaluations:
                 for worker, outputs in batch_evaluations.items():
 
                     aggregated_outputs = all_worker_outputs.get(worker.id, {})
@@ -1191,6 +1144,8 @@ class FederatedLearning:
 
                     all_worker_outputs[worker.id] = aggregated_outputs
 
+                all_losses += batch_losses
+
             # Concatenate all batch outputs for each worker
             all_combined_outputs = {
                 worker_id: {
@@ -1200,7 +1155,9 @@ class FederatedLearning:
                 for worker_id, batch_outputs in all_worker_outputs.items()
             }
             
-            return all_combined_outputs
+            avg_loss = th.mean(th.stack(all_losses), dim=0)
+
+            return all_combined_outputs, avg_loss
 
             ####################################################################
             # Inference V2: Strictly enforce federated procedures in inference #
@@ -1218,26 +1175,28 @@ class FederatedLearning:
         asyncio.set_event_loop(loop)
 
         try:
-            all_combined_outputs = asyncio.get_event_loop().run_until_complete(
+            all_combined_outputs, avg_loss = asyncio.get_event_loop().run_until_complete(
                 evaluate_datasets(datasets=datasets)
             )
 
         finally:
             loop.close()
 
-        return all_combined_outputs
+        return all_combined_outputs, avg_loss
 
     ##################
     # Core functions #
     ##################
     
-    def load(self, shuffle=True):
-        """ Load all remote datasets into Federated dataloaders for batch
-            operations if data has not already been loaded. Note that loading 
-            is only done once, since searching for datasets within a grid will
-            cause query results to accumulate exponentially on TTP. Hence, this
-            function will only load datasets ONLY if it has NOT already been
-            loaded.
+    def load(self, archive=None, shuffle=True):
+        """ Prepares federated environment for training or inference. If archive
+            is specified, restore all models tracked, otherwise, the default
+            global model is used. All remote datasets will be loaded into 
+            Federated dataloaders for batch operations if data has not already 
+            been loaded. Note that loading is only done once, since searching 
+            for datasets within a grid will cause query results to accumulate 
+            exponentially on TTP. Hence, this function will only load datasets 
+            ONLY if it has NOT already been loaded.
 
             Note:
                 When `shuffle=True`, federated dataloaders will SHUFFLE datasets
@@ -1250,11 +1209,51 @@ class FederatedLearning:
                 the worker nodes during evaluation/inference
             
         Args:
+            archive (dict): Paths to exported global & local models
             shuffle (bool): Toggles the way the minibatches are generated
         Returns:
             train_loader (sy.FederatedLoader): Training data in configured batches
             test_loader (sy.FederatedLoader): Testing data in configured batches
         """
+        if archive:
+
+            for _, logs in archive.items():
+
+                logging.debug(f"Logs: {logs}")
+                archived_origin = logs['origin']
+
+                if archived_origin == self.crypto_provider.id:
+                    archived_model_weights = th.load(logs['path'])
+                    self.global_model.load_state_dict(archived_model_weights)
+                else:
+
+                    ###########################
+                    # Implementation Footnote #
+                    ###########################
+
+                    # Because local models in SNN will be optimal models owned
+                    # by the participants themselves, there are 2 ways of 
+                    # handling model archival - Store the full model, or get 
+                    # participants to register the architecture & hyperparameter
+                    # sets of their optimal setup, while exporting the model
+                    # weights. The former allows models to be captured alongside
+                    # their architectures, hence removing the need for tracking 
+                    # additional information unncessarily. However, models 
+                    # exported this way have limited use outside of REST-RPC, 
+                    # since they are pickled relative to the file structure of 
+                    # the package. The latter is the more flexible approach, 
+                    # since weights will still remain usable even outside the
+                    # context of REST-RPC, as long as local model architectures,
+                    # are available.  
+                    
+                    if self.arguments.is_snn:
+                        archived_model = th.load(logs['path'])
+                    else:
+                        archived_model_weights = th.load(logs['path'])
+                        archived_model = copy.deepcopy(self.global_model)
+                        archived_model.load_state_dict(archived_model_weights)
+                    self.local_models[archived_origin] = archived_model          
+
         if not self.is_data_loaded():
             
             # Extract data pointers from workers
@@ -1292,13 +1291,22 @@ class FederatedLearning:
         
         return self.global_model
 
-    
-    def evaluate(self, metas=[], workers=[], **kwargs):
-        """ Using the current instance of the global model, performs inference 
-            on pre-specified datasets
 
+    def evaluate(
+        self, 
+        metas: List[str] = [], 
+        workers: List[str] = [], 
+        **kwargs
+    ) -> Dict[str, Dict[str, th.Tensor]]:
+        """ Using the current instance of the global model, performs inference 
+            on pre-specified datasets.
+
+        Args:
+            metas (list(meta)): Meta tokens indicating which datasets are to be
+                evaluated. If empty (default), all meta datasets (i.e. training,
+                validation and testing) will be evaluated
         Returns:
-            Inferences (dict(str, th.tensor))
+            Inferences (dict(worker_id, dict(result_type, th.tensor)))
         """
         if not self.is_data_loaded():
             raise RuntimeError("Grid data has not been aggregated! Call '.load()' first & try again.")
@@ -1317,11 +1325,12 @@ class FederatedLearning:
 
         # Evaluate global model using datasets conforming to specified metas
         inferences = {}
+        losses = {}
         for meta, dataset in DATA_MAP.items():
 
             if meta in metas:
 
-                worker_meta_inference = self.perform_FL_testing(
+                worker_meta_inference, avg_loss = self.perform_FL_evaluation(
                     datasets=dataset,
                     workers=workers,
                     is_shared=True,
@@ -1334,8 +1343,10 @@ class FederatedLearning:
                     worker_results = inferences.get(worker_id, {})
                     worker_results[meta] = meta_result
                     inferences[worker_id] = worker_results
+
+                losses[meta] = avg_loss
         
-        return inferences
+        return inferences, losses
       
     
     def reset(self):
@@ -1362,54 +1373,86 @@ class FederatedLearning:
         raise NotImplementedError
     
     
-    def export(self, out_dir):
+    def export(self, out_dir: str = None, excluded: List[str] = []) -> dict:
         """ Exports the global model state dictionary to file
         
+        Args:
+            out_dir (str): Path to output directory for export
         Returns:
             Path-to-file (str)
         """
-        out_paths = {}
 
-        # Export global model to file
-        global_model_out_path = os.path.join(out_dir, "global_model.pt")
-        th.save(self.global_model.state_dict(), global_model_out_path)
+        def save_global_model():
+            if 'global' in excluded: return None
+            # Export global model to file
+            global_model_out_path = os.path.join(
+                out_dir, 
+                "global_model.pt"
+            )
+            # Only states can be saved, since Model is not picklable
+            th.save(self.global_model.state_dict(), global_model_out_path)
+            return global_model_out_path
 
-        # Export global loss history to file
-        global_loss_out_path = os.path.join(out_dir, "global_loss_history.json")
-        with open(global_loss_out_path, 'w') as glp:
-            print("Global Loss History:", self.loss_history['global'])
-            json.dump(self.loss_history['global'], glp)
+        def save_global_losses():
+            if 'loss' in excluded: return None
+            # Export global loss history to file
+            global_loss_out_path = os.path.join(
+                out_dir, 
+                "global_loss_history.json"
+            )
+            with open(global_loss_out_path, 'w') as glp:
+                print("Global Loss History:", self.loss_history['global'])
+                json.dump(self.loss_history['global'], glp)
+            return global_loss_out_path
 
-        # Package global metadata for storage
-        out_paths['global'] = {
-            "origin": self.crypto_provider.id,
-            "path": global_model_out_path,
-            "loss_history": global_loss_out_path
-        }
-
-        for idx, (worker_id, local_model) in enumerate(self.local_models.items(), start=1):
-
+        def save_worker_model(worker_id, model):
+            if 'local' in excluded: return None
             # Export local model to file
             local_model_out_path = os.path.join(
                 out_dir, 
                 f"local_model_{worker_id}.pt"
             )
-            th.save(local_model.state_dict(), local_model_out_path)
-            
+            if self.arguments.is_snn:
+                # Local models are saved directly to log their architectures
+                th.save(model, local_model_out_path)
+            else:
+                th.save(model.state_dict(), local_model_out_path)
+            return local_model_out_path
+
+        def save_worker_losses(worker_id):
+            if 'loss' in excluded: return None
             # Export local loss history to file
             local_loss_out_path = os.path.join(
                 out_dir, 
                 f"local_loss_history_{worker_id}.json"
             )
             with open(local_loss_out_path, 'w') as llp:
-                print("Local Loss History:", self.loss_history['local'][worker_id])
-                json.dump(self.loss_history['local'][worker_id], llp)
+                json.dump(self.loss_history['local'].get(worker_id, {}), llp)
+            return local_loss_out_path
 
+        # Override cached output directory with specified directory if any
+        out_dir = out_dir if out_dir else self.out_dir
+
+        out_paths = {}
+
+        # Package global metadata for storage
+        out_paths['global'] = {
+            'origin': self.crypto_provider.id,
+            'path': save_global_model(),
+            'loss_history': save_global_losses(),
+            'checkpoints': self.checkpoints.get(self.crypto_provider.id, {})
+        }
+
+        for idx, (worker_id, local_model) in enumerate(
+            self.local_models.items(), 
+            start=1
+        ):
             # Package local metadata for storage
             out_paths[f'local_{idx}'] = {
-                "origin": worker_id,
-                "path": local_model_out_path,
-                "loss_history": local_loss_out_path
+                'origin': worker_id,
+                'path': save_worker_model(worker_id, model=local_model),
+                'loss_history': save_worker_losses(worker_id),
+                'checkpoints': self.checkpoints.get(worker_id, {})
             }
 
         return out_paths
