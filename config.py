@@ -101,6 +101,9 @@ DATA_DIR = os.path.join(SRC_DIR, "data")
 # State test directory
 TEST_DIR = os.path.join(SRC_DIR, "tests")
 
+# State MLFlow local directory
+MLFLOW_DIR = os.path.join(SRC_DIR, "mlflow")
+
 # Initialise Cache
 CACHE = infinite_nested_dict()
 
@@ -109,6 +112,7 @@ logging.debug(f"Input directory detected: {IN_DIR}")
 logging.debug(f"Output directory detected: {OUT_DIR}")
 logging.debug(f"Data directory detected: {DATA_DIR}")
 logging.debug(f"Test directory detected: {TEST_DIR}")
+logging.debug(f"MLFlow directory detected: {MLFLOW_DIR}")
 logging.debug(f"Cache initialised: {CACHE}")
 
 ##########################################

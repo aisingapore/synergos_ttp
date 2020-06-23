@@ -621,15 +621,19 @@ class FederatedLearning:
                         epoch_key
                     )
                     Path(checkpoint_dir).mkdir(parents=True, exist_ok=True)
-                    grid_checkpoint = self.export(checkpoint_dir
+                    grid_checkpoint = self.export(
+                        out_dir=checkpoint_dir,
+                        excluded=['checkpoint']
                     )
                     for _, logs in grid_checkpoint.items():
                         origin = logs.pop('origin')
-                        worker_archive = self.checkpoints.get(origin, {})
-                        round_archive = worker_archive.get(round_key, {})
-                        round_archive.update({epoch_key: logs})
-                        worker_archive.update(round_archive)
-                        self.checkpoints.update(worker_archive)
+
+                        # Note: Structure - {worker: {round: {epoch: {...}}}}
+                        worker_archive = self.checkpoints.get(origin, {}) 
+                        round_archive = worker_archive.get(round_key, {}) 
+                        round_archive.update({epoch_key: logs})           
+                        worker_archive.update({round_key: round_archive})
+                        self.checkpoints.update({origin: worker_archive})
 
             finally:
                 loop.close()
@@ -1188,7 +1192,12 @@ class FederatedLearning:
     # Core functions #
     ##################
     
-    def load(self, archive=None, shuffle=True):
+    def load(
+        self, 
+        archive: dict = None, 
+        shuffle: bool = True, 
+        version: Tuple[str, str] = None
+    ) -> Tuple[sy.FederatedDataLoader]:
         """ Prepares federated environment for training or inference. If archive
             is specified, restore all models tracked, otherwise, the default
             global model is used. All remote datasets will be loaded into 
@@ -1222,9 +1231,20 @@ class FederatedLearning:
                 logging.debug(f"Logs: {logs}")
                 archived_origin = logs['origin']
 
+                # Check if exact version of the federated grid was specified
+                if version:
+                    round_idx = version[0]
+                    epoch_idx = version[1]
+                    filtered_version = logs['checkpoints'][round_idx][epoch_idx]
+                    archived_state = th.load(filtered_version['path'])
+                
+                # Otherwise, load the final state of the grid
+                else:
+                    archived_state = th.load(logs['path'])
+
                 if archived_origin == self.crypto_provider.id:
-                    archived_model_weights = th.load(logs['path'])
-                    self.global_model.load_state_dict(archived_model_weights)
+                    self.global_model.load_state_dict(archived_state)
+
                 else:
 
                     ###########################
@@ -1247,11 +1267,11 @@ class FederatedLearning:
                     # are available.  
                     
                     if self.arguments.is_snn:
-                        archived_model = th.load(logs['path'])
+                        archived_model = archived_state
                     else:
-                        archived_model_weights = th.load(logs['path'])
                         archived_model = copy.deepcopy(self.global_model)
-                        archived_model.load_state_dict(archived_model_weights)
+                        archived_model.load_state_dict(archived_state)
+                        
                     self.local_models[archived_origin] = archived_model          
 
         if not self.is_data_loaded():
@@ -1439,9 +1459,12 @@ class FederatedLearning:
         out_paths['global'] = {
             'origin': self.crypto_provider.id,
             'path': save_global_model(),
-            'loss_history': save_global_losses(),
-            'checkpoints': self.checkpoints.get(self.crypto_provider.id, {})
+            'loss_history': save_global_losses()
         }
+        if 'checkpoint' not in excluded:
+            out_paths['global'].update({
+                'checkpoints': self.checkpoints.get(self.crypto_provider.id, {})
+            })
 
         for idx, (worker_id, local_model) in enumerate(
             self.local_models.items(), 
@@ -1452,7 +1475,10 @@ class FederatedLearning:
                 'origin': worker_id,
                 'path': save_worker_model(worker_id, model=local_model),
                 'loss_history': save_worker_losses(worker_id),
-                'checkpoints': self.checkpoints.get(worker_id, {})
             }
+            if 'checkpoint' not in excluded:
+                out_paths[f'local_{idx}'].update({
+                    'checkpoints': self.checkpoints.get(worker_id, {})
+                })
 
         return out_paths

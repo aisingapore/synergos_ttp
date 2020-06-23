@@ -33,6 +33,7 @@ from rest_rpc.training.core.utils import (
 )
 from rest_rpc.evaluation.core.server import start_proc
 from rest_rpc.evaluation.core.utils import PredictionRecords
+from rest_rpc.evaluation.validations import meta_stats_model
 
 ##################
 # Configurations #
@@ -80,34 +81,7 @@ pred_input_model = ns_api.model(
 )
 
 # Marshalling Outputs
-stats_model = ns_api.model(
-    name="statistics",
-    model={
-        'accuracy': fields.Float(),
-        'roc_auc_score': fields.Float(),
-        'pr_auc_score': fields.Float(),
-        'f_score': fields.Float(),
-        'TPR': fields.Float(),
-        'TNR': fields.Float(),
-        'PPV': fields.Float(),
-        'NPV': fields.Float(),
-        'FPR': fields.Float(),
-        'FNR': fields.Float(),
-        'FDR': fields.Float(),
-        'TP': fields.Integer(),
-        'TN': fields.Integer(),
-        'FP': fields.Integer(),
-        'FN': fields.Integer()
-    }
-)
-
-meta_stats_model = ns_api.model(
-    name="meta_statistics",
-    model={
-        'statistics': fields.Nested(stats_model, skip_none=True),
-        'res_path': fields.String(skip_none=True)
-    }
-)
+# - same `meta_stats_model` retrieved from Validations resource
 
 pred_inferences_model = ns_api.model(
     name="prediction_inferences",
@@ -322,7 +296,8 @@ class Predictions(Resource):
                 'runs': runs,
                 'registrations': updated_project_registrations,
                 'participants': [participant_id],
-                'metas': ['predict']
+                'metas': ['predict'],
+                'version': None # defaults to final state of federated grid
             }
             project_combinations[registered_project_id] = kwargs
 

@@ -8,9 +8,6 @@
 import argparse
 import logging
 
-# Libs
-
-
 # Custom
 from rest_rpc import app
 

@@ -11,6 +11,7 @@ from flask import Blueprint
 from flask_restx import Api
 
 # Custom
+from rest_rpc.evaluation.validations import ns_api as validation_ns
 from rest_rpc.evaluation.predictions import ns_api as prediction_ns
 
 ##################
@@ -30,19 +31,14 @@ api = Api(
 # Validation management API #
 #############################
 
-# api.add_namespace(
-#     prediction_ns,
-#     path="/participants/<participant_id>/validations"
-# )
+api.add_namespace(
+    validation_ns,
+    path="/projects/<project_id>/validations"
+)
 
 #############################
 # Prediction management API #
 #############################
-
-# api.add_namespace(
-#     prediction_ns,
-#     path="/projects/<project_id>/predictions"
-# )
 
 api.add_namespace(
     prediction_ns,

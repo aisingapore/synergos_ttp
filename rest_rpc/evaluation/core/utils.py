@@ -8,17 +8,29 @@
 import asyncio
 import json
 import logging
-from datetime import datetime
+import os
+import shutil
+from pathlib import Path
+from typing import Dict, List
 
 # Libs
 import aiohttp
 import jsonschema
+import mlflow
 
 # Custom
 from rest_rpc import app
-from rest_rpc.connection.core.utils import TopicalPayload, AssociationRecords
-from rest_rpc.connection.core.datetime_serialization import DateTimeSerializer
-from rest_rpc.training.core.utils import UrlConstructor, RPCFormatter
+from rest_rpc.connection.core.utils import (
+    TopicalRecords, 
+    AssociationRecords,
+    ExperimentRecords,
+    RunRecords
+)
+from rest_rpc.training.core.utils import (
+    UrlConstructor, 
+    RPCFormatter,
+    ModelRecords
+)
 
 ##################
 # Configurations #
@@ -28,11 +40,16 @@ logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.DEBUG)
 
 schemas = app.config['SCHEMAS']
 db_path = app.config['DB_PATH']
+mlflow_dir = app.config['MLFLOW_DIR']
 
 """
 These are the subject-id-class mappings for the main utility records in 
 Prediction:
 {
+    'MLFlow': {
+        'id': 'name',
+        'class': MLFRecords
+    },
     'Validation': {
         'id': 'val_id',
         'class': ValidationRecords
@@ -50,6 +67,48 @@ Prediction:
 
 def replicate_combination_key(expt_id, run_id):
     return str((expt_id, run_id))
+
+#########################################
+# MLFlow Key storage class - MLFRecords #
+#########################################
+
+class MLFRecords(TopicalRecords):
+    """ 
+    This class solely exists as a persistent storage of `experiment_id/run_id`
+    mappings to MLFlow generated experiement IDs & run IDs respectively. This is
+    due to the fact that each unique experiment/run name can only be assigned a
+    single MLFlow ID. Any attempt to re-initialise a new experiment/run will not
+    override the existing registries, raising `mlflow.exceptions.MlflowException`
+    """
+    def __init__(self, db_path=db_path):
+        super().__init__(
+            subject="MLFlow",  
+            identifier="name", 
+            db_path=db_path
+        )
+
+    def __generate_key(self, project, name):
+        return {"project": project, "name": name}
+
+    def create(self, project, name, details):
+        # Check that new details specified conforms to experiment schema
+        jsonschema.validate(details, schemas["mlflow_schema"])
+        mlf_key = self.__generate_key(project, name)
+        new_entry = {'key': mlf_key}
+        new_entry.update(details)
+        return super().create(new_entry)
+
+    def read(self, project, name):
+        mlf_key = self.__generate_key(project, name)
+        return super().read(mlf_key)
+
+    def update(self, project, name, updates):
+        mlf_key = self.__generate_key(project, name)
+        return super().update(mlf_key, updates)
+
+    def delete(self, project, name):
+        mlf_key = self.__generate_key(project, name)
+        return super().delete(mlf_key)
 
 ######################################################
 # Data Storage Association class - ValidationRecords #
@@ -80,8 +139,10 @@ class ValidationRecords(AssociationRecords):
         }
 
     def create(self, participant_id, project_id, expt_id, run_id, details):
+        logging.debug(f"Details: {details}")
+
         # Check that new details specified conforms to experiment schema
-        jsonschema.validate(details, schemas["validation_schema"])
+        jsonschema.validate(details, schemas["prediction_schema"])#schemas["validation_schema"])
         validation_key = self.__generate_key(
             participant_id, 
             project_id, 
@@ -330,3 +391,359 @@ class Analyser:
             loop.close()
 
         return all_stats
+
+####################################
+# MLFLow logging class - MLFlogger #
+####################################
+
+class MLFlogger:
+    """ 
+    Wrapper class around MLFlow to faciliate experiment & run registrations in
+    the REST-RPC setting, where statistical logging is performed during 
+    post-mortem analysis
+    """
+    def __init__(self, db_path: str = db_path):
+
+        # Private attributes
+        self.__rpc_formatter = RPCFormatter()
+        self.__expt_records = ExperimentRecords(db_path=db_path)
+        self.__run_records = RunRecords(db_path=db_path)
+        self.__model_records = ModelRecords(db_path=db_path)
+        
+        # Public attributes
+        self.mlf_records = MLFRecords(db_path=db_path)
+
+    ###########
+    # Helpers #
+    ###########
+
+    def initialise_mlflow_project(self, project_id: str) -> str:
+        """ In MLFlow, there is no concept of project-level stratification.
+            While they have MLFlow Projects, using this functionality will come
+            at the cost since this conflicts with REST-RPC's job orchestration.
+            As such, project intialisation is done natively, by creating project
+            URIs, and switching to them when necessary.
+
+        Args:
+            project_id (str): REST-RPC ID of specified project
+        Returns:
+            Project-specific URI (str)
+        """
+        project_uri = os.path.join(mlflow_dir, project_id)
+        Path(project_uri).mkdir(parents=True, exist_ok=True)
+        return project_uri
+
+
+    def delete_mlflow_project(self, project_id: str) -> str:
+        """ Conceptually remove all MLFlow logs made under a specific project.
+
+        Args:
+            project_id (str): REST-RPC ID of specified project
+        Returns:
+            Removed Project-specific URI (str)
+        """
+        # Remove MLFlow directory corresponding to project's URI
+        project_uri = os.path.join(mlflow_dir, project_id)
+        shutil.rmtree(project_uri)
+        return project_uri
+
+
+    def initialise_mlflow_experiment(
+        self, 
+        project_id: str,
+        expt_id: str
+    ) -> Dict[str, str]:
+        """ Initialises an MLFlow experiment at the specified project URI
+
+        Args:
+            project_id (str): REST-RPC ID of specified project
+            expt_id (str): REST-RPC ID of specified experiment
+        Returns:
+            MLFlow Experiment configuration (dict)
+        """
+        project_uri = self.initialise_mlflow_project(project_id=project_id)
+        mlflow.set_tracking_uri(project_uri)
+
+        # Check if MLFlow experiment has already been created
+        mlflow_details = self.mlf_records.read(
+            project=project_id, 
+            name=expt_id
+        )
+        if not mlflow_details:
+            
+            # Initialise MLFlow experiment
+            mlflow_id = mlflow.create_experiment(name=expt_id)
+
+            mlflow_details = {
+                'project': project_id,
+                'name': expt_id,
+                'mlflow_type': 'experiment',
+                'mlflow_id': mlflow_id,
+                'mlflow_uri': project_uri
+            }
+            self.mlf_records.create(
+                project=project_id,
+                name=expt_id, 
+                details=mlflow_details
+            )
+
+        return mlflow_details
+
+
+    def delete_mlflow_experiment(
+        self, 
+        project_id: str, 
+        expt_id: str,
+    ) -> str:
+        """ Conceptually removes all MLFlow logs made under a specific 
+            experiment.
+
+        Args:
+            project_id (str): REST-RPC ID of specified project
+            expt_id (str): REST-RPC ID of specified experiment
+        Returns:
+            Removed MLFlow experiment directory 
+        """
+        # Delete the details themselves
+        deleted_details = self.mlf_records.delete(
+            project=project_id, 
+            name=expt_id
+        )
+
+        # Remove experiment's MLFlow directory
+        expt_mlflow_dir = os.path.join(
+            deleted_details['mlflow_uri'], 
+            deleted_details['mlflow_id']
+        )
+        shutil.rmtree(expt_mlflow_dir)
+
+        stripped_details = self.__rpc_formatter.strip_keys(
+            record=deleted_details, 
+            concise=True
+        )
+        return stripped_details
+
+
+    def initialise_mlflow_run(
+        self, 
+        project_id: str, 
+        expt_id: str, 
+        run_id: str
+    ) -> Dict[str, str]:
+        """ Initialises a MLFLow run under a specified experiment of a project.
+            Initial run hyperparameters will be logged, and MLFlow run id will
+            be stored for subsequent analysis.
+
+        Args:
+            project_id (str): REST-RPC ID of specified project
+            expt_id (str): REST-RPC ID of specified experiment
+            run_id (str): REST-RPC ID of specified run
+        """
+        # Initialise the parent MLFlow experiment
+        expt_mlflow_details = self.initialise_mlflow_experiment(
+            project_id=project_id,
+            expt_id=expt_id
+        )
+        expt_mlflow_id = expt_mlflow_details['mlflow_id']
+
+        with mlflow.start_run(
+            experiment_id=expt_mlflow_id, 
+            run_name=run_id
+        ) as mlf_run:
+
+            # Retrieve run details from database
+            run_details = self.__run_records.read(project_id, expt_id, run_id)
+            stripped_run_details = self.__rpc_formatter.strip_keys(
+                record=run_details,
+                concise=True
+            )
+
+            mlflow.log_params(stripped_run_details)
+
+            # Save the MLFlow ID mapping
+            run_mlflow_id = mlf_run.info.run_id
+            run_mlflow_details = {
+                'project': project_id,
+                'name': run_id,
+                'mlflow_type': 'run',
+                'mlflow_id': run_mlflow_id,
+                'mlflow_uri': expt_mlflow_details['mlflow_uri'] # same as expt
+
+            }
+            new_run_mlflow_details = self.mlf_records.create(
+                project=project_id,
+                name=run_id, 
+                details=run_mlflow_details
+            )
+
+        stripped_run_mlflow_details = self.__rpc_formatter.strip_keys(
+            record=new_run_mlflow_details
+        )
+        return stripped_run_mlflow_details
+
+
+    def delete_mlflow_run(self):
+        pass
+
+
+    def log_losses(self, project_id: str, expt_id: str, run_id: str):
+        """ Registers all cached losses, be it global or local, obtained from
+            federated training into MLFlow.
+
+        Args:
+            project_id (str): REST-RPC ID of specified project
+            expt_id (str): REST-RPC ID of specified experiment
+            run_id (str): REST-RPC ID of specified run
+        Returns:
+            Stripped metadata (dict)
+        """
+        # Initialise the parent MLFlow experiment
+        expt_mlflow_details = self.initialise_mlflow_experiment(
+            project_id=project_id,
+            expt_id=expt_id
+        )
+        expt_mlflow_id = expt_mlflow_details['mlflow_id']
+
+        # Search for run session to update entry, not create a new one
+        run_mlflow_details = self.mlf_records.read(
+            project=project_id, 
+            name=run_id
+        )
+
+        if not run_mlflow_details:
+            raise RuntimeError("Run has not been initialised!")
+
+        # Retrieve all model metadata from storage
+        model_metadata = self.__model_records.read(project_id, expt_id, run_id)
+        stripped_metadata = self.__rpc_formatter.strip_keys(
+            record=model_metadata, 
+            concise=True
+        ) if model_metadata else model_metadata
+
+        if stripped_metadata:
+
+            with mlflow.start_run(
+                experiment_id=expt_mlflow_id, 
+                run_id=run_mlflow_details['mlflow_id']
+            ) as mlf_run:
+
+                # Extract loss histories
+                for m_type, metadata in stripped_metadata.items():
+
+                    loss_history_path = metadata['loss_history']
+                    origin = metadata['origin']
+
+                    with open(loss_history_path, 'r') as lh:
+                        loss_history = json.load(lh)
+
+                    if m_type == 'global':
+                        for meta, losses in loss_history.items():
+                            for round_idx, loss, in losses.items():
+                                mlflow.log_metric(
+                                    key=f"global_{meta}_loss", 
+                                    value=loss, 
+                                    step=int(round_idx)
+                                )
+
+                    else:
+                        for round_idx, loss, in losses.items():
+                            mlflow.log_metric(
+                                key=f"{origin}_local_loss", 
+                                value=loss, 
+                                step=int(round_idx)
+                            )
+
+        return stripped_metadata
+
+    
+    def log_model_performance(
+        self, 
+        project_id: str, 
+        expt_id: str, 
+        run_id: str,
+        statistics: dict
+    ) -> dict:
+        """ Using all cached model checkpoints, log the performance statistics 
+            of models, be it global or local, to MLFlow at round (for global) or
+            epoch (for local) level.
+
+        Args:
+            project_id (str): REST-RPC ID of specified project
+            expt_id (str): REST-RPC ID of specified experiment
+            run_id (str): REST-RPC ID of specified run
+            statistics (dict): Inference statistics polled from workers
+        Returns:
+            MLFLow run details (dict)
+        """
+        # Initialise the parent MLFlow experiment
+        expt_mlflow_details = self.initialise_mlflow_experiment(
+            project_id=project_id,
+            expt_id=expt_id
+        )
+        expt_mlflow_id = expt_mlflow_details['mlflow_id']
+
+        # Search for run session to update entry, not create a new one
+        run_mlflow_details = self.mlf_records.read(
+            project=project_id, 
+            name=run_id
+        )
+        run_mlflow_id = run_mlflow_details['mlflow_id']
+
+        if not run_mlflow_details:
+            raise RuntimeError("Run has not been initialised!")
+
+        with mlflow.start_run(
+            experiment_id=expt_mlflow_id, 
+            run_id=run_mlflow_id
+        ) as mlf_run:
+
+            # Store output metadata into database
+            for participant_id, inference_stats in statistics.items():
+                for meta, meta_stats in inference_stats.items():
+
+                    # Log statistics to MLFlow for analysis
+                    stats = meta_stats.get('statistics', {})
+                    mlflow.log_metrics(stats)
+
+        return self.__rpc_formatter.strip_keys(run_mlflow_details, concise=True)
+
+    ##################
+    # Core Functions #
+    ##################
+
+    def log(self, accumulations: dict) -> List[str]:
+        """ Wrapper function that processes statistics accumulated from 
+            inference.
+
+        Args:
+            accumulations (dict): Accumulated statistics from inferring
+                different project-expt-run combinations
+        Returns:
+            List of MLFlow run IDs from all runs executed (list(str))
+        """
+        jobs_ran = []
+        for combination_key, statistics in accumulations.items():
+
+            curr_project_id = combination_key[0]
+            curr_expt_id = combination_key[1]
+            curr_run_id = combination_key[2]
+
+            run_mlflow_details = self.initialise_mlflow_run(
+                project_id=curr_project_id,
+                expt_id=curr_expt_id,
+                run_id=curr_run_id
+            )
+            self.log_losses(
+                project_id=curr_project_id,
+                expt_id=curr_expt_id,
+                run_id=curr_run_id
+            )
+            self.log_model_performance(
+                project_id=curr_project_id,
+                expt_id=curr_expt_id,
+                run_id=curr_run_id,
+                statistics=statistics
+            )
+            jobs_ran.append(run_mlflow_details['mlflow_id'])
+        
+        return jobs_ran

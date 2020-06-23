@@ -58,7 +58,9 @@
 FROM python:3.7.4-slim-buster
 
 RUN apt-get update
-RUN DEBIAN_FRONTEND=noninteractive apt-get install -y build-essential
+RUN DEBIAN_FRONTEND=noninteractive apt-get install -y \
+    build-essential \
+    git
 
 COPY requirements.txt ./
 

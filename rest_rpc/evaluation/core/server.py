@@ -14,6 +14,7 @@ import os
 import time
 from glob import glob
 from pathlib import Path
+from typing import Tuple, Dict
 
 # Libs
 import syft as sy
@@ -113,7 +114,8 @@ def start_expt_run_inference(
     metas: list = ['train', 'evaluate', 'predict'],
     dockerised: bool = True, 
     log_msgs: bool = True, 
-    verbose: bool = True
+    verbose: bool = True,
+    version: Tuple[str, str] = None
 ) -> dict:
     """ Trains a model corresponding to a SINGLE experiment-run combination
 
@@ -165,7 +167,8 @@ def start_expt_run_inference(
             fl_expt = FederatedLearning(args, ttp, workers, model)
             fl_expt.load(
                 archive=stripped_archive,
-                shuffle=False   # for re-assembly during inference
+                shuffle=False,   # for re-assembly during inference
+                version=version
             ) 
                     
             # Only infer for specified participant on his/her own test dataset
@@ -222,12 +225,14 @@ def start_proc(multi_kwargs: dict) -> dict:
 
         participants = kwargs.pop('participants')
         metas = kwargs.pop('metas')
+        version = kwargs.pop('version')
         project_combinations = enumerate_expt_run_conbinations(**kwargs)
 
         for _, combination in project_combinations.items(): 
             combination.update({
                 'participants': participants, 
-                "metas": metas
+                'metas': metas,
+                'version': version
             })
 
         completed_project_inferences = {

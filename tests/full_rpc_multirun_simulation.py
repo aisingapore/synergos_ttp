@@ -56,13 +56,12 @@ base_ttp_train_url = f"http://{ttp_host}:{ttp_port}/ttp/train"
 project_train_url = f"{base_ttp_train_url}/projects/{project_id}"
 
 alignment_init_url = f"{project_train_url}/alignments"
-model_init_url = f"{project_train_url}/models/{expt_id_2}"#/{run_id_1}"
+model_init_url = f"{project_train_url}/models"#/{expt_id_2}/{run_id_3}"
 
 # Relevant Evaluation Endpoints
 base_ttp_eval_url = f"http://{ttp_host}:{ttp_port}/ttp/evaluate"
-project_eval_url = f"{base_ttp_eval_url}/participants/test_participant_1"
-
-prediction_init_url = f"{project_eval_url}/predictions"
+validation_init_url = f"{base_ttp_eval_url}/projects/{project_id}/validations"
+prediction_init_url = f"{base_ttp_eval_url}/participants/test_participant_1/predictions"
 
 # Project Simulation
 test_project = {
@@ -121,9 +120,9 @@ test_run_1 = {
     "run_id": run_id_1,
     "input_size": 28,
     "output_size": 1,
-    "batch_size": 1000,
-    "rounds": 1,
-    "epochs": 1,
+    "batch_size": 32,
+    "rounds": 2,
+    "epochs": 2,
     "lr": 0.15,
     "weight_decay": 0.01,
     "mu": 0.1,
@@ -136,8 +135,8 @@ test_run_2 = {
     "input_size": 28,
     "output_size": 1,
     "batch_size": 32,
-    "rounds": 1,
-    "epochs": 2,
+    "rounds": 2,
+    "epochs": 1,
     "lr": 0.2,
     "weight_decay": 0.02,
     "mu": 0.15,
@@ -210,7 +209,7 @@ for p_idx in range(1, participant_count+1):
     }
     participants[participant_id] = metadata
 
-# Model initialisation simulation
+# Model initialisation/validation simulation
 init_params = {
     "dockerised": True,
     "verbose": True,
@@ -307,6 +306,8 @@ if __name__ == "__main__":
     ##############
 
     # Step 1: TTP commences post-mortem model validation
+    val_resp = execute_post(url=validation_init_url, payload=init_params)
+    logging.debug(f"New prediction: {val_resp}")
 
     # Step 2: Participant requests trained global models from TTP for inference
     predict_resp = execute_post(url=prediction_init_url, payload=infer_params)
