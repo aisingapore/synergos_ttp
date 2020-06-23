@@ -1,0 +1,36 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Name-to-ID mapping for MLFlow",
+    "description": "Schema for organising experiment & run IDs generated in MLFlow",
+    "type": "object",
+    "properties": {
+
+        "name": {
+            "description": "Name of experiment/run registered in MLFlow",
+            "type": "string"
+        },
+
+        "project": {
+            "description": "Name of project that the experiment/run is under",
+            "type": "string"
+        },
+
+        "mlflow_type": {
+            "description": "Type of entitiy registered in MLFlow",
+            "type": "string",
+            "enum": ["experiment", "run"]
+        },
+
+        "mlflow_id": {
+            "description": "Unique Identifier for an experiment in MLFlow",
+            "type": "string"
+        },
+
+        "mlflow_uri": {
+            "description": "MLFlow URI where experiment's run logs are stored",
+            "type": "string"
+        }
+    },
+
+    "required": ["name", "mlflow_type", "mlflow_id", "mlflow_uri"]
+}

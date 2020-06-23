@@ -164,7 +164,7 @@ class Models(Resource):
             
             success_payload = payload_formatter.construct_success_payload(
                 status=200,
-                method="model.get",
+                method="models.get",
                 params={
                     'project_id': project_id, 
                     'expt_id': expt_id,
@@ -235,7 +235,7 @@ class Models(Resource):
         # Store output metadata into database
         retrieved_models = []
         for (project_id, expt_id, run_id), data in completed_trainings.items():
-            
+
             new_model = model_records.create(
                 project_id=project_id,
                 expt_id=expt_id,
@@ -254,7 +254,7 @@ class Models(Resource):
 
         success_payload = payload_formatter.construct_success_payload(
             status=200,
-            method="model.post",
+            method="models.post",
             params=request.view_args,
             data=retrieved_models
         )

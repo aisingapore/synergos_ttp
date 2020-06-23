@@ -76,6 +76,11 @@ class Arguments:
                  max_momentum=0.9, last_epoch=-1, patience=10, delta=0.0, 
                  cumulative_delta=False):
 
+        self.__FUNCTIONAL_MAPPING = {
+            'sgd': th.optim.SGD,
+            'bce': nn.BCELoss
+        }
+
         # General Parameters
         self.input_size = input_size
         self.output_size = output_size

@@ -212,7 +212,6 @@ class RPCFormatter:
     """
     def strip_keys(self, record, concise: bool = False):
         """ Remove db-specific keys and descriptors
-            Note: This is an in-place operation!
 
         Args:
             record (tinydb.database.Document): Target record to strip
@@ -627,56 +626,3 @@ class Governor:
             loop.close()
 
         return all_states
-
-##############
-# Deprecated #
-##############
-"""
-import mlflow
-remote_server_uri = "..." # set to your server URI
-mlflow.set_tracking_uri(remote_server_uri)
-# Note: on Databricks, the experiment name passed to mlflow_set_experiment must be a
-# valid path in the workspace
-mlflow.set_experiment("/my-experiment")
-with mlflow.start_run():
-    mlflow.log_param("a", 1)
-    mlflow.log_metric("b", 2)
-
-        all_metadata = {}
-        async for record in reg_records:
-            metadata = await self._poll_metadata(reg_record=record)
-            all_metadata.update(metadata)
-
-        all_metadata = await asyncio.gather(map(
-            self._poll_metadata, 
-            reg_records
-        ))
-
-
-        import requests
-        all_metadata = {}
-        for reg_record in reg_records:
-            participant_details = reg_record['participant']
-            participant_id = participant_details['id']
-            participant_ip = participant_details['host']
-            participant_port = participant_details['port']
-
-            # Construct destination url for interfacing with worker REST-RPC
-            destination_constructor = UrlConstructor(
-                host=participant_ip,
-                port=participant_port
-            )
-            destination_url = destination_constructor.construct_poll_url(
-                project_id=self.project_id
-            )
-            print(destination_url)
-
-            # Search for tags using composite project + participant
-            relevant_tags = reg_record['relations']['Tag'][0]
-            self.__rpc_formatter.strip_keys(relevant_tags)
-            payload = {'tags': relevant_tags}
-            response = requests.post(url=destination_url, json=payload)
-            metadata = response.json()
-            all_metadata.update({participant_id: metadata})
-
-"""

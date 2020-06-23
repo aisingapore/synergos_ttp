@@ -6,15 +6,22 @@
 
 # Generic/Built-in
 import logging
+import os
+import shutil
+from pathlib import Path
 
 # Libs
 import jsonschema
+import mlflow
 from flask import request
 from flask_restx import Namespace, Resource, fields
 
 # Custom
 from rest_rpc import app
-from rest_rpc.connection.core.utils import TopicalPayload, ExperimentRecords
+from rest_rpc.connection.core.utils import (
+    TopicalPayload, 
+    ExperimentRecords
+)
 from rest_rpc.connection.runs import run_output_model
 
 ##################
@@ -30,8 +37,8 @@ ns_api = Namespace(
 
 SUBJECT = "Experiment" # table name
 
-schemas = app.config['SCHEMAS']
 db_path = app.config['DB_PATH']
+expt_records = ExperimentRecords(db_path=db_path)
 
 ###########################################################
 # Models - Used for marshalling (i.e. moulding responses) #
@@ -121,7 +128,6 @@ class Experiments(Resource):
     @ns_api.marshal_list_with(payload_formatter.plural_model)
     def get(self, project_id):
         """ Retrieve all run configurations queued for training """
-        expt_records = ExperimentRecords(db_path=db_path)
         all_relevant_expts = expt_records.read_all(
             filter={'project_id': project_id}
         )
@@ -145,7 +151,6 @@ class Experiments(Resource):
             new_expt_details = request.json
             expt_id = new_expt_details.pop('expt_id')
 
-            expt_records = ExperimentRecords(db_path=db_path)
             new_expt = expt_records.create(
                 project_id=project_id, 
                 expt_id=expt_id,
@@ -156,6 +161,7 @@ class Experiments(Resource):
                 expt_id=expt_id
             )
             assert new_expt.doc_id == retrieved_expt.doc_id
+
             success_payload = payload_formatter.construct_success_payload(
                 status=201, 
                 method="experiments.post",
@@ -186,7 +192,6 @@ class Experiment(Resource):
         """ Retrieves all experimental parameters corresponding to a specified
             project
         """
-        expt_records = ExperimentRecords(db_path=db_path)
         retrieved_expt = expt_records.read(
             project_id=project_id, 
             expt_id=expt_id
@@ -217,7 +222,6 @@ class Experiment(Resource):
         try:
             expt_updates = request.json
 
-            expt_records = ExperimentRecords(db_path=db_path)
             updated_expt = expt_records.update(
                 project_id=project_id, 
                 expt_id=expt_id,
@@ -248,7 +252,6 @@ class Experiment(Resource):
         """ De-registers previously registered experiment, and clears out all 
             metadata
         """
-        expt_records = ExperimentRecords(db_path=db_path)
         retrieved_expt = expt_records.read(
             project_id=project_id, 
             expt_id=expt_id
@@ -257,12 +260,13 @@ class Experiment(Resource):
             project_id=project_id,
             expt_id=expt_id
         )
+
         if deleted_expt:
             assert deleted_expt.doc_id == retrieved_expt.doc_id
             success_payload = payload_formatter.construct_success_payload(
                 status=200,
                 method="experiment.delete",
-                params={'project_id': project_id, 'expt_id': expt_id},
+                params=request.view_args,
                 data=retrieved_expt
             )
             return success_payload

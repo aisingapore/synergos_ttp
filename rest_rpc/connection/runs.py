@@ -14,7 +14,10 @@ from flask_restx import Namespace, Resource, fields
 
 # Custom
 from rest_rpc import app
-from rest_rpc.connection.core.utils import TopicalPayload, RunRecords
+from rest_rpc.connection.core.utils import (
+    TopicalPayload, 
+    RunRecords
+)
 
 ##################
 # Configurations #
@@ -31,6 +34,7 @@ SUBJECT = "Run" # table name
 
 schemas = app.config['SCHEMAS']
 db_path = app.config['DB_PATH']
+run_records = RunRecords(db_path=db_path)
 
 ###########################################################
 # Models - Used for marshalling (i.e. moulding responses) #
@@ -114,7 +118,6 @@ class Runs(Resource):
     @ns_api.marshal_list_with(payload_formatter.plural_model)
     def get(self, project_id, expt_id):
         """ Retrieve all run configurations queued for training """
-        run_records = RunRecords(db_path=db_path)
         all_relevant_runs = run_records.read_all(
             filter={'project_id': project_id, 'expt_id': expt_id}
         )
@@ -137,7 +140,6 @@ class Runs(Resource):
             new_run_details = request.json
             run_id = new_run_details.pop('run_id')
 
-            run_records = RunRecords(db_path=db_path)
             new_run = run_records.create(
                 project_id=project_id, 
                 expt_id=expt_id,
@@ -175,7 +177,6 @@ class Run(Resource):
     @ns_api.marshal_with(payload_formatter.singular_model)
     def get(self, project_id, expt_id, run_id):
         """ Retrieves all runs registered for an experiment under a project """
-        run_records = RunRecords(db_path=db_path)
         retrieved_run = run_records.read(
             project_id=project_id, 
             expt_id=expt_id,
@@ -210,8 +211,6 @@ class Run(Resource):
         """
         try:
             run_updates = request.json
-            print(run_updates)
-            run_records = RunRecords(db_path=db_path)
             updated_run = run_records.update(
                 project_id=project_id, 
                 expt_id=expt_id,
@@ -240,24 +239,19 @@ class Run(Resource):
     @ns_api.marshal_with(payload_formatter.singular_model)
     def delete(self, project_id, expt_id, run_id):
         """ De-registers a previously registered run and deletes it """
-        run_records = RunRecords(db_path=db_path)
         deleted_run = run_records.delete(
             project_id=project_id,
             expt_id=expt_id,
             run_id=run_id
         )
+
         if deleted_run:
             success_payload = payload_formatter.construct_success_payload(
                 status=200,
                 method="run.delete",
-                params={
-                    'project_id': project_id, 
-                    'expt_id': expt_id,
-                    "run_id": run_id
-                },
+                params=request.view_args,
                 data=deleted_run
             )
-            print(success_payload)
             return success_payload, 200
 
         else:
