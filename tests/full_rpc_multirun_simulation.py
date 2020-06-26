@@ -56,7 +56,7 @@ base_ttp_train_url = f"http://{ttp_host}:{ttp_port}/ttp/train"
 project_train_url = f"{base_ttp_train_url}/projects/{project_id}"
 
 alignment_init_url = f"{project_train_url}/alignments"
-model_init_url = f"{project_train_url}/models"#/{expt_id_2}/{run_id_3}"
+model_init_url = f"{project_train_url}/models/{expt_id_1}/{run_id_1}"
 
 # Relevant Evaluation Endpoints
 base_ttp_eval_url = f"http://{ttp_host}:{ttp_port}/ttp/evaluate"
@@ -152,7 +152,7 @@ test_run_3 = {
     "output_size": 1,
     "batch_size": 32,
     "rounds": 1,
-    "epochs": 2,
+    "epochs": 1,
     "lr": 0.3,
     "weight_decay": 0.03,
     "mu": 0.2,
