@@ -33,10 +33,10 @@ participant_id_1 = "fedlearn_worker_1"
 participant_id_2 = "fedlearn_worker_2"
 
 # Relevant Connection Endpoints
-#ttp_host = "0.0.0.0"#"localhost"
-ttp_host = "localhost"  #distrib
-#ttp_port = 5000#15000
-ttp_port = 15000   #distrib
+# the ttp_host and ttp_port are set for a distributed environment via ssh from admin laptop
+# running ttp and workers on laptop required Docker network evaluation
+ttp_host = "localhost"  
+ttp_port = 15000   
 base_ttp_connect_url = f"http://{ttp_host}:{ttp_port}/ttp/connect"
 
 project_upload_url = f"{base_ttp_connect_url}/projects"
@@ -103,21 +103,21 @@ fedlearn_run = {
 fedlearn_participant_1 = {
     "participant_id": participant_id_1,
     "id": "fedlearn_worker_1",
-    "host": "172.19.152.152", #"127.0.0.1", #"localhost",#"172.19.152.152",  # 0.0.0.0 only for local simulation!
-    "port": 8020,#8021,#8020,
+    "host": "172.19.152.152",  # 0.0.0.0 only for local simulation!
+    "port": 8020,
     "log_msgs": False,
     "verbose": False,
-    "f_port": 5000,#5001#5000      # Only required if custom port is required (i.e. local)
+    "f_port": 5000,      # Only required if custom port is required (i.e. local)
 }
 
 fedlearn_participant_2 = {
     "participant_id": participant_id_2,
     "id": "fedlearn_worker_2",
-    "host": "172.19.152.153",#"127.0.0.1", #"localhost", #"127.0.0.1",#"172.19.152.153",  # 0.0.0.0 only for local simulation!
-    "port": 8020,#8022,#8020,
+    "host": "172.19.152.153", # 0.0.0.0 only for local simulation!
+    "port": 8020,
     "log_msgs": False,
     "verbose": False,
-    "f_port": 5000,#5002#5000      # Only required if custom port is required (i.e. local)
+    "f_port": 5000,      # Only required if custom port is required (i.e. local)
 }
 
 # Registration Simulation
@@ -127,9 +127,10 @@ fedlearn_registration_p1 = {"role": "host"}    # For fedlearn_participant_1
 fedlearn_registration_p2 = {"role": "host"}     # For fedlearn_participant_2
 
 # Tag Simulation
+# Tags define which datasets to use. Must be avaiable via Docker volume mount definitions
 fedlearn_tags_p1 = {    # For fedlearn_participant_1
-    "train": [ ["non_iid_1"]]     #,
-    # "evaluate": [["edge_test_missing_coecerable_vals"]]
+    "train": [ ["non_iid_1"]],
+    "evaluate": [["edge_test_missing_coecerable_vals"]]
 }
 
 fedlearn_tags_p2 = {    # For fedlearn_participant_2
