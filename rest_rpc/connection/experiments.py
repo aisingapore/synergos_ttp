@@ -57,11 +57,11 @@ layer_model = ns_api.model(
     name="layer",
     model={
         'is_input': fields.Boolean(required=True),
-        'structure': fields.Nested(
-            model=structure_model, 
-            skip_none=True,
-            required=True
-        ),
+        # 'structure': fields.Nested(
+        #     model=structure_model, 
+        #     skip_none=True,
+        #     required=True
+        # ),
         'l_type': fields.String(required=True),
         'activation': fields.String(required=True)
     }
@@ -140,41 +140,41 @@ class Experiments(Resource):
         return success_payload, 200
 
     @ns_api.doc("register_experiment")
-    @ns_api.expect(expt_input_model)
-    @ns_api.marshal_with(payload_formatter.singular_model)
+    # @ns_api.expect(expt_input_model)
+    # @ns_api.marshal_with(payload_formatter.singular_model)
     @ns_api.response(201, "New experiment created!")
     @ns_api.response(417, "Inappropriate experiment configurations passed!")
     def post(self, project_id):
         """ Takes a model configuration to be queued for training and stores it
         """
-        try:
-            new_expt_details = request.json
-            expt_id = new_expt_details.pop('expt_id')
+        # try:
+        new_expt_details = request.json
+        expt_id = new_expt_details.pop('expt_id')
 
-            new_expt = expt_records.create(
-                project_id=project_id, 
-                expt_id=expt_id,
-                details=new_expt_details
-            )
-            retrieved_expt = expt_records.read(
-                project_id=project_id, 
-                expt_id=expt_id
-            )
-            assert new_expt.doc_id == retrieved_expt.doc_id
+        new_expt = expt_records.create(
+            project_id=project_id, 
+            expt_id=expt_id,
+            details=new_expt_details
+        )
+        retrieved_expt = expt_records.read(
+            project_id=project_id, 
+            expt_id=expt_id
+        )
+        assert new_expt.doc_id == retrieved_expt.doc_id
 
-            success_payload = payload_formatter.construct_success_payload(
-                status=201, 
-                method="experiments.post",
-                params={'project_id': project_id},
-                data=retrieved_expt
-            )
-            return success_payload, 201
+        success_payload = payload_formatter.construct_success_payload(
+            status=201, 
+            method="experiments.post",
+            params={'project_id': project_id},
+            data=retrieved_expt
+        )
+        return success_payload, 201
 
-        except jsonschema.exceptions.ValidationError:
-            ns_api.abort(
-                code=417,
-                message="Inappropriate experimental configurations passed!"
-            )
+        # except jsonschema.exceptions.ValidationError:
+        #     ns_api.abort(
+        #         code=417,
+        #         message="Inappropriate experimental configurations passed!"
+        #     )
 
 
 @ns_api.route('/<expt_id>')

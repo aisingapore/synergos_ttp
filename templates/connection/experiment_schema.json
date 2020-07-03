@@ -22,38 +22,19 @@
                         "type": "boolean"
                     },
 
-                    "structure": {
-                        "description": "Structure of Deep neural network",
-                        "type": "object",
-                        "properties": {
-
-                            "in_features": {
-                                "description": "No. of input features to layer",
-                                "type": "integer"
-                            },
-                            
-                            "out_features": {
-                                "description": "No. of output features to layer",
-                                "type": "integer"                    
-                            },
-
-                            "bias": {
-                                "description": "Toggles if a bias term should be included",
-                                "type": "boolean"                                
-                            }
-                        },
-
-                        "required": ["bias"]
-                    },
-
                     "l_type": {
                         "description": "Supported layer type of the layer",
                         "type": "string"                        
                     },
 
+                    "structure": {
+                        "description": "Structure of Deep neural network",
+                        "type": "object"
+                    },
+
                     "activation": {
                         "description": "Supported activation function of the layer",
-                        "type": "string"
+                        "type": ["string", "null"]
                     }
                 },
 

@@ -5,6 +5,9 @@
 ####################
 
 # Generic
+import importlib
+import inspect
+import logging
 from collections import OrderedDict
 
 # Libs
@@ -15,6 +18,10 @@ from torch import nn
 # Configurations #
 ##################
 
+logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.DEBUG)
+
+MODULE_OF_LAYERS = "torch.nn"
+MODULE_OF_ACTIVATIONS = "torch.nn.functional"
 
 ###################################
 # Model Abstraction Class - Model #
@@ -61,10 +68,14 @@ class Model(nn.Module):
             )
 
             # Detect activation function & store it for use in .forward()
+            # Note: In more complex models, other layer types will be declared,
+            #       ones that do not require activation intermediates (eg. 
+            #       batch normalisation). Hence, skip activation if undeclared
             layer_activation = params['activation']
-            self.layers[layer_name] = self.__parse_activation_type(
-                layer_activation
-            )
+            if layer_activation:
+                self.layers[layer_name] = self.__parse_activation_type(
+                    layer_activation
+                )
 
     ###########
     # Helpers #
@@ -79,10 +90,13 @@ class Model(nn.Module):
         Returns:
             Layer definition (Function)
         """
-        if layer_type == "linear":
-            return nn.Linear
-        else:
-            raise ValueError("Specified layer type is currently not supported!")
+        try:
+            layer_modules = importlib.import_module(MODULE_OF_LAYERS)
+            layer = getattr(layer_modules, layer_type)
+            return layer
+
+        except AttributeError:
+            logging.error(f"Specified layer type '{layer_type}' is not supported!")
 
 
     @staticmethod
@@ -94,10 +108,13 @@ class Model(nn.Module):
         Returns:
             Activation definition (Function)
         """
-        if activation_type == "sigmoid":
-            return th.sigmoid
-        else:
-            raise ValueError("Specified activation is currently not supported!")
+        try:
+            activation_modules = importlib.import_module(MODULE_OF_ACTIVATIONS)
+            activation = getattr(activation_modules, activation_type)
+            return activation
+
+        except AttributeError:
+            logging.error(f"Specified activation type '{activation_type}' is not supported!")
 
     ##################
     # Core Functions #

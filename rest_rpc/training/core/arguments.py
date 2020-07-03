@@ -26,6 +26,9 @@ def fate_lr_decay(self, initial_lr, lr_decay, epochs):
     """
     lr = initial_lr / (1 + (lr_decay * epochs))
     return lr
+
+MODULE_OF_OPTIMIZERS = "torch.optim"
+MODULE_OF_CRITERIONS = "torch.nn"
     
 ###########################################
 # Parameter Abstraction class - Arguments #

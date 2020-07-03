@@ -26,16 +26,16 @@ import requests
 logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.DEBUG)
 
 # Relevant IDs
-project_id = "test_project"
-expt_id_1 = "test_experiment_1" # 1st expt declared to test out default functions
-expt_id_2 = "test_experiment_2" # 2nd expt to test for expt-level bulk testing
-run_id_1 = "test_run_1" # 1nd run to test for run-level bulk testing (linked to "test_experiment_1")
-run_id_2 = "test_run_2" # 2nd run to test for run-level bulk testing (linked to "test_experiment_2")
-run_id_3 = "test_run_3" # 3nd run to test for run-level bulk testing (linked to "test_experiment_2")
+project_id  = "image_project"
+expt_id_1   = "image_experiment_1"  # 1st expt declared to test out default functions
+expt_id_2   = "image_experiment_2"  # 2nd expt to test for expt-level bulk testing
+run_id_1    = "image_run_1"         # 1nd run to test for run-level bulk testing (linked to "test_experiment_1")
+run_id_2    = "image_run_2"         # 2nd run to test for run-level bulk testing (linked to "test_experiment_2")
+run_id_3    = "image_run_3"         # 3nd run to test for run-level bulk testing (linked to "test_experiment_2")
 
 # Relevant Connection Endpoints
-ttp_host = "0.0.0.0"#"localhost"
-ttp_port = 5000#15000
+ttp_host = "0.0.0.0"
+ttp_port = 5000
 base_ttp_connect_url = f"http://{ttp_host}:{ttp_port}/ttp/connect"
 
 project_upload_url = f"{base_ttp_connect_url}/projects"
@@ -76,14 +76,209 @@ test_project = {
 test_experiment_1 = {
     "expt_id": expt_id_1,
     "model": [
+
+        #########################################
+        # Section 1a - Feature Extraction on 32 #
+        #########################################
+
+        # Layer structure: 32C3
         {
-            "activation": "sigmoid",
+            "activation": "relu",
+            "is_input": True,
+            "l_type": "Conv2d",
+            "structure": {
+                "in_channels": 1, 
+                "out_channels": 32, 
+                "kernel_size": [3, 3]
+            }
+        },
+        # Batch normalisation
+        {
+            "activation": None, # No activation layer for batch normalisation
+            "is_input": False,
+            "l_type": "BatchNorm2d",
+            "structure": {
+                "num_features": 32
+            }
+        },
+        # Layer structure: 32C3
+        {
+            "activation": "relu",
+            "is_input": False,
+            "l_type": "Conv2d",
+            "structure": {
+                "in_channels": 32, 
+                "out_channels": 32, 
+                "kernel_size": [3, 3]
+            }
+        },
+        # Batch normalisation
+        {
+            "activation": None, # No activation layer for batch normalisation
+            "is_input": False,
+            "l_type": "BatchNorm2d",
+            "structure": {
+                "num_features": 32
+            }
+        },
+        # Layer structure: 32C5S2
+        {
+            "activation": "relu",
+            "is_input": False,
+            "l_type": "Conv2d",
+            "structure": {
+                "in_channels": 32, 
+                "out_channels": 32, 
+                "kernel_size": [5, 5],
+                "stride": 2
+            }
+        },
+        # Batch normalisation
+        {
+            "activation": None, # No activation layer for batch normalisation
+            "is_input": False,
+            "l_type": "BatchNorm2d",
+            "structure": {
+                "num_features": 32
+            }
+        },
+        # Layer structure: Dropout
+        {
+            "activation": None, # No activation layer for batch normalisation
+            "is_input": False,
+            "l_type": "Dropout2d",
+            "structure": {
+                "p": 0.4
+            }
+        },
+
+        #########################################
+        # Section 1b - Feature Extraction on 64 #
+        #########################################
+
+        # Layer structure: 64C3
+        {
+            "activation": "relu",
+            "is_input": False,
+            "l_type": "Conv2d",
+            "structure": {
+                "in_channels": 32, 
+                "out_channels": 64, 
+                "kernel_size": [3, 3]
+            }
+        },
+        # Batch normalisation
+        {
+            "activation": None, # No activation layer for batch normalisation
+            "is_input": False,
+            "l_type": "BatchNorm2d",
+            "structure": {
+                "num_features": 64
+            }
+        },
+        # Layer structure: 64C3
+        {
+            "activation": "relu",
+            "is_input": False,
+            "l_type": "Conv2d",
+            "structure": {
+                "in_channels": 64, 
+                "out_channels": 64, 
+                "kernel_size": [3, 3]
+            }
+        },
+        # Batch normalisation
+        {
+            "activation": None, # No activation layer for batch normalisation
+            "is_input": False,
+            "l_type": "BatchNorm2d",
+            "structure": {
+                "num_features": 64
+            }
+        },
+        # Layer structure: 64C5S2
+        {
+            "activation": "relu",
+            "is_input": False,
+            "l_type": "Conv2d",
+            "structure": {
+                "in_channels": 64, 
+                "out_channels": 64, 
+                "kernel_size": [5, 5],
+                "stride": 2
+            }
+        },
+        # Batch normalisation
+        {
+            "activation": None, # No activation layer for batch normalisation
+            "is_input": False,
+            "l_type": "BatchNorm2d",
+            "structure": {
+                "num_features": 64
+            }
+        },
+        # Layer structure: Dropout
+        {
+            "activation": None, # No activation layer for batch normalisation
+            "is_input": False,
+            "l_type": "Dropout2d",
+            "structure": {
+                "p": 0.4
+            }
+        },
+
+        ##############################
+        # Section 2 - Classification #
+        ##############################
+
+        # Layer structure: Flatten
+        {
+            "activation": None, # No activation layer for batch normalisation
+            "is_input": False,
+            "l_type": "Flatten",
+            "structure": {}
+        },
+        # Layer structure: Classification
+        {
+            "activation": "relu",
+            "is_input": False,
+            "l_type": "Linear",
+            "structure": {
+                "bias": True,
+                "in_features": 64,
+                "out_features": 128
+            }
+        },
+        # Batch normalisation
+        {
+            "activation": None, # No activation layer for batch normalisation
+            "is_input": False,
+            "l_type": "BatchNorm2d",
+            "structure": {
+                "num_features": 128
+            }
+        },
+        # Layer structure: Dropout
+        {
+            "activation": None, # No activation layer for batch normalisation
+            "is_input": False,
+            "l_type": "Dropout2d",
+            "structure": {
+                "p": 0.4
+            }
+        },
+
+        ##########################
+        # Section 3 - Prediction #
+        ##########################
+        {
+            "activation": "softmax",
             "is_input": True,
             "l_type": "Linear",
             "structure": {
                 "bias": True,
-                "in_features": 28,
-                "out_features": 1
+                "in_features": 128,
+                "out_features": 10
             }
         }
     ]
@@ -118,11 +313,11 @@ test_experiment_2 = {
 # Run Simulation
 test_run_1 = {
     "run_id": run_id_1,
-    "input_size": 28,
-    "output_size": 1,
-    "batch_size": 32,
-    "rounds": 2,
-    "epochs": 2,
+    "input_size": 784,
+    "output_size": 10,
+    "batch_size": 1,
+    "rounds": 20,
+    "epochs": 1,
     "lr": 0.15,
     "weight_decay": 0.01,
     "mu": 0.1,
@@ -185,21 +380,9 @@ for p_idx in range(1, participant_count+1):
 
     tags_payload = (
         { 
-            "train": [
-                #["iid_1"], 
-                ["non_iid_1"]
-                # ["edge_test_misalign"]
-                # ["edge_test_na_slices"]
-            ],
-            "evaluate": [["edge_test_missing_coecerable_vals"]]
+            "train": [["train"]],
+            "evaluate": [["evaluate"]]
         } 
-        if (p_idx % 2) == 1 else 
-        {
-            "train": [
-                #["iid_2"], 
-                ["non_iid_2"]
-            ]
-        }
     )
 
     metadata = {
@@ -220,7 +403,7 @@ init_params = {
 infer_params = {
     "dockerised": True,
     "tags": {
-        "test_project": [["iid_1"]]
+        project_id: [["predict"]]
     }
 }
 
