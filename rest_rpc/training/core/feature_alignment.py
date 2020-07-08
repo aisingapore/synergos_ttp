@@ -66,6 +66,7 @@ class PairwiseFeatureAligner:
         m_headers (list(str)): Headers for dataset A
         n_headers (list(str)): Headers for dataset B
     """
+    
     def __init__(self, m_headers, n_headers):
         
         self.__grid = [

@@ -359,7 +359,8 @@ class Poller:
         payload = {'tags': stripped_tags}
 
         # Poll for headers by posting tags to `Poll` route in worker
-        async with aiohttp.ClientSession() as session:
+        timeout = aiohttp.ClientTimeout(total=None)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.post(
                 destination_url,
                 json=payload
@@ -505,7 +506,8 @@ class Governor:
         
         # Initialise WSSW object on participant's worker node by posting tags &
         # alignments to `initialise` route in worker's REST-RPC
-        async with aiohttp.ClientSession() as session:
+        timeout = aiohttp.ClientTimeout(total=None)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.post(
                 destination_url,
                 json=payload
@@ -543,7 +545,8 @@ class Governor:
 
         # Terminate WSSW object on participant's worker node (if possible) by
         # posting to `terminate` route in worker's REST-RPC
-        async with aiohttp.ClientSession() as session:
+        timeout = aiohttp.ClientTimeout(total=None)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.post(destination_url) as response:
                 resp_json = await response.json(content_type='application/json')
         

@@ -9,6 +9,7 @@ import importlib
 import inspect
 import logging
 from collections import OrderedDict
+from typing import Tuple
 
 # Libs
 import torch as th
@@ -45,19 +46,24 @@ class Model(nn.Module):
     """
     def __init__(self, structure):
         super(Model, self).__init__()
+        self.__SPECIAL_CASES = [
+            'RNNBase', 'RNN', 'RNNCell',
+            'LSTM', 'LSTMCell',
+            'GRU', 'GRUCell'
+        ]
         
         self.layers = OrderedDict()
 
         for layer, params in enumerate(structure):
-
-            # Construct layer name
-            layer_name = f"nnl_{layer}" # neural network layer
 
             # Detect if input layer
             is_input_layer = params['is_input']
 
             # Detect layer type
             layer_type = params['l_type']
+
+            # Construct layer name (eg. nnl_0_linear)
+            layer_name = self.__construct_layer_name(layer, layer_type)
 
             # Extract layer structure and initialise layer
             layer_structure = params['structure']
@@ -80,6 +86,37 @@ class Model(nn.Module):
     ###########
     # Helpers #
     ###########
+
+    @staticmethod
+    def __construct_layer_name(layer_idx: int, layer_type: str) -> str:
+        """ This function was created as a means for formatting the layer name
+            to facilitate finding & handling special cases during forward
+            propagation
+
+        Args:
+            layer_idx (int): Index of the layer
+            layer_type (str): Type of layer
+        Returns:
+            layer name (str)
+        """
+        return f"nnl_{layer_idx}_{layer_type.lower()}" 
+
+
+    @staticmethod
+    def __parse_layer_name(layer_name: str) -> Tuple[str, str]:
+        """ This function was created as a means for reversing the formatting
+            done during name creation to facilitate finding & handling special 
+            cases during forward propagation
+
+        Args:
+            layer name (str)
+        Returns:
+            layer_idx (int): Index of the layer
+            layer_type (str): Type of layer
+        """
+        _, layer_idx, layer_type = layer_name.split('_')
+        return layer_idx, layer_type.capitalize()
+
 
     @staticmethod
     def __parse_layer_type(layer_type):
@@ -123,12 +160,18 @@ class Model(nn.Module):
     def forward(self, x):
         
         # Apply the appropiate activation functions
-        for layer, a_func in self.layers.items():
-            curr_layer = getattr(self, layer)
-            x = a_func(curr_layer(x))
+        for layer_name, a_func in self.layers.items():
+            curr_layer = getattr(self, layer_name)
+
+            _, layer_type = self.__parse_layer_name(layer_name)
+
+            # Check if current layer is a recurrent layer
+            if layer_type in self.__SPECIAL_CASES:
+                x, _ = a_func(curr_layer(x))
+            else:
+                x = a_func(curr_layer(x))
 
         return x
-
 
 #########
 # Tests #

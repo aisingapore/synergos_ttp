@@ -76,6 +76,7 @@ class FederatedLearning:
         local_models (dict(str,Models)): Most recent cache of local models
         loss_history (dict): Local & global losses tracked throughout FL training
     """
+    
     def __init__(
         self, 
         arguments: Arguments, 
