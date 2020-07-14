@@ -139,7 +139,7 @@ class Participants(Resource):
         """
         try:
             new_participant_details = request.json
-            participant_id = new_participant_details.pop('participant_id')
+            participant_id = new_participant_details['id']
 
             participant_records = ParticipantRecords(db_path=db_path)
             new_participant = participant_records.create(

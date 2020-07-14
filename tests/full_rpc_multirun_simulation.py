@@ -118,8 +118,6 @@ test_experiment_2 = {
 # Run Simulation
 test_run_1 = {
     "run_id": run_id_1,
-    # "input_size": 28,
-    # "output_size": 1,
     "batch_size": 32,
     "rounds": 2,
     "epochs": 2,
@@ -132,8 +130,6 @@ test_run_1 = {
 
 test_run_2 = {
     "run_id": run_id_2,
-    # "input_size": 28,
-    # "output_size": 1,
     "batch_size": 32,
     "rounds": 2,
     "epochs": 1,
@@ -148,8 +144,6 @@ test_run_2 = {
 
 test_run_3 = {
     "run_id": run_id_3,
-    # "input_size": 28,
-    # "output_size": 1,
     "batch_size": 32,
     "rounds": 1,
     "epochs": 1,
@@ -172,7 +166,6 @@ for p_idx in range(1, participant_count+1):
     participant_id = f"test_participant_{p_idx}"
     host_ip = f"172.17.0.{p_idx + 1}"
     participant_payload = {
-        "participant_id": participant_id,
         "id": participant_id,
         "host": host_ip,
         "port": 8020,
