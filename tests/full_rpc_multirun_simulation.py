@@ -82,7 +82,7 @@ test_experiment_1 = {
             "l_type": "Linear",
             "structure": {
                 "bias": True,
-                "in_features": 28,
+                "in_features": 15, #28,
                 "out_features": 1
             }
         }
@@ -98,7 +98,7 @@ test_experiment_2 = {
             "l_type": "Linear",
             "structure": {
                 "bias": True,
-                "in_features": 28,
+                "in_features": 15,
                 "out_features": 100
             }
         },
@@ -118,8 +118,8 @@ test_experiment_2 = {
 # Run Simulation
 test_run_1 = {
     "run_id": run_id_1,
-    "input_size": 28,
-    "output_size": 1,
+    # "input_size": 28,
+    # "output_size": 1,
     "batch_size": 32,
     "rounds": 2,
     "epochs": 2,
@@ -132,8 +132,8 @@ test_run_1 = {
 
 test_run_2 = {
     "run_id": run_id_2,
-    "input_size": 28,
-    "output_size": 1,
+    # "input_size": 28,
+    # "output_size": 1,
     "batch_size": 32,
     "rounds": 2,
     "epochs": 1,
@@ -148,8 +148,8 @@ test_run_2 = {
 
 test_run_3 = {
     "run_id": run_id_3,
-    "input_size": 28,
-    "output_size": 1,
+    # "input_size": 28,
+    # "output_size": 1,
     "batch_size": 32,
     "rounds": 1,
     "epochs": 1,

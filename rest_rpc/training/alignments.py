@@ -6,6 +6,8 @@
 
 # Generic/Built-in
 import asyncio
+import importlib
+import inspect
 import logging
 
 # Libs
@@ -15,7 +17,11 @@ from flask_restx import Namespace, Resource, fields
 
 # Custom
 from rest_rpc import app
-from rest_rpc.connection.core.utils import TopicalPayload, RegistrationRecords
+from rest_rpc.connection.core.utils import (
+    TopicalPayload,
+    ExperimentRecords,
+    RegistrationRecords
+)
 from rest_rpc.training.core.utils import (
     AlignmentRecords, 
     UrlConstructor, 
@@ -38,6 +44,7 @@ ns_api = Namespace(
 SUBJECT = "Alignment" # table name
 
 db_path = app.config['DB_PATH']
+expt_records = ExperimentRecords(db_path=db_path)
 registration_records = RegistrationRecords(db_path=db_path)
 alignment_records = AlignmentRecords(db_path=db_path)
 
@@ -45,6 +52,11 @@ worker_poll_route = app.config['WORKER_ROUTES']['poll']
 worker_align_route = app.config['WORKER_ROUTES']['align']
 
 rpc_formatter = RPCFormatter()
+
+MODULE_OF_LAYERS = "torch.nn"
+MODULE_OF_ACTIVATIONS = "torch.nn.functional"
+
+activation_modules = importlib.import_module(MODULE_OF_ACTIVATIONS)
 
 ###########################################################
 # Models - Used for marshalling (i.e. moulding responses) #
@@ -180,6 +192,59 @@ class Alignments(Resource):
                 assert new_alignment.doc_id == retrieved_alignment.doc_id   
                 
                 retrieved_alignments.append(retrieved_alignment)
+
+            #############################################
+            # Auto-alignment of global inputs & outputs #
+            #############################################
+
+            layer_modules = importlib.import_module(MODULE_OF_LAYERS)
+
+            all_expts = expt_records.read_all(filter={'project_id': project_id})
+            for curr_expt in all_expts:
+            
+                expt_model = curr_expt['model']
+
+                # Check if input layer needs alignment
+                input_config = expt_model.pop(0)
+                input_layer = getattr(layer_modules, input_config['l_type'])
+                input_params = list(inspect.signature(input_layer.__init__).parameters)
+                input_key = input_params[1] # from [self, input, output, ...]
+                curr_input_size = input_config['structure'][input_key]
+                aligned_input_size = len(X_mfa_aligner.superset)
+                if curr_input_size != aligned_input_size:
+                    input_config['structure'][input_key] = aligned_input_size
+
+                expt_model.insert(0, input_config)
+
+                logging.debug(f"Modified input config: {input_config}")
+                logging.debug(f"Modified experiment: {expt_model}")
+
+                # Check if output layer needs alignment
+                output_config = expt_model.pop(-1)
+                output_layer = getattr(layer_modules, output_config['l_type'])
+                output_params = list(inspect.signature(output_layer.__init__).parameters)
+                output_key = output_params[2] # from [self, input, output, ...]
+                curr_output_size = output_config['structure'][output_key]
+                aligned_output_size = len(y_mfa_aligner.superset)
+                if curr_output_size != aligned_output_size:
+                    output_config['structure'][output_key] = aligned_output_size
+                    
+                    # If the no. of class labels has expanded, switch from 
+                    # linear activations to softmax variants
+                    if aligned_output_size > 1:
+                        output_config['structure']['activation'] = "softmax"
+
+                expt_model.append(output_config)
+
+                logging.debug(f"Modified output config: {output_config}")
+                logging.debug(f"Modified experiment: {expt_model}")
+
+                expt_records.update(
+                    **curr_expt['key'], 
+                    updates={'model': expt_model}
+                )
+
+                logging.debug(f"Updated records: {expt_records.read(**curr_expt['key'])}")
 
             success_payload = payload_formatter.construct_success_payload(
                 status=201, 
