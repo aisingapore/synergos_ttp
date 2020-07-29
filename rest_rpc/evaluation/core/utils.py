@@ -703,7 +703,18 @@ class MLFlogger:
 
                     # Log statistics to MLFlow for analysis
                     stats = meta_stats.get('statistics', {})
-                    mlflow.log_metrics(stats)
+                    for stat_type, stat_value in stats.items():
+
+                        if isinstance(stat_value, list):
+                            for val_idx, value in enumerate(stat_value):
+                                mlflow.log_metric(
+                                    key=f"{stat_type}_class_{val_idx}", 
+                                    value=value, 
+                                    step=int(val_idx+1)
+                                )
+
+                        else:
+                            mlflow.log_metric(key=stat_type, value=stat_value)
 
         return self.__rpc_formatter.strip_keys(run_mlflow_details, concise=True)
 

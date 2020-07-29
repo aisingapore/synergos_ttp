@@ -6,7 +6,6 @@
 
 # Generic
 import importlib
-import inspect
 import logging
 from collections import OrderedDict
 from typing import Tuple
@@ -76,12 +75,12 @@ class Model(nn.Module):
             # Detect activation function & store it for use in .forward()
             # Note: In more complex models, other layer types will be declared,
             #       ones that do not require activation intermediates (eg. 
-            #       batch normalisation). Hence, skip activation if undeclared
+            #       batch normalisation). Hence, by pass activation by passing
+            #       an identity function instead.
             layer_activation = params['activation']
-            if layer_activation:
-                self.layers[layer_name] = self.__parse_activation_type(
-                    layer_activation
-                )
+            self.layers[layer_name] = self.__parse_activation_type(
+                layer_activation
+            )
 
     ###########
     # Helpers #
@@ -145,6 +144,9 @@ class Model(nn.Module):
         Returns:
             Activation definition (Function)
         """
+        if not activation_type:
+            return lambda x: x
+
         try:
             activation_modules = importlib.import_module(MODULE_OF_ACTIVATIONS)
             activation = getattr(activation_modules, activation_type)
@@ -165,12 +167,16 @@ class Model(nn.Module):
 
             _, layer_type = self.__parse_layer_name(layer_name)
 
+            logging.debug(f"Layers: {self.layers}")
+            logging.debug(f"Before activation, Layer {layer_name} output: {curr_layer(x).shape}")
+            logging.debug(f"After activation,Layer {layer_name} output: {a_func(curr_layer(x)).shape}")
+
             # Check if current layer is a recurrent layer
             if layer_type in self.__SPECIAL_CASES:
                 x, _ = a_func(curr_layer(x))
             else:
                 x = a_func(curr_layer(x))
-
+            logging.debug(f"Layer {layer_name} {curr_layer} output: {x.clone().detach().get().shape}")
         return x
 
 #########

@@ -112,7 +112,8 @@ model_output_model = ns_api.inherit(
                 }
             ),
             required=True
-        )#,
+        )
+        # ,
         # 'relations': fields.Nested(
         #     ns_api.model(
         #         name='model_relations',

@@ -164,7 +164,12 @@ def start_expt_run_inference(
             )
 
             # Restore models from archive (differentiated between Normal & SNN)
-            fl_expt = FederatedLearning(args, ttp, workers, model)
+            fl_expt = FederatedLearning(
+                arguments=args, 
+                crypto_provider=ttp, 
+                workers=workers, 
+                reference=model
+            )
             fl_expt.load(
                 archive=stripped_archive,
                 shuffle=False,   # for re-assembly during inference

@@ -4,7 +4,7 @@
 # Required Modules #
 ####################
 
-# Generic/Built-in
+# Generic
 import argparse
 import asyncio
 import concurrent.futures
@@ -65,6 +65,8 @@ sy.workers.websocket_client.TIMEOUT_INTERVAL = 3600
 REF_WORKER = sy.local_worker
 
 # Patching WebsocketClientWorker
+
+device = th.device('cuda' if th.cuda.is_available() else 'cpu')
 
 #############
 # Functions #
@@ -337,15 +339,21 @@ def start_expt_run_training(keys: dict, registrations: list,
         Path(res_dir).mkdir(parents=True, exist_ok=True)
 
         # Perform a Federated Learning experiment
-        fl_expt = FederatedLearning(args, ttp, workers, model, out_dir=res_dir)
+        fl_expt = FederatedLearning(
+            arguments=args, 
+            crypto_provider=ttp, 
+            workers=workers, 
+            reference=model, 
+            out_dir=res_dir
+        )
         fl_expt.load()
         fl_expt.fit()
 
-        out_paths = fl_expt.export(res_dir)
+        out_paths = fl_expt.export()
 
-        logging.info(f"Final model: {fl_expt.global_model.state_dict()}")
+        logging.info(f"Final model: {fl_expt.algorithm.global_model.state_dict()}")
         logging.info(f"Final model stored at {out_paths}")
-        logging.info(f"Loss history: {fl_expt.loss_history}")
+        logging.info(f"Loss history: {fl_expt.algorithm.loss_history}")
 
         logging.debug(f"After training - Reference worker: {REF_WORKER}")
         logging.debug(f"After training - Registered workers in grid: {grid_hook.local_worker._known_workers}")
@@ -457,7 +465,7 @@ def start_proc(kwargs):
                 }
                 training_combinations[combination_key] = project_expt_run_params
 
-    logging.info(f"{training_combinations}")
+    logging.info(f"Training combinations: {training_combinations}")
 
     # """
     # ##########################################################

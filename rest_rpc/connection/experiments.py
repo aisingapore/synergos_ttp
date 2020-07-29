@@ -160,6 +160,7 @@ class Experiments(Resource):
             project_id=project_id, 
             expt_id=expt_id
         )
+        logging.debug(f"Retrieved experiment: {retrieved_expt}")
         assert new_expt.doc_id == retrieved_expt.doc_id
 
         success_payload = payload_formatter.construct_success_payload(

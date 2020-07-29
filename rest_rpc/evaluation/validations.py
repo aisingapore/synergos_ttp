@@ -32,7 +32,6 @@ from rest_rpc.training.core.utils import (
     Poller,
     RPCFormatter
 )
-from rest_rpc.training.models import input_model
 from rest_rpc.evaluation.core.server import start_proc
 from rest_rpc.evaluation.core.utils import (
     ValidationRecords, 
@@ -73,7 +72,14 @@ mlf_logger = MLFlogger()
 ################################################################
 
 # Marshalling inputs 
-# - same input_model retrieved from the Models resource
+input_model = ns_api.model(
+    name="input",
+    model={
+        'dockerised': fields.Boolean(default=False, required=True),
+        'verbose': fields.Boolean(default=False),
+        'log_msgs': fields.Boolean(default=False)
+    }
+)
 
 # Marshalling Outputs
 stats_model = ns_api.model(

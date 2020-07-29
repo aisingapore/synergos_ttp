@@ -68,7 +68,7 @@ class Arguments:
 
     # Arguments for functions are retrieved via `func.__code__.co_varnames`    
     """
-    def __init__(self, input_size, output_size, batch_size=None, rounds=10, 
+    def __init__(self, algorithm="FedProx", batch_size=None, rounds=10, 
                  epochs=100, lr=0.001, lr_decay=0.1, weight_decay=0, seed=42,
                  is_condensed=True, is_snn=False, precision_fractional=5, 
                  use_CLR=True, mu=0.1, reduction='mean', l1_lambda=0, l2_lambda=0, 
@@ -85,8 +85,7 @@ class Arguments:
         }
 
         # General Parameters
-        self.input_size = input_size
-        self.output_size = output_size
+        self.algorithm = algorithm
         self.batch_size = batch_size     # Default: None (i.e. bulk analysis)
         self.rounds = rounds
         self.epochs = epochs
@@ -207,7 +206,7 @@ class Arguments:
 #########
 
 if __name__ == "__main__":
-    args = Arguments(input_size=20, output_size=1)
+    args = Arguments()
     print(args.optimizer_params)
     print(args.lr_decay_params)
     print(args.early_stopping_params)

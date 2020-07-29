@@ -56,7 +56,7 @@ base_ttp_train_url = f"http://{ttp_host}:{ttp_port}/ttp/train"
 project_train_url = f"{base_ttp_train_url}/projects/{project_id}"
 
 alignment_init_url = f"{project_train_url}/alignments"
-model_init_url = f"{project_train_url}/models/{expt_id_1}/{run_id_1}"
+model_init_url = f"{project_train_url}/models/{expt_id_2}/{run_id_2}"
 
 # Relevant Evaluation Endpoints
 base_ttp_eval_url = f"http://{ttp_host}:{ttp_port}/ttp/evaluate"
@@ -120,12 +120,12 @@ test_run_1 = {
     "run_id": run_id_1,
     "batch_size": 32,
     "rounds": 2,
-    "epochs": 2,
+    "epochs": 1,
     "lr": 0.15,
     "weight_decay": 0.01,
-    "mu": 0.1,
-    "l1_lambda": 0.2,
-    "l2_lambda": 0.3,
+    "mu": 0.4,
+    "l1_lambda": 0.01,
+    "l2_lambda": 0.01,
 }
 
 test_run_2 = {
@@ -195,6 +195,13 @@ for p_idx in range(1, participant_count+1):
         }
     )
 
+    # tags_payload = (
+    #     { 
+    #         "train": [["train"]],
+    #         "evaluate": [["evaluate"]]
+    #     }
+    # )
+
     metadata = {
         'participant': participant_payload,
         'registration': registration_payload,
@@ -216,6 +223,13 @@ infer_params = {
         "test_project": [["iid_1"]]
     }
 }
+
+# infer_params = {
+#     "dockerised": True,
+#     "tags": {
+#         "test_project": [["predict"]]
+#     }
+# }
 
 ###################
 # Helper Function #

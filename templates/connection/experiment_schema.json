@@ -367,7 +367,7 @@
                             },
                             "padding": {
                                 "description": "Zero-padding added to both sides of the input",
-                                "type": "array"
+                                "type": "integer"
                             },
                             "padding_idx": {
                                 "description": "If given, pads the output with the embedding vector at padding_idx (initialized to zeros) whenever it encounters the index",

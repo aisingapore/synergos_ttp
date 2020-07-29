@@ -157,7 +157,10 @@ class TopicalPayload:
             def annotate_relations(document):
                 for subject, records in document['relations'].items():
                     annotated_records = [
-                        annotate_document(document, subject)
+                        annotate_document(
+                            encode_datetime_objects(document), 
+                            subject
+                        )
                         for document in records
                     ]
                     document['relations'][subject] = annotated_records
@@ -166,6 +169,7 @@ class TopicalPayload:
             encoded_document = encode_datetime_objects(document)
             annotated_document = annotate_document(encoded_document, kind)
             annotated_doc_and_relations = annotate_relations(annotated_document)
+            logging.debug(f"Annotated docs: {annotated_doc_and_relations}")
             return annotated_doc_and_relations
 
         self.__template['success'] = 1

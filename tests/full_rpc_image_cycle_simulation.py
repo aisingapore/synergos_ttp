@@ -56,7 +56,7 @@ base_ttp_train_url = f"http://{ttp_host}:{ttp_port}/ttp/train"
 project_train_url = f"{base_ttp_train_url}/projects/{project_id}"
 
 alignment_init_url = f"{project_train_url}/alignments"
-model_init_url = f"{project_train_url}/models/{expt_id_1}/{run_id_1}"
+model_init_url = f"{project_train_url}/models/{expt_id_2}/{run_id_2}"
 
 # Relevant Evaluation Endpoints
 base_ttp_eval_url = f"http://{ttp_host}:{ttp_port}/ttp/evaluate"
@@ -129,7 +129,7 @@ test_experiment_1 = {
             "structure": {
                 "in_channels": 32, 
                 "out_channels": 32, 
-                "kernel_size": [5, 5],
+                "kernel_size": 5,
                 "stride": 2
             }
         },
@@ -164,7 +164,7 @@ test_experiment_1 = {
             "structure": {
                 "in_channels": 32, 
                 "out_channels": 64, 
-                "kernel_size": [3, 3]
+                "kernel_size": 3
             }
         },
         # Batch normalisation
@@ -184,7 +184,7 @@ test_experiment_1 = {
             "structure": {
                 "in_channels": 64, 
                 "out_channels": 64, 
-                "kernel_size": [3, 3]
+                "kernel_size": 3
             }
         },
         # Batch normalisation
@@ -204,7 +204,7 @@ test_experiment_1 = {
             "structure": {
                 "in_channels": 64, 
                 "out_channels": 64, 
-                "kernel_size": [5, 5],
+                "kernel_size": 5,
                 "stride": 2
             }
         },
@@ -272,13 +272,13 @@ test_experiment_1 = {
         # Section 3 - Prediction #
         ##########################
         {
-            "activation": "softmax",
+            "activation": "sigmoid",
             "is_input": True,
             "l_type": "Linear",
             "structure": {
                 "bias": True,
                 "in_features": 128,
-                "out_features": 10
+                "out_features": 1
             }
         }
     ]
@@ -287,36 +287,45 @@ test_experiment_1 = {
 test_experiment_2 = {
     "expt_id": expt_id_2,
     "model": [
+        # Input: N, C, Height, Width [N, 1, 28, 28]
         {
-            "activation": "sigmoid",
+            "activation": "relu",
             "is_input": True,
-            "l_type": "Linear",
+            "l_type": "Conv2d",
             "structure": {
-                "bias": True,
-                "in_features": 28,
-                "out_features": 100
+                "in_channels": 1, 
+                "out_channels": 4, # [N, 4, 28, 28]
+                "kernel_size": 3,
+                "stride": 1,
+                "padding": 1
             }
         },
         {
+            "activation": None,
+            "is_input": False,
+            "l_type": "Flatten",
+            "structure": {}
+        },
+        # ------------------------------
+        {
             "activation": "sigmoid",
-            "is_input": True,
+            "is_input": False,
             "l_type": "Linear",
             "structure": {
                 "bias": True,
-                "in_features": 100,
+                "in_features": 4 * 28 * 28,
                 "out_features": 1
             }
         }
     ]
 }
 
+
 # Run Simulation
 test_run_1 = {
     "run_id": run_id_1,
-    "input_size": 784,
-    "output_size": 10,
-    "batch_size": 1,
-    "rounds": 20,
+    "batch_size": 32,
+    "rounds": 2,
     "epochs": 1,
     "lr": 0.15,
     "weight_decay": 0.01,
@@ -327,8 +336,6 @@ test_run_1 = {
 
 test_run_2 = {
     "run_id": run_id_2,
-    "input_size": 28,
-    "output_size": 1,
     "batch_size": 32,
     "rounds": 2,
     "epochs": 1,
@@ -343,8 +350,6 @@ test_run_2 = {
 
 test_run_3 = {
     "run_id": run_id_3,
-    "input_size": 28,
-    "output_size": 1,
     "batch_size": 32,
     "rounds": 1,
     "epochs": 1,
@@ -367,7 +372,6 @@ for p_idx in range(1, participant_count+1):
     participant_id = f"test_participant_{p_idx}"
     host_ip = f"172.17.0.{p_idx + 1}"
     participant_payload = {
-        "participant_id": participant_id,
         "id": participant_id,
         "host": host_ip,
         "port": 8020,

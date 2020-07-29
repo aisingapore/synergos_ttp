@@ -163,6 +163,9 @@ class Alignments(Resource):
             (X_data_headers, y_data_headers,
              key_sequences, _) = rpc_formatter.aggregate_metadata(all_metadata)
 
+            logging.debug(f"X_data_headers: {X_data_headers}")
+            logging.debug(f"y_data_headers: {y_data_headers}")
+
             X_mfa_aligner = MultipleFeatureAligner(headers=X_data_headers)
             X_mf_alignments = X_mfa_aligner.align()
 
@@ -209,10 +212,15 @@ class Alignments(Resource):
                 input_layer = getattr(layer_modules, input_config['l_type'])
                 input_params = list(inspect.signature(input_layer.__init__).parameters)
                 input_key = input_params[1] # from [self, input, output, ...]
-                curr_input_size = input_config['structure'][input_key]
-                aligned_input_size = len(X_mfa_aligner.superset)
-                if curr_input_size != aligned_input_size:
-                    input_config['structure'][input_key] = aligned_input_size
+                
+                # Only modify model inputs if handling non-image data! An 
+                # assumption for now is that all collaborating parties have 
+                # images of the same type of color scale (eg. grayscale, RGBA) 
+                if "in_channels" not in input_key:
+                    curr_input_size = input_config['structure'][input_key]
+                    aligned_input_size = len(X_mfa_aligner.superset)
+                    if curr_input_size != aligned_input_size:
+                        input_config['structure'][input_key] = aligned_input_size
 
                 expt_model.insert(0, input_config)
 
