@@ -89,17 +89,17 @@ stats_model = ns_api.model(
         'roc_auc_score': fields.Float(),
         'pr_auc_score': fields.Float(),
         'f_score': fields.Float(),
-        'TPR': fields.Float(),
-        'TNR': fields.Float(),
-        'PPV': fields.Float(),
-        'NPV': fields.Float(),
-        'FPR': fields.Float(),
-        'FNR': fields.Float(),
-        'FDR': fields.Float(),
-        'TP': fields.Integer(),
-        'TN': fields.Integer(),
-        'FP': fields.Integer(),
-        'FN': fields.Integer()
+        'TPRs': fields.List(fields.Float()),
+        'TNRs': fields.List(fields.Float()),
+        'PPVs': fields.List(fields.Float()),
+        'NPVs': fields.List(fields.Float()),
+        'FPRs': fields.List(fields.Float()),
+        'FNRs': fields.List(fields.Float()),
+        'FDRs': fields.List(fields.Float()),
+        'TPs': fields.List(fields.Integer()),
+        'TNs': fields.List(fields.Integer()),
+        'FPs': fields.List(fields.Integer()),
+        'FNs': fields.List(fields.Integer())
     }
 )
 

@@ -47,6 +47,8 @@ from rest_rpc.training.core.algorithms.abstract import AbstractAlgorithm
 # Configurations #
 ##################
 
+import ptvsd
+ptvsd.enable_attach()
 
 ##################################################
 # Federated Algorithm Base Class - BaseAlgorithm #
@@ -120,9 +122,9 @@ class BaseAlgorithm(AbstractAlgorithm):
     ############
 
 
-    ####################    
-    # Helper Functions #
-    ####################
+    ###########    
+    # Helpers #
+    ###########
 
     def build_custom_criterion(self):
         """ Augments a selected criterion with the ability to use FedProx
@@ -233,7 +235,7 @@ class BaseAlgorithm(AbstractAlgorithm):
         return SurrogateCriterion
 
 
-    def generate_local_models(self):
+    def generate_local_models(self) -> Dict[WebsocketClientWorker, sy.Plan]:
         """ Abstracts the generation of local models in a federated learning
             context. For default FL training (i.e. non-SNN/FedAvg/Fedprox),
             local models generated are clones of the previous round's global
@@ -249,12 +251,7 @@ class BaseAlgorithm(AbstractAlgorithm):
         Returns:
             Distributed context-specific local models (dict(str, Model))
         """
-        local_models = {
-            w: copy.deepcopy(self.global_model)
-            for w in self.workers
-        }
-
-        return local_models
+        return {w: self.global_model.copy() for w in self.workers}
 
 
     def perform_parallel_training(
@@ -289,7 +286,8 @@ class BaseAlgorithm(AbstractAlgorithm):
             trained local models
         """ 
         # Tracks which workers have reach an optimal/stagnated model
-        WORKERS_STOPPED = Manager().list()
+        # WORKERS_STOPPED = Manager().list()
+        WORKERS_STOPPED = []
 
         async def train_worker(packet):
             """ Train a worker on its single batch, and does an in-place 
@@ -323,6 +321,10 @@ class BaseAlgorithm(AbstractAlgorithm):
                 # curr_local_model = self.secret_share(curr_local_model)
                 curr_global_model = curr_global_model.send(worker)
                 curr_local_model = curr_local_model.send(worker)
+
+                # logging.debug(f"Location of global model: {curr_global_model.location}")
+                # logging.debug(f"Location of local model: {curr_local_model.location}")
+                # logging.debug(f"Location of X & y: {data.location} {labels.location}")
 
                 # Zero gradients to prevent accumulation  
                 curr_local_model.train()
@@ -908,16 +910,17 @@ class BaseAlgorithm(AbstractAlgorithm):
         prev_models = self.generate_local_models()
         
         optimizers = {
-            w: self.arguments.optimizer(
-                params=model.parameters(), 
-                **self.arguments.optimizer_params
+            w: self.arguments.optimizer( 
+                **self.arguments.optimizer_params,
+                params=model.parameters()
             ) for w, model in local_models.items()
         }
 
         schedulers = {
-            w: CyclicLR(optimizer, **self.arguments.lr_decay_params) 
-                if self.arguments.use_CLR
-                else LambdaLR(optimizer, **self.arguments.lr_decay_params)
+            w: self.arguments.lr_scheduler(
+                **self.arguments.lr_decay_params,
+                optimizer=optimizer
+            )
             for w, optimizer in optimizers.items()
         }
 
@@ -971,8 +974,8 @@ class BaseAlgorithm(AbstractAlgorithm):
         pbar = tqdm(total=self.arguments.rounds, desc='Rounds', leave=True)
         while rounds < self.arguments.rounds:
 
-            logging.debug(f"Current global model:\n {self.global_model.state_dict()}")
-            logging.debug(f"Global Gradients:\n {list(self.global_model.parameters())[0].grad}")
+            # logging.debug(f"Current global model:\n {self.global_model.state_dict()}")
+            # logging.debug(f"Global Gradients:\n {list(self.global_model.parameters())[0].grad}")
 
             (
                 local_models,

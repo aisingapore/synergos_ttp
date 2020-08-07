@@ -200,6 +200,7 @@ class Alignments(Resource):
             # Auto-alignment of global inputs & outputs #
             #############################################
 
+            logging.debug(f"Alignment Superset: {X_mfa_aligner.superset} {len(X_mfa_aligner.superset)}")
             layer_modules = importlib.import_module(MODULE_OF_LAYERS)
 
             all_expts = expt_records.read_all(filter={'project_id': project_id})

@@ -40,16 +40,128 @@ SUBJECT = "Experiment" # table name
 db_path = app.config['DB_PATH']
 expt_records = ExperimentRecords(db_path=db_path)
 
+expt_schema = app.config['SCHEMAS']['experiment_schema']
+
 ###########################################################
 # Models - Used for marshalling (i.e. moulding responses) #
 ###########################################################
 
+# Note: In Flask-restx==0.2.0, 
+# Creating a marshallable model from a specified JSON schema is bugged. While it
+# is possible to use a schema model for formatting expectations, it cannot be
+# used for marshalling outputs.
+# Error thrown -> AttributeError: 'SchemaModel' object has no attribute 'items'
+# Mitigation   -> Manually implement schema model until bug is fixed
+""" 
+[REDACTED in Flask-restx==0.2.0]
+structure_model = ns_api.schema_model(name='structure', schema=expt_schema)
+"""
+class ListableInteger():
+    def format(self, value):
+        return value
+
 structure_model = ns_api.model(
     name='structure',
     model={
-        'in_features': fields.Integer(),
-        'out_features': fields.Integer(),
-        'bias': fields.Boolean(required=True)
+        "activation": fields.String(),
+        "add_bias_kv": fields.Boolean(),
+        "add_zero_attn": fields.Boolean(),
+        "affine": fields.Boolean(),
+        "align_corners": fields.Boolean(),
+        "alpha": fields.Float(),
+        "batch_first": fields.Boolean(),
+        "beta": fields.Float(),
+        "bias": fields.Boolean(),
+        "bidirectional": fields.Boolean(),
+        "blank": fields.Integer(),
+        "ceil_mode": fields.Boolean(),
+        "count_include_pad": fields.Boolean(),
+        "cutoffs": fields.List(fields.String()),
+        "d_model": fields.Integer(),
+        "device_ids": fields.List(fields.Integer()),
+        "dilation": fields.Integer(),
+        "dim": fields.Integer(),
+        "dim_feedforward": fields.Integer(),
+        "div_value": fields.Float(),
+        # "divisor_override": {
+        #     "description": "if specified, it will be used as divisor in place of kernel_size"
+        # },
+        "dropout": fields.Float(),
+        "elementwise_affine": fields.Boolean(),
+        "embed_dim": fields.Integer(),
+        "embedding_dim": fields.Integer(),
+        "end_dim": fields.Integer(),
+        "eps": fields.Float(),
+        "full": fields.Boolean(),
+        "groups": fields.Integer(),
+        "head_bias": fields.Boolean(),
+        "hidden_size": fields.Integer(),        # Flagged for arrayable value,
+        "ignore_index": fields.Integer(),
+        "in1_features": fields.Integer(),
+        "in2_features": fields.Integer(),
+        "in_channels": fields.Integer(),
+        "in_features": fields.Integer(),
+        "init": fields.Float(),
+        "inplace": fields.Boolean(),
+        "input_size": fields.Integer(),
+        "k": fields.Float(),
+        "kdim": fields.Integer(),
+        "keepdim": fields.Boolean(),
+        "kernel_size": fields.Integer(),        # Flagged for arrayable value
+        "lambd": fields.Float(),
+        "log_input": fields.Boolean(),
+        "lower": fields.Float(),
+        "margin": fields.Float(),
+        "max_norm": fields.Float(),
+        "max_val": fields.Float(),
+        "min_val": fields.Float(),
+        "mode": fields.String(),
+        "momentum": fields.Float(),
+        "n_classes": fields.Integer(),
+        "negative_slope": fields.Float(),
+        "nhead": fields.Integer(),
+        "nonlinearity": fields.String(),
+        "norm_type": fields.Float(),
+        "normalized_shape": fields.Integer(),   # Flagged for arrayable value
+        "num_channels": fields.Integer(),
+        "num_chunks": fields.Integer(),
+        "num_decoder_layers": fields.Integer(),
+        "num_embeddings": fields.Integer(),
+        "num_encoder_layers": fields.Integer(),
+        "num_features": fields.Integer(),
+        "num_groups": fields.Integer(),
+        "num_heads": fields.Integer(),
+        "num_layers": fields.Integer(),
+        "num_parameters": fields.Integer(),
+        "out_channels": fields.Integer(),
+        "out_features": fields.Integer(),
+        "output_device": fields.Integer(),
+        "output_padding": fields.Integer(),
+        "output_ratio": fields.Float(),         # Flagged for arrayable value
+        "output_size": fields.Integer(),        # Flagged for arrayable value
+        "p": fields.Float(),
+        "padding": fields.Integer(),
+        "padding_idx": fields.Integer(),
+        "padding_mode": fields.String(),
+        "pos_weight": fields.List(fields.Float()),
+        "reduction": fields.String(),
+        "requires_grad": fields.Boolean(),
+        "return_indices": fields.Boolean(),
+        "scale_factor": fields.Float(),         # Flagged for arrayable value
+        "scale_grad_by_freq": fields.Boolean(),
+        "size": fields.Integer(),               # Flagged for arrayable value
+        "size_average": fields.Boolean(),
+        "sparse": fields.Boolean(),
+        "start_dim": fields.Integer(),
+        "stride": fields.Integer(),             # Flagged for arrayable value
+        "swap": fields.Boolean(),
+        "threshold": fields.Float(),
+        "track_running_stats": fields.Boolean(),
+        "upper": fields.Float(),
+        "upscale_factor": fields.Integer(),
+        "value": fields.Float(),
+        "vdim": fields.Integer(),
+        "zero_infinity": fields.Boolean()
     }
 )
 
@@ -57,11 +169,11 @@ layer_model = ns_api.model(
     name="layer",
     model={
         'is_input': fields.Boolean(required=True),
-        # 'structure': fields.Nested(
-        #     model=structure_model, 
-        #     skip_none=True,
-        #     required=True
-        # ),
+        'structure': fields.Nested(
+            model=structure_model, 
+            skip_none=True,
+            required=True
+        ),
         'l_type': fields.String(required=True),
         'activation': fields.String(required=True)
     }
@@ -140,7 +252,7 @@ class Experiments(Resource):
         return success_payload, 200
 
     @ns_api.doc("register_experiment")
-    # @ns_api.expect(expt_input_model)
+    @ns_api.expect(expt_input_model)
     # @ns_api.marshal_with(payload_formatter.singular_model)
     @ns_api.response(201, "New experiment created!")
     @ns_api.response(417, "Inappropriate experiment configurations passed!")

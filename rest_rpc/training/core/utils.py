@@ -7,10 +7,12 @@
 # Generic/Built-in
 import asyncio
 import copy
+import importlib
 import json
 import logging
 import uuid
 from datetime import datetime
+from typing import Dict, List, Tuple, Callable
 
 # Libs
 import aiohttp
@@ -629,3 +631,111 @@ class Governor:
             loop.close()
 
         return all_states
+
+
+############################################
+# Base Configuration Parser Class - Parser #
+############################################
+
+class Parser:
+
+    def parse_operation(self, module_str: str, operation_str: str):
+        """ Detects layer type of a specified layer from configuration
+
+        Args:
+            module_str    (str): String module to search from
+            operation_str (str): String operation to translate
+        Returns:
+            Module operation
+        """
+        try:
+            module = importlib.import_module(module_str)
+            operation = getattr(module, operation_str)
+            return operation
+
+        except AttributeError:
+            logging.error(f"Specified operation '{operation_str}' is not supported!")
+
+############################################
+# Configuration Parser Class - TorchParser #
+############################################
+
+class TorchParser(Parser):
+    """ Dynamically translates string names to PyTorch classes
+
+    Attributes:
+        MODULE_OF_LAYERS      (str): Import string for layer modules
+        MODULE_OF_ACTIVATIONS (str): Import string for activation modules
+        MODULE_OF_OPTIMIZERS  (str): Import string for optimizer modules
+        MODULE_OF_CRITERIONS  (str): Import string for criterion modules
+        MODULE_OF_SCHEDULERS  (str): Import string for scheduler modules
+    """
+    
+    def __init__(self):
+        super().__init__()
+        self.MODULE_OF_LAYERS = "torch.nn"
+        self.MODULE_OF_ACTIVATIONS = "torch.nn.functional"
+        self.MODULE_OF_OPTIMIZERS = "torch.optim"
+        self.MODULE_OF_CRITERIONS = "torch.nn"
+        self.MODULE_OF_SCHEDULERS = "torch.optim.lr_scheduler"
+
+
+    def parse_layer(self, layer_str: str) -> Callable:
+        """ Detects layer type of a specified layer from configuration
+
+        Args:
+            layer_str (str): Layer type to initialise
+        Returns:
+            Layer definition (Callable)
+        """
+        return self.parse_operation(self.MODULE_OF_LAYERS, layer_str)
+
+
+    def parse_activation(self, activation_str: str) -> Callable:
+        """ Detects activation function specified from configuration
+
+        Args:
+            activation_type (str): Activation function to initialise
+        Returns:
+            Activation definition (Callable)
+        """
+        if not activation_str:
+            return lambda x: x
+
+        return self.parse_operation(self.MODULE_OF_ACTIVATIONS, activation_str)
+    
+
+    def parse_optimizer(self, optim_str: str) -> Callable:
+        """ Detects optimizer specified from configuration
+
+        Args:
+            optim_str (str): Optimizer to initialise
+        Returns:
+            Optimizer definition (Callable)
+        """
+        return self.parse_operation(self.MODULE_OF_OPTIMIZERS, optim_str)
+
+
+    def parse_criterion(self, criterion_str: str) -> Callable:
+        """ Detects criterion specified from configuration
+
+        Args:
+            criterion_str (str): Criterion to initialise
+        Returns:
+            Criterion definition (Callable)
+        """
+        return self.parse_operation(self.MODULE_OF_CRITERIONS, criterion_str)
+
+
+    def parse_scheduler(self, scheduler_str: str) -> Callable:
+        """ Detects learning rate schedulers specified from configuration
+
+        Args:
+            scheduler_str (str): Learning rate scheduler to initialise
+        Returns:
+            Scheduler definition (Callable)
+        """
+        if not scheduler_str:
+            return self.parse_operation(self.MODULE_OF_SCHEDULERS, "LambdaLR")
+
+        return self.parse_operation(self.MODULE_OF_SCHEDULERS, scheduler_str)

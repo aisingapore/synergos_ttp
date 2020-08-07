@@ -20,7 +20,7 @@ from typing import Tuple, Dict
 import syft as sy
 import torch as th
 from syft.workers.websocket_client import WebsocketClientWorker
-from syft.workers.node_client import NodeClient
+# from syft.workers.node_client import NodeClient
 
 # Custom
 from rest_rpc import app

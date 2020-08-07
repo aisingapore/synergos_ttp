@@ -56,7 +56,7 @@ base_ttp_train_url = f"http://{ttp_host}:{ttp_port}/ttp/train"
 project_train_url = f"{base_ttp_train_url}/projects/{project_id}"
 
 alignment_init_url = f"{project_train_url}/alignments"
-model_init_url = f"{project_train_url}/models/{expt_id_2}/{run_id_2}"
+model_init_url = f"{project_train_url}/models/{expt_id_1}/{run_id_1}"
 
 # Relevant Evaluation Endpoints
 base_ttp_eval_url = f"http://{ttp_host}:{ttp_port}/ttp/evaluate"
@@ -99,7 +99,7 @@ test_experiment_2 = {
             "structure": {
                 "bias": True,
                 "in_features": 15,
-                "out_features": 100
+                "out_features": 10
             }
         },
         {
@@ -108,7 +108,97 @@ test_experiment_2 = {
             "l_type": "Linear",
             "structure": {
                 "bias": True,
-                "in_features": 100,
+                "in_features": 10,
+                "out_features": 9
+            }
+        },
+        # {
+        #     "activation": "sigmoid",
+        #     "is_input": True,
+        #     "l_type": "Linear",
+        #     "structure": {
+        #         "bias": True,
+        #         "in_features": 90,
+        #         "out_features": 80
+        #     }
+        # },
+        # {
+        #     "activation": "sigmoid",
+        #     "is_input": True,
+        #     "l_type": "Linear",
+        #     "structure": {
+        #         "bias": True,
+        #         "in_features": 80,
+        #         "out_features": 70
+        #     }
+        # },
+        # {
+        #     "activation": "sigmoid",
+        #     "is_input": True,
+        #     "l_type": "Linear",
+        #     "structure": {
+        #         "bias": True,
+        #         "in_features": 70,
+        #         "out_features": 60
+        #     }
+        # },
+        # {
+        #     "activation": "sigmoid",
+        #     "is_input": True,
+        #     "l_type": "Linear",
+        #     "structure": {
+        #         "bias": True,
+        #         "in_features": 60,
+        #         "out_features": 50
+        #     }
+        # },
+        # {
+        #     "activation": "sigmoid",
+        #     "is_input": True,
+        #     "l_type": "Linear",
+        #     "structure": {
+        #         "bias": True,
+        #         "in_features": 50,
+        #         "out_features": 40
+        #     }
+        # },
+        # {
+        #     "activation": "sigmoid",
+        #     "is_input": True,
+        #     "l_type": "Linear",
+        #     "structure": {
+        #         "bias": True,
+        #         "in_features": 40,
+        #         "out_features": 30
+        #     }
+        # },
+        # {
+        #     "activation": "sigmoid",
+        #     "is_input": True,
+        #     "l_type": "Linear",
+        #     "structure": {
+        #         "bias": True,
+        #         "in_features": 30,
+        #         "out_features": 20
+        #     }
+        # },
+        # {
+        #     "activation": "sigmoid",
+        #     "is_input": True,
+        #     "l_type": "Linear",
+        #     "structure": {
+        #         "bias": True,
+        #         "in_features": 20,
+        #         "out_features": 10
+        #     }
+        # },
+        {
+            "activation": "sigmoid",
+            "is_input": True,
+            "l_type": "Linear",
+            "structure": {
+                "bias": True,
+                "in_features": 9,#10,
                 "out_features": 1
             }
         }
@@ -118,6 +208,7 @@ test_experiment_2 = {
 # Run Simulation
 test_run_1 = {
     "run_id": run_id_1,
+    "algorithm": "FedProx",
     "batch_size": 32,
     "rounds": 2,
     "epochs": 1,
@@ -126,10 +217,13 @@ test_run_1 = {
     "mu": 0.4,
     "l1_lambda": 0.01,
     "l2_lambda": 0.01,
+    "base_lr": 0.001, 
+    "max_lr": 0.1
 }
 
 test_run_2 = {
     "run_id": run_id_2,
+    "algorithm": "FedProx",
     "batch_size": 32,
     "rounds": 2,
     "epochs": 1,
@@ -139,11 +233,14 @@ test_run_2 = {
     "l1_lambda": 0.2,
     "l2_lambda": 0.3,
     "patience": 2,
-    "delta": 0.0001
+    "delta": 0.0001,
+    "base_lr": 0.001, 
+    "max_lr": 0.1
 }
 
 test_run_3 = {
     "run_id": run_id_3,
+    "algorithm": "FedProx",
     "batch_size": 32,
     "rounds": 1,
     "epochs": 1,
@@ -152,6 +249,8 @@ test_run_3 = {
     "mu": 0.2,
     "l1_lambda": 0.2,
     "l2_lambda": 0.3,
+    "base_lr": 0.001, 
+    "max_lr": 0.1
 }
 
 # 20-party participant Simulation
@@ -176,31 +275,31 @@ for p_idx in range(1, participant_count+1):
 
     registration_payload = {"role": "guest"}
 
-    tags_payload = (
-        { 
-            "train": [
-                #["iid_1"], 
-                ["non_iid_1"]
-                # ["edge_test_misalign"]
-                # ["edge_test_na_slices"]
-            ],
-            "evaluate": [["edge_test_missing_coecerable_vals"]]
-        } 
-        if (p_idx % 2) == 1 else 
-        {
-            "train": [
-                #["iid_2"], 
-                ["non_iid_2"]
-            ]
-        }
-    )
-
     # tags_payload = (
     #     { 
-    #         "train": [["train"]],
-    #         "evaluate": [["evaluate"]]
+    #         "train": [
+    #             #["iid_1"], 
+    #             ["non_iid_1"]
+    #             # ["edge_test_misalign"]
+    #             # ["edge_test_na_slices"]
+    #         ],
+    #         "evaluate": [["edge_test_missing_coecerable_vals"]]
+    #     } 
+    #     if (p_idx % 2) == 1 else 
+    #     {
+    #         "train": [
+    #             #["iid_2"], 
+    #             ["non_iid_2"]
+    #         ]
     #     }
     # )
+
+    tags_payload = (
+        { 
+            "train": [["train"]],
+            "evaluate": [["evaluate"]]
+        }
+    )
 
     metadata = {
         'participant': participant_payload,
@@ -216,20 +315,20 @@ init_params = {
     "log_msgs": True
 }
 
-# Inference initialisation simulation
-infer_params = {
-    "dockerised": True,
-    "tags": {
-        "test_project": [["iid_1"]]
-    }
-}
-
+# # Inference initialisation simulation
 # infer_params = {
 #     "dockerised": True,
 #     "tags": {
-#         "test_project": [["predict"]]
+#         "test_project": [["iid_1"]]
 #     }
 # }
+
+infer_params = {
+    "dockerised": True,
+    "tags": {
+        "test_project": [["predict"]]
+    }
+}
 
 ###################
 # Helper Function #

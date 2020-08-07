@@ -76,208 +76,110 @@ test_project = {
 test_experiment_1 = {
     "expt_id": expt_id_1,
     "model": [
+        ##################################
+        # Section 1 - Feature Extraction #
+        ##################################
 
-        #########################################
-        # Section 1a - Feature Extraction on 32 #
-        #########################################
-
-        # Layer structure: 32C3
+        # Input: N, C, Height, Width [N, 1, 28, 28]
         {
-            "activation": "relu",
+            "activation": None,
             "is_input": True,
             "l_type": "Conv2d",
             "structure": {
                 "in_channels": 1, 
-                "out_channels": 32, 
-                "kernel_size": [3, 3]
-            }
-        },
-        # Batch normalisation
-        {
-            "activation": None, # No activation layer for batch normalisation
-            "is_input": False,
-            "l_type": "BatchNorm2d",
-            "structure": {
-                "num_features": 32
-            }
-        },
-        # Layer structure: 32C3
-        {
-            "activation": "relu",
-            "is_input": False,
-            "l_type": "Conv2d",
-            "structure": {
-                "in_channels": 32, 
-                "out_channels": 32, 
-                "kernel_size": [3, 3]
-            }
-        },
-        # Batch normalisation
-        {
-            "activation": None, # No activation layer for batch normalisation
-            "is_input": False,
-            "l_type": "BatchNorm2d",
-            "structure": {
-                "num_features": 32
-            }
-        },
-        # Layer structure: 32C5S2
-        {
-            "activation": "relu",
-            "is_input": False,
-            "l_type": "Conv2d",
-            "structure": {
-                "in_channels": 32, 
-                "out_channels": 32, 
+                "out_channels": 6,  # [N, 6, 28, 28]
                 "kernel_size": 5,
-                "stride": 2
+                "stride": 1,
+                "padding": 2,
+                "bias": True
             }
         },
-        # Batch normalisation
         {
-            "activation": None, # No activation layer for batch normalisation
+            "activation": None,
             "is_input": False,
-            "l_type": "BatchNorm2d",
+            "l_type": "Tanh",
+            "structure": {}
+        },
+        {
+            "activation": None,
+            "is_input": False,
+            "l_type": "AvgPool2d",
             "structure": {
-                "num_features": 32
+                "kernel_size": 2
             }
         },
-        # Layer structure: Dropout
         {
-            "activation": None, # No activation layer for batch normalisation
-            "is_input": False,
-            "l_type": "Dropout2d",
-            "structure": {
-                "p": 0.4
-            }
-        },
-
-        #########################################
-        # Section 1b - Feature Extraction on 64 #
-        #########################################
-
-        # Layer structure: 64C3
-        {
-            "activation": "relu",
-            "is_input": False,
+            "activation": None,
+            "is_input": True,
             "l_type": "Conv2d",
             "structure": {
-                "in_channels": 32, 
-                "out_channels": 64, 
-                "kernel_size": 3
-            }
-        },
-        # Batch normalisation
-        {
-            "activation": None, # No activation layer for batch normalisation
-            "is_input": False,
-            "l_type": "BatchNorm2d",
-            "structure": {
-                "num_features": 64
-            }
-        },
-        # Layer structure: 64C3
-        {
-            "activation": "relu",
-            "is_input": False,
-            "l_type": "Conv2d",
-            "structure": {
-                "in_channels": 64, 
-                "out_channels": 64, 
-                "kernel_size": 3
-            }
-        },
-        # Batch normalisation
-        {
-            "activation": None, # No activation layer for batch normalisation
-            "is_input": False,
-            "l_type": "BatchNorm2d",
-            "structure": {
-                "num_features": 64
-            }
-        },
-        # Layer structure: 64C5S2
-        {
-            "activation": "relu",
-            "is_input": False,
-            "l_type": "Conv2d",
-            "structure": {
-                "in_channels": 64, 
-                "out_channels": 64, 
+                "in_channels": 6, 
+                "out_channels": 16, # [N, 6, 28, 28]
                 "kernel_size": 5,
-                "stride": 2
+                "stride": 1,
+                "padding": 0,
+                "bias": True
             }
         },
-        # Batch normalisation
         {
-            "activation": None, # No activation layer for batch normalisation
+            "activation": None,
             "is_input": False,
-            "l_type": "BatchNorm2d",
-            "structure": {
-                "num_features": 64
-            }
+            "l_type": "Tanh",
+            "structure": {}
         },
-        # Layer structure: Dropout
         {
-            "activation": None, # No activation layer for batch normalisation
+            "activation": None,
             "is_input": False,
-            "l_type": "Dropout2d",
+            "l_type": "AvgPool2d",
             "structure": {
-                "p": 0.4
+                "kernel_size": 2
             }
         },
-
-        ##############################
-        # Section 2 - Classification #
-        ##############################
-
-        # Layer structure: Flatten
         {
-            "activation": None, # No activation layer for batch normalisation
+            "activation": None,
+            "is_input": True,
+            "l_type": "Conv2d",
+            "structure": {
+                "in_channels": 16, 
+                "out_channels": 120, # [N, 6, 28, 28]
+                "kernel_size": 5,
+                "stride": 1
+            }
+        },
+        {
+            "activation": None,
+            "is_input": False,
+            "l_type": "Tanh",
+            "structure": {}
+        },
+        {
+            "activation": None,
             "is_input": False,
             "l_type": "Flatten",
             "structure": {}
         },
-        # Layer structure: Classification
+
+        ####################################
+        # Section 2 - Sequential Encodings #
+        ####################################
+
         {
             "activation": "relu",
             "is_input": False,
             "l_type": "Linear",
             "structure": {
                 "bias": True,
-                "in_features": 64,
-                "out_features": 128
+                "in_features": 120,
+                "out_features": 84
             }
         },
-        # Batch normalisation
         {
-            "activation": None, # No activation layer for batch normalisation
+            "activation": "relu",
             "is_input": False,
-            "l_type": "BatchNorm2d",
-            "structure": {
-                "num_features": 128
-            }
-        },
-        # Layer structure: Dropout
-        {
-            "activation": None, # No activation layer for batch normalisation
-            "is_input": False,
-            "l_type": "Dropout2d",
-            "structure": {
-                "p": 0.4
-            }
-        },
-
-        ##########################
-        # Section 3 - Prediction #
-        ##########################
-        {
-            "activation": "sigmoid",
-            "is_input": True,
             "l_type": "Linear",
             "structure": {
                 "bias": True,
-                "in_features": 128,
+                "in_features": 84,
                 "out_features": 1
             }
         }
@@ -332,6 +234,8 @@ test_run_1 = {
     "mu": 0.1,
     "l1_lambda": 0.2,
     "l2_lambda": 0.3,
+    "base_lr": 0.001, 
+    "max_lr": 0.1
 }
 
 test_run_2 = {
@@ -345,7 +249,9 @@ test_run_2 = {
     "l1_lambda": 0.2,
     "l2_lambda": 0.3,
     "patience": 2,
-    "delta": 0.0001
+    "delta": 0.0001,
+    "base_lr": 0.001, 
+    "max_lr": 0.1
 }
 
 test_run_3 = {
@@ -358,6 +264,8 @@ test_run_3 = {
     "mu": 0.2,
     "l1_lambda": 0.2,
     "l2_lambda": 0.3,
+    "base_lr": 0.001, 
+    "max_lr": 0.1
 }
 
 # 20-party participant Simulation
@@ -492,10 +400,10 @@ if __name__ == "__main__":
     # Evaluation #
     ##############
 
-    # Step 1: TTP commences post-mortem model validation
-    val_resp = execute_post(url=validation_init_url, payload=init_params)
-    logging.debug(f"New prediction: {val_resp}")
+    # # Step 1: TTP commences post-mortem model validation
+    # val_resp = execute_post(url=validation_init_url, payload=init_params)
+    # logging.debug(f"New prediction: {val_resp}")
 
-    # Step 2: Participant requests trained global models from TTP for inference
-    predict_resp = execute_post(url=prediction_init_url, payload=infer_params)
-    logging.debug(f"New prediction: {predict_resp}")
+    # # Step 2: Participant requests trained global models from TTP for inference
+    # predict_resp = execute_post(url=prediction_init_url, payload=infer_params)
+    # logging.debug(f"New prediction: {predict_resp}")

@@ -21,7 +21,7 @@ import syft as sy
 import torch as th
 from pathos.multiprocessing import ProcessingPool
 from syft.workers.websocket_client import WebsocketClientWorker
-from syft.workers.node_client import NodeClient
+# from syft.workers.node_client import NodeClient
 
 # Custom
 from rest_rpc import app
@@ -143,7 +143,7 @@ def connect_to_workers(keys, reg_records, dockerised=True, log_msgs=False, verbo
             # tensors back to the worker node. This ensures that the grid is
             # self-contained at the TTP, and that the workers' local grid is not
             # polluted with unncessary tensors. Doing so optimizes tag searches.
-            is_client_worker=True, 
+            is_client_worker=False, #True
 
             **config
         )

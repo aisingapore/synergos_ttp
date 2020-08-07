@@ -54,8 +54,11 @@
 
 # CMD ["--help"]
 
+##############
+# Base Image #
+##############
 
-FROM python:3.7.4-slim-buster
+FROM python:3.7.4-slim-buster as base
 
 RUN apt-get update
 RUN DEBIAN_FRONTEND=noninteractive apt-get install -y \
@@ -73,6 +76,23 @@ WORKDIR /ttp
 EXPOSE 5000
 EXPOSE 8020
 
-ENTRYPOINT ["python", "./main.py"]
+########################
+# New Image - Debugger #
+########################
 
+FROM base as debug
+RUN pip install ptvsd
+
+WORKDIR /ttp
+EXPOSE 5678
+CMD python -m ptvsd --host 0.0.0.0 --port 5678 --wait main.py
+
+##########################
+# New Image - Production #
+##########################
+
+FROM base as prod
+
+WORKDIR /ttp
+ENTRYPOINT ["python", "./main.py"]
 CMD ["--help"]
