@@ -117,6 +117,9 @@ class BaseAlgorithm(AbstractAlgorithm):
         self.out_dir = out_dir
         self.checkpoints = {}
 
+        # Avoid Pytorch deadlock issues
+        th.set_num_threads(1)
+
     ############
     # Checkers #
     ############
@@ -328,7 +331,7 @@ class BaseAlgorithm(AbstractAlgorithm):
 
                 # Zero gradients to prevent accumulation  
                 curr_local_model.train()
-                curr_optimizer.zero_grad()
+                curr_optimizer.zero_grad() 
 
                 # Forward Propagation
                 predictions = curr_local_model(data.float())
@@ -550,7 +553,7 @@ class BaseAlgorithm(AbstractAlgorithm):
             logging.debug(f"packet: {packet}")
             try:
                 worker, (data, labels) = packet
-            except TypeError:
+            except (TypeError, ValueError):
                 (data, labels) = packet
                 assert data.location is labels.location
                 worker = data.location
