@@ -24,12 +24,6 @@ from rest_rpc.connection.core.utils import (
     RegistrationRecords,
     TagRecords
 )
-from rest_rpc.connection.projects import project_model
-from rest_rpc.connection.experiments import expt_model
-from rest_rpc.connection.runs import config_model
-from rest_rpc.connection.participants import participant_model
-from rest_rpc.connection.registration import registration_model
-from rest_rpc.connection.tags import tag_model
 from rest_rpc.training.core.utils import (
     AlignmentRecords, 
     ModelRecords,
@@ -69,7 +63,7 @@ rpc_formatter = RPCFormatter()
 
 # Marshalling inputs
 input_model = ns_api.model(
-    name="input",
+    name="training_input",
     model={
         'dockerised': fields.Boolean(default=False, required=True),
         'verbose': fields.Boolean(default=False),

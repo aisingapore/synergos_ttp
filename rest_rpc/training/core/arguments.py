@@ -79,7 +79,7 @@ class Arguments:
         rounds: int = 10, 
         epochs: int = 100,
         lr: float = 0.001, 
-        weight_decay: int = 0,
+        weight_decay: float = 0.0,
         lr_decay: float = 0.1, 
         mu: float = 0.1, 
         l1_lambda: float = 0.0, 

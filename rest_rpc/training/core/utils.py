@@ -295,6 +295,7 @@ class RPCFormatter:
             """
             return [idx for idx, e in enumerate(alignment) if e == None]
 
+        logging.debug(f"X_mf_alignments: {X_mf_alignments}, y_mf_alignments: {y_mf_alignments}")
         spacer_collection = {}
         for X_alignment, y_alignment, (participant, meta) in zip(
                 X_mf_alignments, 

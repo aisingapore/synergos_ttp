@@ -157,6 +157,7 @@ class BaseAlgorithm(AbstractAlgorithm):
 
             def forward(self, outputs, labels, w, wt):
                 # Calculate normal criterion loss
+                logging.debug(f"labels type: {labels.type()}")
                 loss = super().forward(outputs, labels)
                 logging.debug(f"BCE Loss: {loss.location}")
 
@@ -334,27 +335,17 @@ class BaseAlgorithm(AbstractAlgorithm):
                 curr_optimizer.zero_grad() 
 
                 # Forward Propagation
-                predictions = curr_local_model(data.float())
+                outputs = curr_local_model(data)
                 logging.debug(f"Data shape: {data.shape}")
-                logging.debug(f"Prediction size: {predictions.shape}")
+                logging.debug(f"Output size: {outputs.shape}")
                 logging.debug(f"Augmented labels size: {labels.shape}")
 
-                if self.arguments.is_condensed:
-                    # To handle binomial context
-                    loss = curr_criterion(
-                        predictions, 
-                        labels.float(),
-                        w=curr_local_model.state_dict(),
-                        wt=curr_global_model.state_dict()
-                    )
-                else:
-                    # To handle multinomial context
-                    loss = curr_criterion(
-                        predictions, 
-                        th.max(labels, 1)[1],
-                        w=curr_local_model.state_dict(),
-                        wt=curr_global_model.state_dict()
-                    )
+                loss = curr_criterion(
+                    outputs=outputs, 
+                    labels=labels,
+                    w=curr_local_model.state_dict(),
+                    wt=curr_global_model.state_dict()
+                )
 
                 # Backward propagation
                 loss.backward()
@@ -578,38 +569,45 @@ class BaseAlgorithm(AbstractAlgorithm):
 
                 outputs = self.global_model(data).detach()
 
-                if self.arguments.is_condensed:
-                    predictions = (outputs > 0.5).float()
+                # if self.arguments.is_condensed:
+                predictions = (outputs > 0.5).float()  
                     
-                else:
-                    # Find best predicted class label representative of sample
-                    _, predicted_labels = outputs.max(axis=1)
+                # else:
+                #     # Find best predicted class label representative of sample
+                #     _, predicted_labels = outputs.max(axis=1)
                     
-                    # One-hot encode predicted labels
-                    predictions = th.FloatTensor(labels.shape)
-                    predictions.zero_()
-                    predictions.scatter_(1, predicted_labels.view(-1,1), 1)
+                #     # One-hot encode predicted labels
+                #     predictions = th.FloatTensor(labels.shape)
+                #     predictions.zero_()
+                #     predictions.scatter_(1, predicted_labels.view(-1,1), 1)
 
                 # Compute loss
                 surrogate_criterion = self.build_custom_criterion()(
                     **self.arguments.criterion_params
                 )
-                if self.arguments.is_condensed:
-                    # To handle binomial context
-                    loss = surrogate_criterion(
-                        outputs, 
-                        labels.float(),
-                        w=self.local_models[worker.id].state_dict(),
-                        wt=self.global_model.state_dict()
-                    )
-                else:
-                    # To handle multinomial context
-                    loss = surrogate_criterion(
-                        outputs, 
-                        th.max(labels, 1)[1],
-                        w=self.local_models[worker.id].state_dict(),
-                        wt=self.global_model.state_dict()
-                    )
+                # if self.arguments.is_condensed:
+                #     # To handle binomial context
+                #     loss = surrogate_criterion(
+                #         outputs, 
+                #         labels.float(),
+                #         w=self.local_models[worker.id].state_dict(),
+                #         wt=self.global_model.state_dict()
+                #     )
+                # else:
+                #     # To handle multinomial context
+                #     loss = surrogate_criterion(
+                #         outputs, 
+                #         th.max(labels, 1)[1],
+                #         w=self.local_models[worker.id].state_dict(),
+                #         wt=self.global_model.state_dict()
+                #     )
+
+                loss = surrogate_criterion(
+                    outputs=outputs, 
+                    labels=labels.long(),
+                    w=self.local_models[worker.id].state_dict(),
+                    wt=self.global_model.state_dict()
+                )
 
             self.local_models[worker.id] = self.local_models[worker.id].get()
             self.global_model = self.global_model.get()

@@ -23,6 +23,9 @@ from rest_rpc.connection.core.utils import (
     ExperimentRecords
 )
 from rest_rpc.connection.runs import run_output_model
+from rest_rpc.training.models import model_output_model
+from rest_rpc.evaluation.validations import val_output_model
+from rest_rpc.evaluation.predictions import pred_output_model
 
 ##################
 # Configurations #
@@ -216,6 +219,15 @@ expt_output_model = ns_api.inherit(
                 model={
                     'Run': fields.List(
                         fields.Nested(run_output_model, skip_none=True)
+                    ),
+                    'Model': fields.List(
+                        fields.Nested(model_output_model, skip_none=True)
+                    ),
+                    'Validation': fields.List(
+                        fields.Nested(val_output_model, skip_none=True)
+                    ),
+                    'Prediction': fields.List(
+                        fields.Nested(pred_output_model, skip_none=True)
                     )
                 }
             ),

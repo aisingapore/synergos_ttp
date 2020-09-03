@@ -55,6 +55,7 @@ class Model(nn.Module):
         self.layers = OrderedDict()
 
         for layer, params in enumerate(structure):
+            logging.debug(f'params: {params}')
 
             # Detect if input layer
             is_input_layer = params['is_input']

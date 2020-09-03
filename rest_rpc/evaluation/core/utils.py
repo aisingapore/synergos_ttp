@@ -568,7 +568,6 @@ class MLFlogger:
                 'mlflow_type': 'run',
                 'mlflow_id': run_mlflow_id,
                 'mlflow_uri': expt_mlflow_details['mlflow_uri'] # same as expt
-
             }
             new_run_mlflow_details = self.mlf_records.create(
                 project=project_id,
@@ -583,7 +582,16 @@ class MLFlogger:
 
 
     def delete_mlflow_run(self):
-        pass
+        """
+
+        Args:
+            project_id (str): REST-RPC ID of specified project
+            expt_id (str): REST-RPC ID of specified experiment
+            run_id (str): REST-RPC ID of specified run
+        Returns:
+
+        """
+
 
 
     def log_losses(self, project_id: str, expt_id: str, run_id: str):

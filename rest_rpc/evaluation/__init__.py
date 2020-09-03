@@ -30,6 +30,13 @@ api = Api(
 #############################
 # Validation management API #
 #############################
+"""
+Supported routes:
+1) "/projects/<project_id>/validations"
+2) "/projects/<project_id>/validations/<expt_id>"
+3) "/projects/<project_id>/validations/<expt_id>/<run_id>"
+4) "/projects/<project_id>/validations/<expt_id>/<run_id>/<participant_id>"
+"""
 
 api.add_namespace(
     validation_ns,
@@ -39,6 +46,13 @@ api.add_namespace(
 #############################
 # Prediction management API #
 #############################
+"""
+Supported routes:
+1) "/participants/<participant_id>/predictions"
+2) "/participants/<participant_id>/predictions/<project_id>"
+3) "/participants/<participant_id>/predictions/<project_id>/<expt_id>"
+4) "/participants/<participant_id>/predictions/<project_id>/<expt_id>/<run_id>"
+"""
 
 api.add_namespace(
     prediction_ns,

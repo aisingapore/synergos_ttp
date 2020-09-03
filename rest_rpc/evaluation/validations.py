@@ -73,7 +73,7 @@ mlf_logger = MLFlogger()
 
 # Marshalling inputs 
 input_model = ns_api.model(
-    name="input",
+    name="validation_input",
     model={
         'dockerised': fields.Boolean(default=False, required=True),
         'verbose': fields.Boolean(default=False),
@@ -85,10 +85,10 @@ input_model = ns_api.model(
 stats_model = ns_api.model(
     name="statistics",
     model={
-        'accuracy': fields.Float(),
-        'roc_auc_score': fields.Float(),
-        'pr_auc_score': fields.Float(),
-        'f_score': fields.Float(),
+        'accuracy': fields.List(fields.Float()),
+        'roc_auc_score': fields.List(fields.Float()),
+        'pr_auc_score': fields.List(fields.Float()),
+        'f_score': fields.List(fields.Float()),
         'TPRs': fields.List(fields.Float()),
         'TNRs': fields.List(fields.Float()),
         'PPVs': fields.List(fields.Float()),
@@ -176,18 +176,14 @@ class Validations(Resource):
         """
         filter = {k:v for k,v in request.view_args.items() if v is not None}
 
-        retrieved_validations = registration_records.read_all(filter=filter)
+        retrieved_validations = validation_records.read_all(filter=filter)
         
         if retrieved_validations:
             
             success_payload = payload_formatter.construct_success_payload(
                 status=200,
                 method="validations.get",
-                params={
-                    'project_id': project_id, 
-                    'expt_id': expt_id,
-                    'run_id': run_id    
-                },
+                params=request.view_args,
                 data=retrieved_validations
             )
             return success_payload, 200

@@ -23,6 +23,9 @@ from rest_rpc.connection.registration import (
     registration_export_model
 )
 from rest_rpc.connection.tags import Tag, tag_output_model
+from rest_rpc.training.models import model_output_model
+from rest_rpc.evaluation.validations import val_output_model
+from rest_rpc.evaluation.predictions import pred_output_model
 
 ##################
 # Configurations #
@@ -44,7 +47,7 @@ db_path = app.config['DB_PATH']
 # Models - Used for marshalling (i.e. moulding responses) #
 ###########################################################
 
-incentives_field = fields.Wildcard(fields.List(fields.String())) # tentative
+incentives_field = fields.Wildcard(fields.Raw()) # tentative
 incentive_model = ns_api.model(
     name="incentives",
     model={"*": incentives_field}
@@ -99,6 +102,15 @@ project_output_model = ns_api.inherit(
                     ),
                     'Tag': fields.List(
                         fields.Nested(tag_output_model, skip_none=True)
+                    ),
+                    'Model': fields.List(
+                        fields.Nested(model_output_model, skip_none=True)
+                    ),
+                    'Validation': fields.List(
+                        fields.Nested(val_output_model, skip_none=True)
+                    ),
+                    'Prediction': fields.List(
+                        fields.Nested(pred_output_model, skip_none=True)
                     )
                 }
             ),

@@ -56,7 +56,7 @@ base_ttp_train_url = f"http://{ttp_host}:{ttp_port}/ttp/train"
 project_train_url = f"{base_ttp_train_url}/projects/{project_id}"
 
 alignment_init_url = f"{project_train_url}/alignments"
-model_init_url = f"{project_train_url}/models/{expt_id_2}/{run_id_2}"
+model_init_url = f"{project_train_url}/models/{expt_id_1}/{run_id_1}"
 
 # Relevant Evaluation Endpoints
 base_ttp_eval_url = f"http://{ttp_host}:{ttp_port}/ttp/evaluate"
@@ -400,10 +400,10 @@ if __name__ == "__main__":
     # Evaluation #
     ##############
 
-    # # Step 1: TTP commences post-mortem model validation
-    # val_resp = execute_post(url=validation_init_url, payload=init_params)
-    # logging.debug(f"New prediction: {val_resp}")
+    # Step 1: TTP commences post-mortem model validation
+    val_resp = execute_post(url=validation_init_url, payload=init_params)
+    logging.debug(f"New prediction: {val_resp}")
 
-    # # Step 2: Participant requests trained global models from TTP for inference
-    # predict_resp = execute_post(url=prediction_init_url, payload=infer_params)
-    # logging.debug(f"New prediction: {predict_resp}")
+    # Step 2: Participant requests trained global models from TTP for inference
+    predict_resp = execute_post(url=prediction_init_url, payload=infer_params)
+    logging.debug(f"New prediction: {predict_resp}")

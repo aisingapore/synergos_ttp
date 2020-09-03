@@ -241,7 +241,7 @@ class Alignments(Resource):
                     # If the no. of class labels has expanded, switch from 
                     # linear activations to softmax variants
                     if aligned_output_size > 1:
-                        output_config['structure']['activation'] = "softmax"
+                        output_config['activation'] = "softmax"
 
                 expt_model.append(output_config)
 

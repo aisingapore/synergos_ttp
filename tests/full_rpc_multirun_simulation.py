@@ -57,6 +57,7 @@ project_train_url = f"{base_ttp_train_url}/projects/{project_id}"
 
 alignment_init_url = f"{project_train_url}/alignments"
 model_init_url = f"{project_train_url}/models/{expt_id_1}/{run_id_1}"
+optim_init_url = f"{project_train_url}/models/{expt_id_1}/optimizations"
 
 # Relevant Evaluation Endpoints
 base_ttp_eval_url = f"http://{ttp_host}:{ttp_port}/ttp/evaluate"
@@ -109,96 +110,96 @@ test_experiment_2 = {
             "structure": {
                 "bias": True,
                 "in_features": 10,
-                "out_features": 9
+                "out_features": 90
             }
         },
-        # {
-        #     "activation": "sigmoid",
-        #     "is_input": True,
-        #     "l_type": "Linear",
-        #     "structure": {
-        #         "bias": True,
-        #         "in_features": 90,
-        #         "out_features": 80
-        #     }
-        # },
-        # {
-        #     "activation": "sigmoid",
-        #     "is_input": True,
-        #     "l_type": "Linear",
-        #     "structure": {
-        #         "bias": True,
-        #         "in_features": 80,
-        #         "out_features": 70
-        #     }
-        # },
-        # {
-        #     "activation": "sigmoid",
-        #     "is_input": True,
-        #     "l_type": "Linear",
-        #     "structure": {
-        #         "bias": True,
-        #         "in_features": 70,
-        #         "out_features": 60
-        #     }
-        # },
-        # {
-        #     "activation": "sigmoid",
-        #     "is_input": True,
-        #     "l_type": "Linear",
-        #     "structure": {
-        #         "bias": True,
-        #         "in_features": 60,
-        #         "out_features": 50
-        #     }
-        # },
-        # {
-        #     "activation": "sigmoid",
-        #     "is_input": True,
-        #     "l_type": "Linear",
-        #     "structure": {
-        #         "bias": True,
-        #         "in_features": 50,
-        #         "out_features": 40
-        #     }
-        # },
-        # {
-        #     "activation": "sigmoid",
-        #     "is_input": True,
-        #     "l_type": "Linear",
-        #     "structure": {
-        #         "bias": True,
-        #         "in_features": 40,
-        #         "out_features": 30
-        #     }
-        # },
-        # {
-        #     "activation": "sigmoid",
-        #     "is_input": True,
-        #     "l_type": "Linear",
-        #     "structure": {
-        #         "bias": True,
-        #         "in_features": 30,
-        #         "out_features": 20
-        #     }
-        # },
-        # {
-        #     "activation": "sigmoid",
-        #     "is_input": True,
-        #     "l_type": "Linear",
-        #     "structure": {
-        #         "bias": True,
-        #         "in_features": 20,
-        #         "out_features": 10
-        #     }
-        # },
         {
             "activation": "sigmoid",
             "is_input": True,
             "l_type": "Linear",
             "structure": {
                 "bias": True,
-                "in_features": 9,#10,
+                "in_features": 90,
+                "out_features": 80
+            }
+        },
+        {
+            "activation": "sigmoid",
+            "is_input": True,
+            "l_type": "Linear",
+            "structure": {
+                "bias": True,
+                "in_features": 80,
+                "out_features": 70
+            }
+        },
+        {
+            "activation": "sigmoid",
+            "is_input": True,
+            "l_type": "Linear",
+            "structure": {
+                "bias": True,
+                "in_features": 70,
+                "out_features": 60
+            }
+        },
+        {
+            "activation": "sigmoid",
+            "is_input": True,
+            "l_type": "Linear",
+            "structure": {
+                "bias": True,
+                "in_features": 60,
+                "out_features": 50
+            }
+        },
+        {
+            "activation": "sigmoid",
+            "is_input": True,
+            "l_type": "Linear",
+            "structure": {
+                "bias": True,
+                "in_features": 50,
+                "out_features": 40
+            }
+        },
+        {
+            "activation": "sigmoid",
+            "is_input": True,
+            "l_type": "Linear",
+            "structure": {
+                "bias": True,
+                "in_features": 40,
+                "out_features": 30
+            }
+        },
+        {
+            "activation": "sigmoid",
+            "is_input": True,
+            "l_type": "Linear",
+            "structure": {
+                "bias": True,
+                "in_features": 30,
+                "out_features": 20
+            }
+        },
+        {
+            "activation": "sigmoid",
+            "is_input": True,
+            "l_type": "Linear",
+            "structure": {
+                "bias": True,
+                "in_features": 20,
+                "out_features": 10
+            }
+        },
+        {
+            "activation": "sigmoid",
+            "is_input": True,
+            "l_type": "Linear",
+            "structure": {
+                "bias": True,
+                "in_features": 10,
                 "out_features": 1
             }
         }
@@ -270,36 +271,36 @@ for p_idx in range(1, participant_count+1):
         "port": 8020,
         "log_msgs": False,
         "verbose": False,
-        "f_port": 5000      
+        "f_port": 5000  
     }
 
     registration_payload = {"role": "guest"}
 
-    # tags_payload = (
-    #     { 
-    #         "train": [
-    #             #["iid_1"], 
-    #             ["non_iid_1"]
-    #             # ["edge_test_misalign"]
-    #             # ["edge_test_na_slices"]
-    #         ],
-    #         "evaluate": [["edge_test_missing_coecerable_vals"]]
-    #     } 
-    #     if (p_idx % 2) == 1 else 
-    #     {
-    #         "train": [
-    #             #["iid_2"], 
-    #             ["non_iid_2"]
-    #         ]
-    #     }
-    # )
-
     tags_payload = (
         { 
-            "train": [["train"]],
-            "evaluate": [["evaluate"]]
+            "train": [
+                #["iid_1"], 
+                ["non_iid_1"]
+                # ["edge_test_misalign"]
+                # ["edge_test_na_slices"]
+            ],
+            "evaluate": [["edge_test_missing_coecerable_vals"]]
+        } 
+        if (p_idx % 2) == 1 else 
+        {
+            "train": [
+                #["iid_2"], 
+                ["non_iid_2"]
+            ]
         }
     )
+
+    # tags_payload = (
+    #     { 
+    #         "train": [["train"]],
+    #         "evaluate": [["evaluate"]]
+    #     }
+    # )
 
     metadata = {
         'participant': participant_payload,
@@ -313,6 +314,26 @@ init_params = {
     "dockerised": True,
     "verbose": True,
     "log_msgs": True
+}
+
+tuning_params = {
+    'search_space': {
+        "batch_size": {"_type":"choice", "_value": [16, 32, 64, 128]},
+        "hidden_size":{"_type":"choice","_value":[128, 256, 512, 1024]},
+        "lr":{"_type":"choice","_value":[0.0001, 0.001, 0.01, 0.1]},
+        "momentum":{"_type":"uniform","_value":[0, 1]}
+    },
+    'tuner': "TPE",
+    'metric': "accuracy",
+    'optimize_mode': "maximize",
+    'trial_concurrency': 1,
+    'max_exec_duration': "1h",
+    'max_trial_num': 10,
+    'is_remote': True,
+    'use_annotation': True,
+    'dockerised': True,
+    'verbose': True,
+    'log_msgs': True
 }
 
 # # Inference initialisation simulation
@@ -407,14 +428,18 @@ if __name__ == "__main__":
     model_resp = execute_post(url=model_init_url, payload=init_params)
     logging.debug(f"New model: {model_resp}")
 
+    # Step 3: TTP commences hyperparameter tuning for specified model
+    optim_resp = execute_post(url=optim_init_url, payload=tuning_params)
+    logging.debug(f"New optimization set: {optim_resp}")
+
     ##############
     # Evaluation #
     ##############
 
-    # Step 1: TTP commences post-mortem model validation
-    val_resp = execute_post(url=validation_init_url, payload=init_params)
-    logging.debug(f"New prediction: {val_resp}")
+    # # Step 1: TTP commences post-mortem model validation
+    # val_resp = execute_post(url=validation_init_url, payload=init_params)
+    # logging.debug(f"New prediction: {val_resp}")
 
-    # Step 2: Participant requests trained global models from TTP for inference
-    predict_resp = execute_post(url=prediction_init_url, payload=infer_params)
-    logging.debug(f"New prediction: {predict_resp}")
+    # # Step 2: Participant requests trained global models from TTP for inference
+    # predict_resp = execute_post(url=prediction_init_url, payload=infer_params)
+    # logging.debug(f"New prediction: {predict_resp}")
