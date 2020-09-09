@@ -14,7 +14,6 @@ from flask_restx import Api
 from rest_rpc.training.alignments import ns_api as alignment_ns
 from rest_rpc.training.models import ns_api as model_ns
 from rest_rpc.training.optimizations import ns_api as optim_ns
-from rest_rpc.training.models import Models
 
 ##################
 # Configurations #

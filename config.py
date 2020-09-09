@@ -76,8 +76,10 @@ def count_available_gpus() -> int:
         gpus = [
             device 
             for device in all_detected_devices 
-            if ('VGA' in device) or ('Display' in device)
+            if (('VGA' in device) or ('Display' in device)) and
+            'Integrated Graphics' not in device # exclude integrated graphics
         ]
+        logging.debug(f"Detected GPUs: {gpus}")
         return len(gpus)
 
     except subprocess.CalledProcessError as cpe:

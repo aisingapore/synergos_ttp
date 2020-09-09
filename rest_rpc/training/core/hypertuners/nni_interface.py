@@ -17,6 +17,7 @@ from typing import Dict, List, Tuple, Union
 # Libs
 import psutil
 import yaml
+import nnicli
 
 # Custom
 from rest_rpc import app
@@ -29,6 +30,7 @@ from rest_rpc.training.core.hypertuners.abstract import AbstractTuner
 logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.DEBUG)
 
 src_dir = app.config['SRC_DIR']
+out_dir = app.config['OUT_DIR']
 cores_used = app.config['CORES_USED']
 gpu_count = app.config['GPU_COUNT']
 
@@ -61,16 +63,20 @@ class NNITuner(AbstractTuner):
         Returns:
             Text outputs from executed command
         """
-        completed_process = subprocess.run(
-            shlex.split(command),
-            check=True, 
-            stdout=subprocess.PIPE, 
-            stderr=subprocess.PIPE,
-            text=True
-        )
-        results = completed_process.stdout
-        
-        return results
+        try:
+            completed_process = subprocess.run(
+                shlex.split(command),
+                check=True, 
+                stdout=subprocess.PIPE, 
+                stderr=subprocess.PIPE,
+                text=True
+            )
+            results = completed_process.stdout
+            return results
+
+        except subprocess.CalledProcessError as cpe:
+            logging.error(f"NNI: Something went wrong during tuning initialisation! {cpe}")
+            raise Exception
 
 
     def _generate_search_config(
@@ -91,6 +97,8 @@ class NNITuner(AbstractTuner):
             "nni", 
             "search_space.json"
         )
+        os.makedirs(Path(search_config_path).parent, exist_ok=True)
+
         with open(search_config_path, 'w') as scp:
             json.dump(search_space, scp)
         
@@ -130,12 +138,13 @@ class NNITuner(AbstractTuner):
         configurations = OrderedDict()
         configurations['authorName'] = project_id
         configurations['experimentName'] = expt_id
-        configurations['trialConcurrency'] = trial_concurrency
+        configurations['logDir'] = os.path.join(self.log_dir, "nni")
+        configurations['trialConcurrency'] = 1#trial_concurrency
         configurations['maxExecDuration'] = max_exec_duration
         configurations['maxTrialNum'] = max_trial_num
-        configurations['trainingServicePlatform'] = "remote" if is_remote else "local"
+        configurations['trainingServicePlatform'] = "local"#"remote" if is_remote else "local"
         configurations['searchSpacePath'] = search_config_path
-        configurations['useAnnotation'] = use_annotation
+        configurations['useAnnotation'] = False#use_annotation
         configurations['tuner'] = {
             'builtinTunerName': tuner,
             'classArgs': {
@@ -143,21 +152,18 @@ class NNITuner(AbstractTuner):
             }
         }
 
-        tune_dir = os.path.join(
-            src_dir, "rest_rpc", "training", "core", "hypertuners" 
-        )
-        driver_script_path = os.path.join(tune_dir, "nni_driver_script.py")
+        driver_script_path = "rest_rpc.training.core.hypertuners.nni_driver_script"
         configurations['trial'] = {
-            'command': "python {} -pid {} -eid {} -m {} -d -l -v".format(
+            'command': "python -m {} -pid {} -eid {} -m {} -d -l -v".format(
                 driver_script_path,
                 project_id,
                 expt_id,
                 metric
             ),
-            'codeDir': tune_dir,
-            'gpuNum': gpu_count,
-            'cpuNum': cores_used,
-            'memoryMB': psutil.virtual_memory().available # remaining system ram
+            'codeDir': src_dir
+            # 'gpuNum': gpu_count,
+            # 'cpuNum': cores_used,
+            # 'memoryMB': psutil.virtual_memory().available # remaining system ram
         }
 
         nni_config_path = os.path.join(self.log_dir, "nni", "config.yaml")
@@ -165,12 +171,6 @@ class NNITuner(AbstractTuner):
             yaml.dump(configurations, ncp)
 
         return nni_config_path
-
-
-    def _generate_start_command(self, config_path: str) -> str:
-        """
-        """
-        return f"nnictl create --config {config_path}"
 
     ##################
     # Core Functions #
@@ -188,7 +188,10 @@ class NNITuner(AbstractTuner):
         max_exec_duration: str = "1h",
         max_trial_num: int = 10,
         is_remote: bool = True,
-        use_annotation: bool = True
+        use_annotation: bool = True,
+        dockerised: bool = True,
+        verbose: bool = True,
+        log_msgs: bool = True
     ):
         """
         """
@@ -199,6 +202,7 @@ class NNITuner(AbstractTuner):
             expt_id=expt_id,
             search_config_path=search_config_path,
             tuner=tuner,
+            metric=metric,
             optimize_mode=optimize_mode,
             trial_concurrency=trial_concurrency,
             max_exec_duration=max_exec_duration,
@@ -207,5 +211,7 @@ class NNITuner(AbstractTuner):
             use_annotation=use_annotation
         )
 
-        command = self._generate_start_command(config_path=nni_config_path)
-        return self._execute_command(command)
+        nnicli.start_nni(config_file=nni_config_path)
+        nnicli.set_endpoint('http://127.0.0.1:8080')
+
+        return nnicli

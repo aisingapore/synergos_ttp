@@ -103,8 +103,6 @@ def connect_to_ttp(log_msgs=False, verbose=False):
     # Replace point of reference within federated hook with TTP
     sy.local_worker = ttp
     grid_hook.local_worker = ttp
-    assert (ttp is grid_hook.local_worker)
-    assert (ttp is sy.local_worker)
 
     logging.debug(f"Local worker w.r.t grid hook: {grid_hook.local_worker}")
     logging.debug(f"Local worker w.r.t env      : {sy.local_worker}")
@@ -137,18 +135,22 @@ def connect_to_workers(keys, reg_records, dockerised=True, log_msgs=False, verbo
         config['log_msgs'] = log_msgs
         config['verbose'] = verbose
 
-        curr_worker = WebsocketClientWorker(
-            hook=grid_hook,
+        try:
+            curr_worker = WebsocketClientWorker(
+                hook=grid_hook,
 
-            # When False, PySyft manages object clean up. Here, this is done on
-            # purpose, since there is no need to propagate gradient tracking
-            # tensors back to the worker node. This ensures that the grid is
-            # self-contained at the TTP, and that the workers' local grid is not
-            # polluted with unncessary tensors. Doing so optimizes tag searches.
-            is_client_worker=False, #True
+                # When False, PySyft manages object clean up. Here, this is done on
+                # purpose, since there is no need to propagate gradient tracking
+                # tensors back to the worker node. This ensures that the grid is
+                # self-contained at the TTP, and that the workers' local grid is not
+                # polluted with unncessary tensors. Doing so optimizes tag searches.
+                is_client_worker=False, #True
 
-            **config
-        )
+                **config
+            )
+
+        except OSError:
+            curr_worker = grid_hook.local_worker._known_workers[config['id']]
 
         # #####################################################################
         # # Optimal Setup -  Use NodeClient objects for in-house SMPC support #

@@ -7,6 +7,7 @@
 # Generic/Built-in
 import logging
 import os
+import time
 
 # Libs
 import jsonschema
@@ -16,9 +17,8 @@ from flask_restx import Namespace, Resource, fields
 
 # Custom
 from rest_rpc import app
-from rest_rpc.training.core.hypertuners.nni_interface import NNITuner
-from rest_rpc.training.core.hypertuners.nni_driver_script import optim_prefix
 from rest_rpc.connection.core.utils import TopicalPayload, RunRecords
+from rest_rpc.training.core.hypertuners import NNITuner, optim_prefix
 from rest_rpc.evaluation.core.utils import ValidationRecords
 from rest_rpc.evaluation.validations import val_output_model
 
@@ -155,7 +155,20 @@ class Optimizations(Resource):
         optim_log_dir = os.path.join(out_dir, project_id, expt_id)
 
         nni_tuner = NNITuner(log_dir=optim_log_dir)
-        nni_tuner.tune(**tuning_params)
+        nni_expt = nni_tuner.tune(
+            project_id=project_id, 
+            expt_id=expt_id, 
+            **tuning_params
+        )
+
+        logging.debug(f"NNI Experiment status: {nni_expt.get_experiment_status()}")
+        curr_status = nni_expt.get_experiment_status()['status']
+        while curr_status == "RUNNING":
+            logging.info(f"NNI Experiment is still running, idling for now...")
+            time.sleep(1)
+            curr_status = nni_expt.get_experiment_status()['status']
+        logging.info(f"NNI Experiment has completed! Fetching results...") 
+
 
         filter_keys = request.view_args
         search_space = tuning_params['search_space']
@@ -189,7 +202,7 @@ class Optimizations(Resource):
             
             success_payload = payload_formatter.construct_success_payload(
                 status=200,
-                method="optimizations.get",
+                method="optimizations.post",
                 params=request.view_args,
                 data=optim_validations
             )

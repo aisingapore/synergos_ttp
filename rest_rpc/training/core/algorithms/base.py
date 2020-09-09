@@ -47,8 +47,6 @@ from rest_rpc.training.core.algorithms.abstract import AbstractAlgorithm
 # Configurations #
 ##################
 
-import ptvsd
-ptvsd.enable_attach()
 
 ##################################################
 # Federated Algorithm Base Class - BaseAlgorithm #

@@ -76,6 +76,7 @@ WORKDIR /ttp
 
 EXPOSE 5000
 EXPOSE 8020
+EXPOSE 8080
 
 ########################
 # New Image - Debugger #

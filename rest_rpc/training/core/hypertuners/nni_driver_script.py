@@ -82,7 +82,8 @@ def main(
     retrieved_expt.pop('relations')
 
     # Create an optimisation run under specified experiment for current project
-    optim_run_id = optim_run_template.safe_substitute({'id': uuid.uuid1().hex})
+    #optim_run_id = optim_run_template.safe_substitute({'id': uuid.uuid1().hex})
+    optim_run_id = optim_run_template.safe_substitute({'id': nni.get_trial_id()})
     new_optim_run = run_records.create(
         project_id=project_id,
         expt_id=expt_id,
@@ -214,6 +215,13 @@ def get_params():
         help="if set, logging will be started in verbose mode"
     )
 
+    # parser.add_argument(
+    #     "--kwargs",
+    #     "-k",
+    #     nargs=2,
+    #     action="append"
+    # )
+
     args, _ = parser.parse_known_args()
     return args
 
@@ -228,7 +236,8 @@ if __name__ == "__main__":
         tuner_params = nni.get_next_parameter()
         logging.debug(f"Detected hyperparameter set: {tuner_params}")
 
-        params = vars(merge_parameter(get_params(), tuner_params))
+        # params = vars(merge_parameter(get_params(), tuner_params))
+        params = {**vars(get_params()), **tuner_params}
         main(**params)
         
     except Exception as e:
