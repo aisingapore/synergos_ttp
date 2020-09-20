@@ -287,6 +287,8 @@ class Analyser:
         Returns:
             Statistics (dict)
         """
+        project_action = reg_record['project']['action'] 
+        
         participant_details = reg_record['participant'].copy()
         participant_id = participant_details['id']
         participant_ip = participant_details['host']
@@ -306,7 +308,7 @@ class Analyser:
             run_id=self.run_id
         )
         
-        payload = {'inferences': inferences}
+        payload = {'action': project_action, 'inferences': inferences}
 
         # Trigger remote inference by posting alignments & ID mappings to 
         # `Predict` route in worker
@@ -591,6 +593,7 @@ class MLFlogger:
         Returns:
 
         """
+        pass
 
 
 

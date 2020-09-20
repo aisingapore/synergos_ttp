@@ -342,6 +342,8 @@ class Poller:
         Returns:
             headers (dict)
         """
+        project_action = reg_record['project']['action']
+
         participant_details = reg_record['participant'].copy()
         participant_id = participant_details['id']
         participant_ip = participant_details['host']
@@ -359,7 +361,8 @@ class Poller:
         # Search for tags using composite project + participant
         relevant_tags = reg_record['relations']['Tag'][0]
         stripped_tags = self.__rpc_formatter.strip_keys(relevant_tags)
-        payload = {'tags': stripped_tags}
+        
+        payload = {'action': project_action, 'tags': stripped_tags}
 
         # Poll for headers by posting tags to `Poll` route in worker
         timeout = aiohttp.ClientTimeout(total=None)
@@ -472,6 +475,8 @@ class Governor:
         Returns:
             State of WSSW object (dict)
         """
+        project_action = reg_record['project']['action'] 
+
         participant_details = reg_record['participant'].copy()
         participant_id = participant_details['id']
         participant_ip = participant_details['host']
@@ -495,6 +500,7 @@ class Governor:
         stripped_alignments = self.__rpc_formatter.strip_keys(relevant_alignments)
 
         payload = {
+            'action': project_action,
             'tags': stripped_tags,
             'alignments': stripped_alignments            
         }

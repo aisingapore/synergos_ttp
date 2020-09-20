@@ -76,6 +76,7 @@ class BaseAlgorithm(AbstractAlgorithm):
     """
     def __init__(
         self, 
+        action: str,
         crypto_provider: sy.VirtualWorker,
         workers: List[WebsocketClientWorker],
         arguments: Arguments,
@@ -87,6 +88,9 @@ class BaseAlgorithm(AbstractAlgorithm):
         out_dir: str = '.',
         **kwargs
     ):
+        # General attributes
+        self.action = action
+
         # Network attributes
         self.crypto_provider = crypto_provider
         self.workers = workers
@@ -133,6 +137,8 @@ class BaseAlgorithm(AbstractAlgorithm):
         Returns:
             Surrogate criterion (SurrogateCriterion)
         """
+        CRITERION_NAME = self.arguments.criterion.__name__
+        ACTION = self.action
 
         class SurrogateCriterion(self.arguments.criterion):
             """ A wrapper class to augment a specified PyTorch criterion to 
@@ -140,6 +146,8 @@ class BaseAlgorithm(AbstractAlgorithm):
             
             Args:
                 mu (float): Regularisation term for gamma-inexact minimizer
+                l1_lambda (float): Regularisation term for L1 regularisation
+                l2_lambda (float): Regularisation term for L2 regularisation
                 **kwargs: Keyword arguments to pass to parent criterion
                 
             Attributes:
@@ -153,11 +161,80 @@ class BaseAlgorithm(AbstractAlgorithm):
                 self.l1_lambda = l1_lambda
                 self.l2_lambda = l2_lambda
 
+            def format_params(self, outputs: th.Tensor, labels: th.Tensor) -> th.Tensor:
+                """ Casts specified label tensors into an appropriate form
+                    compatible with the specified base criterion
+
+                Args:
+                    labels (th.Tensor): Target values used for loss calculation
+                Returns:
+                    Restructured labels (th.Tensor)
+                """
+                N_STAR_FORMAT = [
+                    "L1Loss", "MSELoss", "PoissonNLLLoss", "KLDivLoss",
+                    "BCELoss", "BCEWithLogitsLoss", "SmoothL1Loss"
+                ]
+                N_C_N_FORMAT = [
+                    "CrossEntropyLoss", "NLLLoss", "MultiLabelMarginLoss", 
+                    "MultiLabelSoftMarginLoss", 
+                ]
+                STAR_FORMAT = ["HingeEmbeddingLoss", "SoftMarginLoss"]
+
+                ###########################
+                # Implementation Footnote #
+                ###########################
+
+                # [Cause]
+                # Most criterions, if not all, can be split into 2 distinct 
+                # groups; 1 group requires both outputs & targets to have the
+                # exact same structure (i.e. (N,*)), while the other requires
+                # that the outputs (i.e. (N,C) or (N,D)) be different from 
+                # targets (i.e. (N,)). This is the result of specialised
+                # multiclass criterion as opposed to standard all purpose
+                # criterions.
+
+                # [Problems]
+                # Without explicitly stating the machine learning action to be 
+                # executed, labels are not handled properly, either being 
+                # inappropriately expanded/compressed, or not expressed in the 
+                # correct datatype/form. This results in criterion errors raised
+                # during the federated cycle
+
+                # [Solution]
+                # Add a parameter that explicitly specifies the machine learning 
+                # operation to be handled, and take the appropriate action. If
+                # labels handled are for a regression problem, it is assumed 
+                # that its (N,) structure is already correct -> No need for
+                # reformatting. However, if labels handled are instead for a
+                # classification problem, then labels for binary classification
+                # will remain unchanged (since outputs are (N,)), but labels
+                # for multiclass classification must be OHE-ed.
+
+                if (
+                    (ACTION == "classify" and len(outputs.shape) > 1) and
+                    (CRITERION_NAME not in N_C_N_FORMAT)
+                ):
+                    # One-hot encode predicted labels
+                    formatted_labels = th.nn.functional.one_hot(
+                        labels,
+                        num_classes=outputs.shape[1] # assume labels max dim = 2
+                    ).float()
+                    return outputs, formatted_labels
+                else:
+                    return outputs, labels
+ 
             def forward(self, outputs, labels, w, wt):
+                # Format labels into criterion-compatible
+                formatted_outputs, formatted_labels = self.format_params(
+                    outputs=outputs,
+                    labels=labels
+                )
+    
                 # Calculate normal criterion loss
-                logging.debug(f"labels type: {labels.type()}")
-                loss = super().forward(outputs, labels)
-                logging.debug(f"BCE Loss: {loss.location}")
+                logging.debug(f"Labels type: {labels.shape} {labels.type()}")
+                logging.debug(f"Formatted labels type: {formatted_labels.shape} {formatted_labels.type()}")
+                loss = super().forward(formatted_outputs, formatted_labels)
+                logging.debug(f"Criterion Loss: {loss.location}")
 
                 # Calculate regularisation terms
                 # Note: All regularisation terms have to be collected in some 
@@ -324,9 +401,9 @@ class BaseAlgorithm(AbstractAlgorithm):
                 curr_global_model = curr_global_model.send(worker)
                 curr_local_model = curr_local_model.send(worker)
 
-                # logging.debug(f"Location of global model: {curr_global_model.location}")
-                # logging.debug(f"Location of local model: {curr_local_model.location}")
-                # logging.debug(f"Location of X & y: {data.location} {labels.location}")
+                logging.debug(f"Location of global model: {curr_global_model.location}")
+                logging.debug(f"Location of local model: {curr_local_model.location}")
+                logging.debug(f"Location of X & y: {data.location} {labels.location}")
 
                 # Zero gradients to prevent accumulation  
                 curr_local_model.train()
@@ -567,42 +644,31 @@ class BaseAlgorithm(AbstractAlgorithm):
 
                 outputs = self.global_model(data).detach()
 
-                # if self.arguments.is_condensed:
-                predictions = (outputs > 0.5).float()  
-                    
-                # else:
-                #     # Find best predicted class label representative of sample
-                #     _, predicted_labels = outputs.max(axis=1)
-                    
-                #     # One-hot encode predicted labels
-                #     predictions = th.FloatTensor(labels.shape)
-                #     predictions.zero_()
-                #     predictions.scatter_(1, predicted_labels.view(-1,1), 1)
+                if self.action == "regress":
+                    # Predictions are the raw outputs
+                    predictions = outputs.clone()
+
+                elif self.action == "classify":
+                    class_count = outputs.shape[1]
+                    # If multi-class, use argmax
+                    if class_count > 2:
+                        # One-hot encode predicted labels
+                        _, predictions = outputs.max(axis=1)
+                    else:
+                        # For binary, use 0.5 as threshold
+                        predictions = (outputs > 0.5).float()
+
+                else:
+                    raise ValueError(f"ML action {self.action} is not supported!")
 
                 # Compute loss
                 surrogate_criterion = self.build_custom_criterion()(
                     **self.arguments.criterion_params
                 )
-                # if self.arguments.is_condensed:
-                #     # To handle binomial context
-                #     loss = surrogate_criterion(
-                #         outputs, 
-                #         labels.float(),
-                #         w=self.local_models[worker.id].state_dict(),
-                #         wt=self.global_model.state_dict()
-                #     )
-                # else:
-                #     # To handle multinomial context
-                #     loss = surrogate_criterion(
-                #         outputs, 
-                #         th.max(labels, 1)[1],
-                #         w=self.local_models[worker.id].state_dict(),
-                #         wt=self.global_model.state_dict()
-                #     )
 
                 loss = surrogate_criterion(
                     outputs=outputs, 
-                    labels=labels.long(),
+                    labels=labels,#.long(),
                     w=self.local_models[worker.id].state_dict(),
                     wt=self.global_model.state_dict()
                 )

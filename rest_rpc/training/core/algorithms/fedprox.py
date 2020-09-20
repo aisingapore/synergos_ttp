@@ -47,6 +47,7 @@ class FedProx(BaseAlgorithm):
     
     def __init__(
         self, 
+        action: str,
         crypto_provider: sy.VirtualWorker,
         workers: List[WebsocketClientWorker],
         arguments: Arguments,
@@ -58,6 +59,7 @@ class FedProx(BaseAlgorithm):
         out_dir: str = '.',
     ):
         super().__init__(
+            action=action,
             crypto_provider=crypto_provider,
             workers=workers,
             arguments=arguments,
