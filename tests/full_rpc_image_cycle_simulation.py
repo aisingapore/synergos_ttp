@@ -66,6 +66,7 @@ prediction_init_url = f"{base_ttp_eval_url}/participants/test_participant_1/pred
 # Project Simulation
 test_project = {
     "project_id": project_id,
+    "action": "classify",
     "incentives": {
         "tier_1": ["test_worker_1"],
         "tier_2": ["test_worker_2"]
