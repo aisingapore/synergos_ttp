@@ -48,6 +48,7 @@ class FedAvg(BaseAlgorithm):
     
     def __init__(
         self, 
+        action: str,
         crypto_provider: sy.VirtualWorker,
         workers: List[WebsocketClientWorker],
         arguments: Arguments,
@@ -63,6 +64,7 @@ class FedAvg(BaseAlgorithm):
         assert self.arguments.mu == 0.0
 
         super().__init__(
+            action=action,
             crypto_provider=crypto_provider,
             workers=workers,
             arguments=arguments,

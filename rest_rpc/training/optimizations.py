@@ -20,7 +20,7 @@ from rest_rpc import app
 from rest_rpc.connection.core.utils import TopicalPayload, RunRecords
 from rest_rpc.training.core.hypertuners import NNITuner, optim_prefix
 from rest_rpc.evaluation.core.utils import ValidationRecords
-from rest_rpc.evaluation.validations import val_output_model
+# from rest_rpc.evaluation.validations import val_output_model
 
 ##################
 # Configurations #
@@ -65,6 +65,73 @@ tuning_model = ns_api.model(
 
 # Marshalling Outputs
 # - same `val_output_model` retrieved from Validations resource
+# Marshalling inputs 
+input_model = ns_api.model(
+    name="validation_input",
+    model={
+        'dockerised': fields.Boolean(default=False, required=True),
+        'verbose': fields.Boolean(default=False),
+        'log_msgs': fields.Boolean(default=False)
+    }
+)
+
+# Marshalling Outputs
+stats_model = ns_api.model(
+    name="statistics",
+    model={
+        'accuracy': fields.List(fields.Float()),
+        'roc_auc_score': fields.List(fields.Float()),
+        'pr_auc_score': fields.List(fields.Float()),
+        'f_score': fields.List(fields.Float()),
+        'TPRs': fields.List(fields.Float()),
+        'TNRs': fields.List(fields.Float()),
+        'PPVs': fields.List(fields.Float()),
+        'NPVs': fields.List(fields.Float()),
+        'FPRs': fields.List(fields.Float()),
+        'FNRs': fields.List(fields.Float()),
+        'FDRs': fields.List(fields.Float()),
+        'TPs': fields.List(fields.Integer()),
+        'TNs': fields.List(fields.Integer()),
+        'FPs': fields.List(fields.Integer()),
+        'FNs': fields.List(fields.Integer())
+    }
+)
+
+meta_stats_model = ns_api.model(
+    name="meta_statistics",
+    model={
+        'statistics': fields.Nested(stats_model, skip_none=True),
+        'res_path': fields.String(skip_none=True)
+    }
+)
+
+val_inferences_model = ns_api.model(
+    name="validation_inferences",
+    model={
+        'evaluate': fields.Nested(meta_stats_model, required=True)
+    }
+)
+
+val_output_model = ns_api.inherit(
+    "validation_output",
+    val_inferences_model,
+    {
+        'doc_id': fields.String(),
+        'kind': fields.String(),
+        'key': fields.Nested(
+            ns_api.model(
+                name='key',
+                model={
+                    'participant_id': fields.String(),
+                    'project_id': fields.String(),
+                    'expt_id': fields.String(),
+                    'run_id': fields.String()
+                }
+            ),
+            required=True
+        )
+    }
+)
 
 payload_formatter = TopicalPayload(SUBJECT, ns_api, val_output_model)
 
@@ -212,4 +279,4 @@ class Optimizations(Resource):
             ns_api.abort(
                 code=404, 
                 message=f"Optimizations do not exist for specified keyword filters!"
-            )
+            ) 

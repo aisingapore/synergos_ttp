@@ -188,6 +188,7 @@ class Models(Resource):
 
         # Retrieves expt-run supersets (i.e. before filtering for relevancy)
         retrieved_project = project_records.read(project_id=project_id)
+        project_action = retrieved_project['action']
         experiments = retrieved_project['relations']['Experiment']
         runs = retrieved_project['relations']['Run']
 
@@ -219,6 +220,7 @@ class Models(Resource):
 
         # Template for starting FL grid and initialising training
         kwargs = {
+            'action': project_action,
             'experiments': experiments,
             'runs': runs,
             'registrations': registrations

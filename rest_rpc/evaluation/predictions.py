@@ -224,6 +224,7 @@ class Predictions(Resource):
             retrieved_project = project_records.read(
                 project_id=registered_project_id
             )
+            project_action = retrieved_project['action']
             experiments = retrieved_project['relations']['Experiment']
             runs = retrieved_project['relations']['Run']
 
@@ -291,6 +292,7 @@ class Predictions(Resource):
             logging.debug(f"Project registrations: {updated_project_registrations}")
             # Template for initialising FL grid
             kwargs = {
+                'action': project_action,
                 'dockerised': is_dockerised,
                 'experiments': experiments,
                 'runs': runs,

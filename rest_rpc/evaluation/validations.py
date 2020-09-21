@@ -85,6 +85,9 @@ input_model = ns_api.model(
 stats_model = ns_api.model(
     name="statistics",
     model={
+        'R2': fields.Float(),
+        'MSE': fields.Float(),
+        'MAE': fields.Float(),
         'accuracy': fields.List(fields.Float()),
         'roc_auc_score': fields.List(fields.Float()),
         'pr_auc_score': fields.List(fields.Float()),
@@ -100,7 +103,8 @@ stats_model = ns_api.model(
         'TNs': fields.List(fields.Integer()),
         'FPs': fields.List(fields.Integer()),
         'FNs': fields.List(fields.Integer())
-    }
+    },
+    skip_none=True
 )
 
 meta_stats_model = ns_api.model(
@@ -223,6 +227,7 @@ class Validations(Resource):
 
         # Retrieves expt-run supersets (i.e. before filtering for relevancy)
         retrieved_project = project_records.read(project_id=project_id)
+        project_action = retrieved_project['action']
         experiments = retrieved_project['relations']['Experiment']
         runs = retrieved_project['relations']['Run']
 
@@ -261,6 +266,7 @@ class Validations(Resource):
 
         # Template for starting FL grid and initialising validation
         kwargs = {
+            'action': project_action,
             'experiments': experiments,
             'runs': runs,
             'registrations': registrations,

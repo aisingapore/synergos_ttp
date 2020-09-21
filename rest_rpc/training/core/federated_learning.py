@@ -78,6 +78,7 @@ class FederatedLearning:
     
     def __init__(
         self, 
+        action: str,
         crypto_provider: sy.VirtualWorker, 
         workers: list, 
         arguments: Arguments,
@@ -85,6 +86,9 @@ class FederatedLearning:
         out_dir: str = '.',
         loop=None
     ):
+        # General attributes
+        self.action = action
+
         # Network attributes
         self.crypto_provider = crypto_provider
         self.workers = workers
@@ -325,6 +329,7 @@ class FederatedLearning:
             raise AttributeError(f"Specified algorithm '{self.arguments.algorithm}' is not supported!")
 
         return algorithm(
+            action=self.action,
             crypto_provider=self.crypto_provider,
             workers=self.workers,
             arguments=self.arguments,

@@ -98,7 +98,7 @@ def connect_to_ttp(log_msgs=False, verbose=False):
     )
 
     # Make sure that generated TTP is self-aware! 
-    ttp.add_worker(ttp)
+    # ttp.add_worker(ttp)
 
     # Replace point of reference within federated hook with TTP
     sy.local_worker = ttp
@@ -202,7 +202,8 @@ def terminate_connections(ttp, workers):
     sy.local_worker = REF_WORKER
 
     # Finally destroy TTP
-    ttp.remove_worker_from_local_worker_registry()
+    ttp.remove_worker_from_local_worker_registry() # remove from ref
+    # ttp.remove_worker_from_registry('ttp')         # remove from itself
     del ttp
 
     try:
@@ -264,41 +265,16 @@ def load_selected_experiment(expt_record):
     return model
 
 
-def load_selected_runs(fl_params):
-    """ Load in specified federated experimental parameters to be conducted from
-        configuration files
-
-    Args:
-        fl_params (dict): Experiment Ids of experiments to be run
-    Returns:
-        runs (dict(str,Arguments))
-    """
-    runs = {run_id: Arguments(**params) for run_id, params in fl_params.items()}
-
-    logging.debug(f"Runs loaded: {runs.keys()}")
-
-    return runs
-
-
-def load_selected_models(model_params):
-    """ Load in specified federated model architectures to be used for training
-        from configuration files
-
-    Args:
-        model_params (dict): Specified models to be trained
-    Returns:
-        models (dict(str,Model))
-    """
-    models = {name: Model(structure) for name, structure in model_params.items()}
-
-    logging.debug(f"Models loaded: {models.keys()}")
-
-    return models
-
-
-def start_expt_run_training(keys: dict, registrations: list, 
-                            experiment: dict, run: dict, 
-                            dockerised: bool, log_msgs: bool, verbose: bool):
+def start_expt_run_training(
+    keys: dict, 
+    action: str,
+    registrations: list, 
+    experiment: dict, 
+    run: dict, 
+    dockerised: bool, 
+    log_msgs: bool, 
+    verbose: bool
+):
     """ Trains a model corresponding to a SINGLE experiment-run combination
 
     Args:
@@ -351,6 +327,7 @@ def start_expt_run_training(keys: dict, registrations: list,
 
         # Perform a Federated Learning experiment
         fl_expt = FederatedLearning(
+            action=action,
             arguments=args, 
             crypto_provider=ttp, 
             workers=workers, 
@@ -445,6 +422,7 @@ def start_proc(kwargs):
     Returns:
         Path-to-trained-models (list(str))
     """
+    action = kwargs['action']
     experiments = kwargs['experiments']
     runs = kwargs['runs']
     registrations = kwargs['registrations']
@@ -467,6 +445,7 @@ def start_proc(kwargs):
                 combination_key = (r_project_id, r_expt_id, r_run_id)
                 project_expt_run_params = {
                     'keys': run_key,
+                    'action': action,
                     'registrations': registrations,
                     'experiment': expt_record,
                     'run': run_record,
