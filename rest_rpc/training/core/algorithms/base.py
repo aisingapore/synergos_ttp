@@ -633,7 +633,7 @@ class BaseAlgorithm(AbstractAlgorithm):
             # Skip predictions if filter was specified, and current worker was
             # not part of the selected workers
             if workers and (worker.id not in workers):
-                return {}
+                return {}, None
 
             self.global_model = self.global_model.send(worker)
             self.local_models[worker.id] = self.local_models[worker.id].send(worker)
@@ -668,7 +668,7 @@ class BaseAlgorithm(AbstractAlgorithm):
 
                 loss = surrogate_criterion(
                     outputs=outputs, 
-                    labels=labels,#.long(),
+                    labels=labels,
                     w=self.local_models[worker.id].state_dict(),
                     wt=self.global_model.state_dict()
                 )
