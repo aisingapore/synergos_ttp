@@ -218,10 +218,8 @@ class Alignments(Resource):
                 # assumption for now is that all collaborating parties have 
                 # images of the same type of color scale (eg. grayscale, RGBA) 
                 if "in_channels" not in input_key:
-                    curr_input_size = input_config['structure'][input_key]
                     aligned_input_size = len(X_mfa_aligner.superset)
-                    if curr_input_size != aligned_input_size:
-                        input_config['structure'][input_key] = aligned_input_size
+                    input_config['structure'][input_key] = aligned_input_size
 
                 expt_model.insert(0, input_config)
 
@@ -233,15 +231,17 @@ class Alignments(Resource):
                 output_layer = getattr(layer_modules, output_config['l_type'])
                 output_params = list(inspect.signature(output_layer.__init__).parameters)
                 output_key = output_params[2] # from [self, input, output, ...]
-                curr_output_size = output_config['structure'][output_key]
                 aligned_output_size = len(y_mfa_aligner.superset)
-                if curr_output_size != aligned_output_size:
+                if aligned_output_size <= 2:
+                    # Case 1: Regression or Binary classification
+                    output_config['structure'][output_key] = 1
+                else:
+                    # Case 2: Multiclass classification
                     output_config['structure'][output_key] = aligned_output_size
                     
                     # If the no. of class labels has expanded, switch from 
                     # linear activations to softmax variants
-                    if aligned_output_size > 1:
-                        output_config['activation'] = "softmax"
+                    output_config['activation'] = "softmax"
 
                 expt_model.append(output_config)
 

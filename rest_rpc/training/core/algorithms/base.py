@@ -211,18 +211,18 @@ class BaseAlgorithm(AbstractAlgorithm):
                 # for multiclass classification must be OHE-ed.
 
                 if (
-                    (ACTION == "classify" and len(outputs.shape) > 1) and
+                    (ACTION == "classify" and outputs.shape[-1] > 1) and
                     (CRITERION_NAME not in N_C_N_FORMAT)
                 ):
                     # One-hot encode predicted labels
                     formatted_labels = th.nn.functional.one_hot(
                         labels,
-                        num_classes=outputs.shape[1] # assume labels max dim = 2
+                        num_classes=outputs.shape[-1] # assume labels max dim = 2
                     ).float()
-                    return outputs, formatted_labels
+                    return outputs, formatted_labels    # (N,*), (N,)
                 else:
-                    return outputs, labels
- 
+                    return outputs, labels  # (N,1), (N,1)
+
             def forward(self, outputs, labels, w, wt):
                 # Format labels into criterion-compatible
                 formatted_outputs, formatted_labels = self.format_params(
@@ -922,8 +922,12 @@ class BaseAlgorithm(AbstractAlgorithm):
                 for worker_id, batch_outputs in all_worker_outputs.items()
             }
             
-            avg_loss = th.mean(th.stack(all_losses), dim=0)
-
+            relevant_losses = [loss for loss in all_losses if loss is not None]
+            avg_loss = (
+                th.mean(th.stack(relevant_losses), dim=0) 
+                if relevant_losses 
+                else None
+            )
             return all_combined_outputs, avg_loss
 
             ####################################################################
