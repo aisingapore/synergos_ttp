@@ -61,6 +61,7 @@ tags_2_url = f"{registration_2_url}/tags"
 # Project Simulation
 fedlearn_project = {
     "project_id": project_id,
+    "action": "classify", 
     "incentives": {
         "tier_1": ["test_worker_1"],
         "tier_2": ["test_worker_2"]
@@ -132,12 +133,12 @@ fedlearn_registration_p2 = {"role": "host"}     # For fedlearn_participant_2
 # Tag Simulation
 # Tags define which datasets to use. Must be avaiable via Docker volume mount definitions
 fedlearn_tags_p1 = {    # For fedlearn_participant_1
-    "train": [ ["iid_1"]],
-    "evaluate": [["edge_test_missing_coecerable_vals"]]
+    "train": [ ["train"]],
+    "evaluate": [["evaluate"]]
 }
 
 fedlearn_tags_p2 = {    # For fedlearn_participant_2
-    "train": [ ["iid_2"]]
+    "train": [ ["train"]]
 }
 
 ###################

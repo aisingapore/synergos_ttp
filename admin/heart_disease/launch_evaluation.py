@@ -71,7 +71,7 @@ init_params = {
 infer_params = {
     "dockerised": True,
     "tags": {
-        project_id: [["iid_1"]]
+        project_id: [["train"]]
     }
 }
 
