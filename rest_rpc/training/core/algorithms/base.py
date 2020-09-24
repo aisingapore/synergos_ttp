@@ -633,7 +633,7 @@ class BaseAlgorithm(AbstractAlgorithm):
             # Skip predictions if filter was specified, and current worker was
             # not part of the selected workers
             if workers and (worker.id not in workers):
-                return {}
+                return {}, None
 
             self.global_model = self.global_model.send(worker)
             self.local_models[worker.id] = self.local_models[worker.id].send(worker)
@@ -646,7 +646,7 @@ class BaseAlgorithm(AbstractAlgorithm):
 
                 if self.action == "regress":
                     # Predictions are the raw outputs
-                    predictions = outputs.clone()
+                    pass
 
                 elif self.action == "classify":
                     class_count = outputs.shape[1]
@@ -668,7 +668,7 @@ class BaseAlgorithm(AbstractAlgorithm):
 
                 loss = surrogate_criterion(
                     outputs=outputs, 
-                    labels=labels,#.long(),
+                    labels=labels,
                     w=self.local_models[worker.id].state_dict(),
                     wt=self.global_model.state_dict()
                 )
@@ -763,7 +763,11 @@ class BaseAlgorithm(AbstractAlgorithm):
             # with derivative information. 
 
             outputs = outputs.get()
-            predictions = predictions.get()
+            predictions = (
+                predictions.get()
+                if self.action == "classify" 
+                else outputs # for regression, predictions are raw outputs
+            )
             loss = loss.get()
 
             return {worker: {"y_pred": predictions, "y_score": outputs}}, loss
