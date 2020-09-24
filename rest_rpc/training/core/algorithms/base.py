@@ -646,7 +646,7 @@ class BaseAlgorithm(AbstractAlgorithm):
 
                 if self.action == "regress":
                     # Predictions are the raw outputs
-                    predictions = outputs.clone()
+                    pass
 
                 elif self.action == "classify":
                     class_count = outputs.shape[1]
@@ -763,7 +763,11 @@ class BaseAlgorithm(AbstractAlgorithm):
             # with derivative information. 
 
             outputs = outputs.get()
-            predictions = predictions.get()
+            predictions = (
+                predictions.get()
+                if self.action == "classify" 
+                else outputs # for regression, predictions are raw outputs
+            )
             loss = loss.get()
 
             return {worker: {"y_pred": predictions, "y_score": outputs}}, loss
