@@ -88,7 +88,7 @@ fedlearn_experiment = {
 # Run Simulation
 fedlearn_run = {
     "run_id": run_id,
-    "input_size": 28,
+    "input_size": 4,
     "output_size": 1,
     "batch_size": 32,
     "rounds": 2,
@@ -134,12 +134,15 @@ fedlearn_registration_p2 = {"role": "host"}     # For fedlearn_participant_2
 # Tag Simulation
 # Tags define which datasets to use. Must be avaiable via Docker volume mount definitions
 fedlearn_tags_p1 = {    # For fedlearn_participant_1
-    "train": [ ["train"]],
-    "evaluate": [["evaluate"]]
+    "train": [["train"]],
+    "evaluate": [["evaluate"]],
+    "predict": [["predict"]]
 }
 
 fedlearn_tags_p2 = {    # For fedlearn_participant_2
-    "train": [ ["train"]]
+    "train": [["train"]],
+    "evaluate":[["evaluate"]],
+    "predict": [["predict"]]
 }
 
 ###################

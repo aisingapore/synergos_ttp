@@ -36,7 +36,7 @@ participant_id_2 = "fedlearn_worker_2"
 # the ttp_host and ttp_port are set for a distributed environment via ssh from admin laptop
 # running ttp and workers on laptop required Docker network evaluation
 ttp_host = "localhost"  
-ttp_port = 5000
+ttp_port = 15000
 base_ttp_connect_url = f"http://{ttp_host}:{ttp_port}/ttp/connect"
 
 project_upload_url = f"{base_ttp_connect_url}/projects"
