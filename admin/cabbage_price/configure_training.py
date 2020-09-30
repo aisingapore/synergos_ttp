@@ -141,7 +141,7 @@ fedlearn_tags_p1 = {    # For fedlearn_participant_1
 
 fedlearn_tags_p2 = {    # For fedlearn_participant_2
     "train": [["train"]],
-    "evaluate":[["evaluate"]],
+    "evaluate": [["evaluate"]],
     "predict": [["predict"]]
 }
 
