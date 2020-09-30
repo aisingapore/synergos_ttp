@@ -36,7 +36,7 @@ participant_id_2 = "fedlearn_worker_2"
 
 # Relevant Training Endpoints
 ttp_host = "localhost"   #distrib
-ttp_port = 5000  #distrib
+ttp_port = 15000  #distrib
 base_ttp_train_url = f"http://{ttp_host}:{ttp_port}/ttp/train"
 project_train_url = f"{base_ttp_train_url}/projects/{project_id}"
 

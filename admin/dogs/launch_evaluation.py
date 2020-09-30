@@ -41,7 +41,7 @@ participant_id_2 = "fedlearn_worker_2"
 # running ttp and workers on laptop required Docker network evaluation
 
 ttp_host = "localhost"
-ttp_port = 5000
+ttp_port = 15000
 
 # Relevant Training Endpoints
 base_ttp_train_url = f"http://{ttp_host}:{ttp_port}/ttp/train"
@@ -71,7 +71,7 @@ init_params = {
 infer_params = {
     "dockerised": True,
     "tags": {
-        project_id: [["train"]]
+        project_id: [["predict"]]
     }
 }
 
@@ -96,12 +96,12 @@ if __name__ == "__main__":
     ############
 
     # Step 1: TTP intialises multiple feature alignment
-    align_resp = execute_post(url=alignment_init_url, payload=None)
-    logging.debug(f"New alignments: {align_resp}")
+    # align_resp = execute_post(url=alignment_init_url, payload=None)
+    # logging.debug(f"New alignments: {align_resp}")
 
     # Step 2: TTP commences model training for specified experiment-run set
-    model_resp = execute_post(url=model_init_url, payload=init_params)
-    logging.debug(f"New model: {model_resp}")
+    # model_resp = execute_post(url=model_init_url, payload=init_params)
+    # logging.debug(f"New model: {model_resp}")
 
     ##############
     # Evaluation #

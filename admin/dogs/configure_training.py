@@ -152,7 +152,7 @@ fedlearn_run = {
 fedlearn_participant_1 = {
     "participant_id": participant_id_1,
     "id": "fedlearn_worker_1",
-    "host": "172.17.0.2",  # 0.0.0.0 only for local simulation!
+    "host": "172.19.152.152",  # 0.0.0.0 only for local simulation!
     "port": 8020,
     "log_msgs": False,
     "verbose": False,
@@ -162,7 +162,7 @@ fedlearn_participant_1 = {
 fedlearn_participant_2 = {
     "participant_id": participant_id_2,
     "id": "fedlearn_worker_2",
-    "host": "172.17.0.3", # 0.0.0.0 only for local simulation!
+    "host": "172.19.152.153", # 0.0.0.0 only for local simulation!
     "port": 8020,
     "log_msgs": False,
     "verbose": False,
@@ -179,7 +179,8 @@ fedlearn_registration_p2 = {"role": "host"}     # For fedlearn_participant_2
 # Tags define which datasets to use. Must be avaiable via Docker volume mount definitions
 fedlearn_tags_p1 = {    # For fedlearn_participant_1
     "train": [ ["train"]],
-    "evaluate": [["evaluate"]]
+    "evaluate": [["evaluate"]],
+    "predict": [["predict"]]
 }
 
 fedlearn_tags_p2 = {    # For fedlearn_participant_2
