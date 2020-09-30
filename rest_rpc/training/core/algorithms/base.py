@@ -170,15 +170,6 @@ class BaseAlgorithm(AbstractAlgorithm):
                 Returns:
                     Restructured labels (th.Tensor)
                 """
-                N_STAR_FORMAT = [
-                    "L1Loss", "MSELoss", "PoissonNLLLoss", "KLDivLoss",
-                    "BCELoss", "BCEWithLogitsLoss", "SmoothL1Loss"
-                ]
-                N_C_N_FORMAT = [
-                    "CrossEntropyLoss", "NLLLoss", "MultiLabelMarginLoss", 
-                    "MultiLabelSoftMarginLoss", 
-                ]
-                STAR_FORMAT = ["HingeEmbeddingLoss", "SoftMarginLoss"]
 
                 ###########################
                 # Implementation Footnote #
@@ -210,18 +201,50 @@ class BaseAlgorithm(AbstractAlgorithm):
                 # will remain unchanged (since outputs are (N,)), but labels
                 # for multiclass classification must be OHE-ed.
 
-                if (
+                # Supported Criterions
+                N_STAR_FORMAT = [
+                    "L1Loss", "MSELoss", "PoissonNLLLoss", "KLDivLoss",
+                    "BCELoss", "BCEWithLogitsLoss", "SmoothL1Loss"
+                ]
+                N_C_N_FORMAT = [
+                    "CrossEntropyLoss", "NLLLoss", "MultiMarginLoss"
+                ]
+                N_C_N_C_FORMAT = [
+                    "MultiLabelMarginLoss", "MultiLabelSoftMarginLoss"
+                ]
+                STAR_FORMAT = [
+                    "HingeEmbeddingLoss", "SoftMarginLoss"
+                ]
+
+                # Unsupported Criterions
+                N_D_N_FORMAT = [
+                    "MarginRankingLoss"
+                ]
+                MISC_FORMAT = [
+                    "CosineEmbeddingLoss", "TripletMarginLoss", "CTCLoss"
+                ]
+
+                logging.debug(f"Action: {ACTION}, Output shape: {outputs.shape}, Target shape: {labels.shape}")
+                if CRITERION_NAME in MISC_FORMAT + N_D_N_FORMAT:
+                    raise ValueError("Specified criterion is currently not supported!")
+                elif (
                     (ACTION == "classify" and outputs.shape[-1] > 1) and
                     (CRITERION_NAME not in N_C_N_FORMAT)
                 ):
                     # One-hot encode predicted labels
-                    formatted_labels = th.nn.functional.one_hot(
+                    ohe_labels = th.nn.functional.one_hot(
                         labels,
                         num_classes=outputs.shape[-1] # assume labels max dim = 2
-                    ).float()
-                    return outputs, formatted_labels    # (N,*), (N,)
+                    )
+                    formatted_labels = (
+                        ohe_labels
+                        if CRITERION_NAME in N_C_N_C_FORMAT 
+                        else ohe_labels.float()
+                    )
+                    return outputs, formatted_labels    # [(N,*), (N,*)]
                 else:
-                    return outputs, labels  # (N,1), (N,1)
+                    # Labels are loaded as (N,1) by default in worker
+                    return outputs, labels  # [(N,1),(N,1)] or [(N,*),(N,1)]
 
             def forward(self, outputs, labels, w, wt):
                 # Format labels into criterion-compatible
