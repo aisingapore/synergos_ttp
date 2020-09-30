@@ -108,21 +108,21 @@ fedlearn_run = {
 fedlearn_participant_1 = {
     "participant_id": participant_id_1,
     "id": "fedlearn_worker_1",
-    "host": "172.17.0.2",  # 0.0.0.0 only for local simulation!
+    "host": <WORKER 1 VM IP>,  # e.g. "172.19.152.152"
     "port": 8020,
     "log_msgs": False,
     "verbose": False,
-    "f_port": 5000,      # Only required if custom port is required (i.e. local)
+    "f_port": 5000,
 }
 
 fedlearn_participant_2 = {
     "participant_id": participant_id_2,
     "id": "fedlearn_worker_2",
-    "host": "172.17.0.3", # 0.0.0.0 only for local simulation!
+    "host": <WORKER 2 VM IP>, # e.g. "172.19.152.153"
     "port": 8020,
     "log_msgs": False,
     "verbose": False,
-    "f_port": 5000,      # Only required if custom port is required (i.e. local)
+    "f_port": 5000,
 }
 
 # Registration Simulation
@@ -158,48 +158,68 @@ def execute_post(url, payload):
 ##########
 
 if __name__ == "__main__":
-    # Step 1: TTP registers a new project
-    project_resp = execute_post(url=project_upload_url, payload=fedlearn_project)
-    logging.debug(f"New project: {project_resp}")
+    print ('base_ttp_connect_url: ', base_ttp_connect_url)
 
-    # Step 2: TTP registers an experiment
-    expt_resp = execute_post(url=expt_upload_url, payload=fedlearn_experiment)
-    logging.debug(f"New experiment: {expt_resp}")
+    print ('project_upload_url: ', project_upload_url)
+    print ('project_retrieval_url: ', project_retrieval_url)
 
-    # Step 3: TTP registers a run
-    run_resp = execute_post(url=run_upload_url, payload=fedlearn_run)
-    logging.debug(f"New run: {run_resp}")
+    print ('expt_upload_url: ', expt_upload_url)
+    print ('expt_retrieval_url: ', expt_retrieval_url)
 
-    # Step 4: Participants register server connection information on TTP node
-    participant_1_resp = execute_post(
-        url=participant_upload_url,
-        payload=fedlearn_participant_1
-    )
-    logging.debug(f"New participant 1: {participant_1_resp}")
+    print ('run_upload_url: ', run_upload_url)
+    print ('run_retrieval_url: ', run_retrieval_url)
 
-    participant_2_resp = execute_post(
-        url=participant_upload_url,
-        payload=fedlearn_participant_2
-    )
-    logging.debug(f"New participant 2: {participant_2_resp}")
+    print ('participant_upload_url: ', participant_upload_url)
+    print ('participant_1_retrieval_url: ', participant_1_retrieval_url)
+    print ('participant_2_retrieval_url: ', participant_2_retrieval_url)
 
-    # Step 5: Participants register to partake in aforementioned project
-    registration_1_resp = execute_post(
-        url=registration_1_url,
-        payload=fedlearn_registration_p1
-    )
-    logging.debug(f"New registration for participant 1: {registration_1_resp}")
+    print ('registration_1_url: ', registration_1_url)
+    print ('registration_2_url: ', registration_2_url)
 
-    registration_2_resp = execute_post(
-        url=registration_2_url,
-        payload=fedlearn_registration_p2
-    )
-    logging.debug(f"New registration for participant 2: {registration_2_resp}")
-
-
-    # Step 6: Participants register data tags to be used in project
-    tags_1_resp = execute_post(url=tags_1_url, payload=fedlearn_tags_p1)
-    logging.debug(f"New tags registered for participant 1: {tags_1_resp}")
-
-    tags_2_resp = execute_post(url=tags_2_url, payload=fedlearn_tags_p2)
-    logging.debug(f"New tags registered for participant 2: {tags_2_resp}")
+    print ('tags_1_url: ', tags_1_url)
+    print ('tags_2_url: ', tags_2_url)
+#     # Step 1: TTP registers a new project
+#     project_resp = execute_post(url=project_upload_url, payload=fedlearn_project)
+#     logging.debug(f"New project: {project_resp}")
+#
+#     # Step 2: TTP registers an experiment
+#     expt_resp = execute_post(url=expt_upload_url, payload=fedlearn_experiment)
+#     logging.debug(f"New experiment: {expt_resp}")
+#
+#     # Step 3: TTP registers a run
+#     run_resp = execute_post(url=run_upload_url, payload=fedlearn_run)
+#     logging.debug(f"New run: {run_resp}")
+#
+#     # Step 4: Participants register server connection information on TTP node
+#     participant_1_resp = execute_post(
+#         url=participant_upload_url,
+#         payload=fedlearn_participant_1
+#     )
+#     logging.debug(f"New participant 1: {participant_1_resp}")
+#
+#     participant_2_resp = execute_post(
+#         url=participant_upload_url,
+#         payload=fedlearn_participant_2
+#     )
+#     logging.debug(f"New participant 2: {participant_2_resp}")
+#
+#     # Step 5: Participants register to partake in aforementioned project
+#     registration_1_resp = execute_post(
+#         url=registration_1_url,
+#         payload=fedlearn_registration_p1
+#     )
+#     logging.debug(f"New registration for participant 1: {registration_1_resp}")
+#
+#     registration_2_resp = execute_post(
+#         url=registration_2_url,
+#         payload=fedlearn_registration_p2
+#     )
+#     logging.debug(f"New registration for participant 2: {registration_2_resp}")
+#
+#
+#     # Step 6: Participants register data tags to be used in project
+#     tags_1_resp = execute_post(url=tags_1_url, payload=fedlearn_tags_p1)
+#     logging.debug(f"New tags registered for participant 1: {tags_1_resp}")
+#
+#     tags_2_resp = execute_post(url=tags_2_url, payload=fedlearn_tags_p2)
+#     logging.debug(f"New tags registered for participant 2: {tags_2_resp}")
