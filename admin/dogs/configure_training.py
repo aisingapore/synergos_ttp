@@ -36,7 +36,7 @@ participant_id_2 = "fedlearn_worker_2"
 # the ttp_host and ttp_port are set for a distributed environment via ssh from admin laptop
 # running ttp and workers on laptop required Docker network evaluation
 ttp_host = "localhost"  
-ttp_port = 15000
+ttp_port = 5000
 base_ttp_connect_url = f"http://{ttp_host}:{ttp_port}/ttp/connect"
 
 project_upload_url = f"{base_ttp_connect_url}/projects"
@@ -150,9 +150,8 @@ fedlearn_run = {
 
 # Participant Simulation
 fedlearn_participant_1 = {
-    "participant_id": participant_id_1,
     "id": "fedlearn_worker_1",
-    "host": "172.19.152.152",  # 0.0.0.0 only for local simulation!
+    "host": "172.17.0.2",  # 0.0.0.0 only for local simulation!
     "port": 8020,
     "log_msgs": False,
     "verbose": False,
@@ -160,9 +159,8 @@ fedlearn_participant_1 = {
 }
 
 fedlearn_participant_2 = {
-    "participant_id": participant_id_2,
     "id": "fedlearn_worker_2",
-    "host": "172.19.152.153", # 0.0.0.0 only for local simulation!
+    "host": "172.17.0.3", # 0.0.0.0 only for local simulation!
     "port": 8020,
     "log_msgs": False,
     "verbose": False,

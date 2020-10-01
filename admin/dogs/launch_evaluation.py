@@ -41,7 +41,7 @@ participant_id_2 = "fedlearn_worker_2"
 # running ttp and workers on laptop required Docker network evaluation
 
 ttp_host = "localhost"
-ttp_port = 15000
+ttp_port = 5000
 
 # Relevant Training Endpoints
 base_ttp_train_url = f"http://{ttp_host}:{ttp_port}/ttp/train"

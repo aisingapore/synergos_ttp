@@ -106,23 +106,21 @@ fedlearn_run = {
 
 # Participant Simulation
 fedlearn_participant_1 = {
-    "participant_id": participant_id_1,
     "id": "fedlearn_worker_1",
-    "host": "172.17.0.2",  # 0.0.0.0 only for local simulation!
+    "host": "172.17.0.2"
     "port": 8020,
     "log_msgs": False,
     "verbose": False,
-    "f_port": 5000,      # Only required if custom port is required (i.e. local)
+    "f_port": 5000,             # Only required if custom port is required (i.e. local)
 }
 
 fedlearn_participant_2 = {
-    "participant_id": participant_id_2,
     "id": "fedlearn_worker_2",
-    "host": "172.17.0.3", # 0.0.0.0 only for local simulation!
+    "host": "172.17.0.3"
     "port": 8020,
     "log_msgs": False,
     "verbose": False,
-    "f_port": 5000,      # Only required if custom port is required (i.e. local)
+    "f_port": 5000,             # Only required if custom port is required (i.e. local)
 }
 
 # Registration Simulation
