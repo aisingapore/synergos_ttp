@@ -145,7 +145,6 @@ fedlearn_run = {
     "base_lr": 0.3,
     "max_lr": 0.5,
     "criterion": "BCELoss"
-
 }
 
 # Participant Simulation

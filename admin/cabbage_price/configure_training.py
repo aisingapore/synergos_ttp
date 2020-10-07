@@ -101,13 +101,12 @@ fedlearn_run = {
     "base_lr": 0.3,
     "max_lr": 0.5,
     "criterion": "MSELoss"
-
 }
 
 # Participant Simulation
 fedlearn_participant_1 = {
     "id": "fedlearn_worker_1",
-    "host": "172.17.0.2"
+    "host": "172.17.0.2",  # 0.0.0.0 only for local simulation!
     "port": 8020,
     "log_msgs": False,
     "verbose": False,
@@ -116,7 +115,7 @@ fedlearn_participant_1 = {
 
 fedlearn_participant_2 = {
     "id": "fedlearn_worker_2",
-    "host": "172.17.0.3"
+    "host": "172.17.0.3",  # 0.0.0.0 only for local simulation!
     "port": 8020,
     "log_msgs": False,
     "verbose": False,
