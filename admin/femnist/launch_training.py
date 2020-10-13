@@ -29,11 +29,7 @@ logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.DEBUG)
 
 # Relevant IDs
 project_id = "fedlearn_project"
-<<<<<<< HEAD:admin/cabbage_price/launch_training.py
-expt_id = "fedlearn_experiment_1"
-=======
 expt_id = "fedlearn_experiment_1" #edit error from "fedlearnexperiment_1
->>>>>>> kelvin_soh:admin/abalone/launch_training.py
 run_id = "fedlearn_run_1_1"
 participant_id_1 = "fedlearn_worker_1"
 participant_id_2 = "fedlearn_worker_2"
@@ -45,12 +41,8 @@ base_ttp_train_url = f"http://{ttp_host}:{ttp_port}/ttp/train"
 project_train_url = f"{base_ttp_train_url}/projects/{project_id}"
 
 alignment_init_url = f"{project_train_url}/alignments"
-<<<<<<< HEAD:admin/cabbage_price/launch_training.py
-model_init_url = f"{project_train_url}/models/{expt_id}/{run_id}"
-=======
 model_init_url = f"{project_train_url}/models/{expt_id}/{run_id}" #changed from model_init_url = f"{project_train_url}/experiments/{expt_id}/runs/{run_id}/models"
 #model_init_url = f"{project_train_url}/experiments/{expt_id}/runs/{run_id}/models"
->>>>>>> kelvin_soh:admin/abalone/launch_training.py
 
 #wssw_init_url = f"http://172.19.152.152:5001/worker/initialise/{project_id}/{expt_id}/{run_id}"
 

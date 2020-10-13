@@ -71,11 +71,7 @@ init_params = {
 infer_params = {
     "dockerised": True,
     "tags": {
-<<<<<<< HEAD:admin/cabbage_price/launch_evaluation.py
-        project_id: [["predict"]]
-=======
         project_id: [["train"]]
->>>>>>> kelvin_soh:admin/abalone/launch_evaluation.py
     }
 }
 
@@ -103,11 +99,7 @@ if __name__ == "__main__":
     # align_resp = execute_post(url=alignment_init_url, payload=None)
     # logging.debug(f"New alignments: {align_resp}")
 
-<<<<<<< HEAD:admin/cabbage_price/launch_evaluation.py
-    # Step 2: TTP commences model training for specified experiment-run set
-=======
     # # Step 2: TTP commences model training for specified experiment-run set
->>>>>>> kelvin_soh:admin/abalone/launch_evaluation.py
     # model_resp = execute_post(url=model_init_url, payload=init_params)
     # logging.debug(f"New model: {model_resp}")
 
