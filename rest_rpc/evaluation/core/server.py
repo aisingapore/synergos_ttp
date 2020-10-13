@@ -20,7 +20,7 @@ from typing import Tuple, Dict
 import syft as sy
 import torch as th
 from syft.workers.websocket_client import WebsocketClientWorker
-from syft.workers.node_client import NodeClient
+# from syft.workers.node_client import NodeClient
 
 # Custom
 from rest_rpc import app
@@ -107,6 +107,7 @@ def enumerate_expt_run_conbinations(
 
 def start_expt_run_inference(
     keys: dict, 
+    action: str,
     participants: list, 
     registrations: list, 
     experiment: dict, 
@@ -165,6 +166,7 @@ def start_expt_run_inference(
 
             # Restore models from archive (differentiated between Normal & SNN)
             fl_expt = FederatedLearning(
+                action=action,
                 arguments=args, 
                 crypto_provider=ttp, 
                 workers=workers, 
@@ -175,7 +177,7 @@ def start_expt_run_inference(
                 shuffle=False,   # for re-assembly during inference
                 version=version
             ) 
-                    
+  
             # Only infer for specified participant on his/her own test dataset
             participants_inferences, _ = fl_expt.evaluate(
                 metas=metas,
@@ -204,9 +206,18 @@ def start_expt_run_inference(
     participants_inferences = infer_combination()
     logging.debug(f"Aggregated predictions: {participants_inferences}")
 
+    # Stats will only be computed for relevant participants
+    # (i.e. contributed datasets used for inference)
+    relevant_participants = list(participants_inferences.keys())
+    relevant_registrations = [
+        reg_records 
+        for reg_records in registrations
+        if reg_records['participant']['id'] in relevant_participants
+    ]
+
     # Convert collection of object IDs accumulated from minibatch 
     analyser = Analyser(**keys, inferences=participants_inferences, metas=metas)
-    polled_stats = analyser.infer(reg_records=registrations)
+    polled_stats = analyser.infer(reg_records=relevant_registrations)
     logging.debug(f"Polled statistics: {polled_stats}")
 
     # Send terminate signal to all participants' worker nodes
@@ -227,7 +238,7 @@ def start_proc(multi_kwargs: dict) -> dict:
     """
     all_statistics = {}
     for _, kwargs in multi_kwargs.items():
-
+        action = kwargs.pop('action')
         participants = kwargs.pop('participants')
         metas = kwargs.pop('metas')
         version = kwargs.pop('version')
@@ -235,6 +246,7 @@ def start_proc(multi_kwargs: dict) -> dict:
 
         for _, combination in project_combinations.items(): 
             combination.update({
+                'action': action,
                 'participants': participants, 
                 'metas': metas,
                 'version': version

@@ -5,16 +5,21 @@
 ####################
 
 # Generic
+import inspect
+from typing import Dict, List, Union, Callable
 
 # Libs
 import torch as th
 from torch import nn
 
+# Custom
+from rest_rpc.training.core.utils import TorchParser
+
 ##################
 # Configurations #
 ##################
 
-def fate_lr_decay(self, initial_lr, lr_decay, epochs):
+def fate_lr_decay(initial_lr, lr_decay, epochs):
     """ FATE's learning rate decay equation 
     
     Args:
@@ -27,8 +32,7 @@ def fate_lr_decay(self, initial_lr, lr_decay, epochs):
     lr = initial_lr / (1 + (lr_decay * epochs))
     return lr
 
-MODULE_OF_OPTIMIZERS = "torch.optim"
-MODULE_OF_CRITERIONS = "torch.nn"
+torch_parser = TorchParser()
     
 ###########################################
 # Parameter Abstraction class - Arguments #
@@ -68,21 +72,29 @@ class Arguments:
 
     # Arguments for functions are retrieved via `func.__code__.co_varnames`    
     """
-    def __init__(self, algorithm="FedProx", batch_size=None, rounds=10, 
-                 epochs=100, lr=0.001, lr_decay=0.1, weight_decay=0, seed=42,
-                 is_condensed=True, is_snn=False, precision_fractional=5, 
-                 use_CLR=True, mu=0.1, reduction='mean', l1_lambda=0, l2_lambda=0, 
-                 optimizer=th.optim.SGD, criterion=nn.BCELoss, dampening=0, 
-                 lr_lambda=None, base_lr=0.001, max_lr=0.1, step_size_up=2000, 
-                 step_size_down=None, mode='triangular', gamma=1.0, scale_fn=None, 
-                 scale_mode='cycle', cycle_momentum=True, base_momentum=0.8, 
-                 max_momentum=0.9, last_epoch=-1, patience=10, delta=0.0, 
-                 cumulative_delta=False):
-
-        self.__FUNCTIONAL_MAPPING = {
-            'sgd': th.optim.SGD,
-            'bce': nn.BCELoss
-        }
+    def __init__(
+        self, 
+        algorithm: str = "FedProx", 
+        batch_size: int = None, 
+        rounds: int = 10, 
+        epochs: int = 100,
+        lr: float = 0.001, 
+        weight_decay: float = 0.0,
+        lr_decay: float = 0.1, 
+        mu: float = 0.1, 
+        l1_lambda: float = 0.0, 
+        l2_lambda: float = 0.0,
+        optimizer: str = "SGD", 
+        criterion: str = "BCELoss", 
+        lr_scheduler: str = "CyclicLR", 
+        delta: float = 0.0,
+        patience: int = 10,
+        seed: int = 42,
+        is_condensed: bool = True,
+        is_snn: bool = False, 
+        precision_fractional: int = 5,
+        **kwargs
+    ):
 
         # General Parameters
         self.algorithm = algorithm
@@ -96,45 +108,31 @@ class Arguments:
 
         # Optimizer Parameters
         self.lr = lr
-        self.weight_decay = 0 if l2_lambda else weight_decay
-        self.momentum = base_momentum
-        self.dampening = dampening
-        self.nesterov = False
+        self.weight_decay = 0 if l2_lambda else weight_decay # for consistency
+        self.optimizer = torch_parser.parse_optimizer(optimizer)
         
         # Criterion Parameters
         self.mu = mu
-        self.reduction = reduction
-        
-        # Regularisation Parameters
         self.l1_lambda = l1_lambda
         self.l2_lambda = l2_lambda
+        self.criterion = torch_parser.parse_criterion(criterion)
 
         # LR Decay Parameters
-        self.optimizer = optimizer
-        self.criterion = criterion
-        self.use_CLR = use_CLR
         self.lr_decay = lr_decay
         self.lr_lambda = lambda epochs: fate_lr_decay(
-            self.lr, 
-            self.lr_decay, 
-            epochs
-        ) if not lr_lambda else lr_lambda
-        self.base_lr = base_lr
-        self.max_lr = max_lr
-        self.step_size_up = step_size_up
-        self.step_size_down = step_size_down
-        self.mode = mode
-        self.gamma = gamma
-        self.scale_fn = scale_fn
-        self.scale_mode = scale_mode
-        self.cycle_momentum = cycle_momentum
-        self.base_momentum = base_momentum
-        self.max_momentum = max_momentum
-        self.last_epoch = last_epoch
-
+            initial_lr=self.lr, 
+            lr_decay=self.lr_decay, 
+            epochs=epochs
+        )
+        self.lr_scheduler = torch_parser.parse_scheduler(lr_scheduler)
+        
         # Early Stopping parameters
         self.patience = patience
         self.delta = delta
+
+        # Custom Parameters
+        for arg_key, arg_value in kwargs.items():
+            setattr(self, arg_key, arg_value)
 
     ###########
     # Getters #
@@ -143,55 +141,40 @@ class Arguments:
     @property
     def model_params(self):
         return {
-            'input_size': self.input_size,
-            'output_size': self.output_size,
-            'is_condensed': self.is_condensed
+            "algorithm": self.algorithm,
+            "batch_size": self.batch_size,
+            "rounds": self.rounds,
+            "epochs": self.epochs,
+            "precision_fractional": self.precision_fractional,
+            "seed": self.seed
         }
 
 
     @property
     def optimizer_params(self):
-        return {
-            'lr': self.lr,
-            'weight_decay': self.weight_decay,
-            'momentum': self.momentum,
-            'dampening': self.dampening,
-            'nesterov': False
-        }
+        return self.__retrieve_args(self.optimizer)
     
     
     @property
     def criterion_params(self):
-        return {
+        params = {
             'mu': self.mu,
             'l1_lambda': self.l1_lambda,
-            'l2_lambda': self.l2_lambda,
-            'reduction': self.reduction
+            'l2_lambda': self.l2_lambda
         }
-
+        custom_params = self.__retrieve_args(self.criterion)
+        params.update(custom_params)
+        return params
+        
 
     @property
     def lr_decay_params(self):
-        if self.use_CLR:
-            return {
-                'base_lr': self.base_lr,
-                'max_lr': self.max_lr, 
-                'step_size_up': self.step_size_up,
-                'step_size_down': self.step_size_down,
-                'mode': self.mode,
-                'gamma': self.gamma,
-                'scale_fn': self.scale_fn,
-                'scale_mode': self.scale_mode,
-                'cycle_momentum': self.cycle_momentum,
-                'base_momentum': self.base_momentum,
-                'max_momentum': self.max_momentum, 
-                'last_epoch': self.last_epoch
-            }
-        else:
-            return {
-                'lr_lambda': self.lr_lambda,
-                'last_epoch': self.last_epoch
-            }
+        params = self.__retrieve_args(self.lr_scheduler)
+
+         # Optimizer is dynamically loaded -> remove ambiguity
+        params.pop('optimizer')
+
+        return params
 
 
     @property
@@ -200,6 +183,32 @@ class Arguments:
             'patience': self.patience,
             'delta': self.delta
         }
+
+    ###########
+    # Helpers #
+    ###########
+
+    def __retrieve_args(self, callable: Callable) -> List[str]:
+        """ Retrieves all argument keys accepted by a specified callable object
+            from a pool of miscellaneous potential arguments
+
+        Args:
+            misc_args (dict): Dictionary of miscellaneous arguments
+            callable (callable): Callable object to be analysed
+        Returns:
+            Argument keys (list(str))
+        """
+        input_params = list(inspect.signature(callable).parameters)
+
+        arguments = {}
+        for param in input_params:
+            param_value = getattr(self, param, None)
+            if param_value:
+                arguments[param] = param_value
+            else:
+                pass
+
+        return arguments
         
 #########
 # Tests #

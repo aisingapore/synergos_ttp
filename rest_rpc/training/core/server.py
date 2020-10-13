@@ -21,14 +21,15 @@ import syft as sy
 import torch as th
 from pathos.multiprocessing import ProcessingPool
 from syft.workers.websocket_client import WebsocketClientWorker
-from syft.workers.node_client import NodeClient
+from syft.grid.clients.data_centric_fl_client import DataCentricFLClient
 
 # Custom
 from rest_rpc import app
 from rest_rpc.training.core.arguments import Arguments
-from rest_rpc.training.core.model import Model
+from rest_rpc.training.core.model import Model, ModelPlan
 from rest_rpc.training.core.federated_learning import FederatedLearning
 from rest_rpc.training.core.utils import Governor, RPCFormatter
+from rest_rpc.training.core.custom import CustomClientWorker, CustomWSClient
 
 ##################
 # Configurations #
@@ -47,6 +48,7 @@ rpc_formatter = RPCFormatter()
 #       is closed. That way, there is no need to explicitly clear objects in all
 #       workers, which may prematurely break PointerTensors
 grid_hook = sy.TorchHook(th)
+grid_hook.local_worker.is_client_worker = False
 
 """
 [Redacted - Multiprocessing]
@@ -96,13 +98,11 @@ def connect_to_ttp(log_msgs=False, verbose=False):
     )
 
     # Make sure that generated TTP is self-aware! 
-    ttp.add_worker(ttp)
+    # ttp.add_worker(ttp)
 
     # Replace point of reference within federated hook with TTP
     sy.local_worker = ttp
     grid_hook.local_worker = ttp
-    assert (ttp is grid_hook.local_worker)
-    assert (ttp is sy.local_worker)
 
     logging.debug(f"Local worker w.r.t grid hook: {grid_hook.local_worker}")
     logging.debug(f"Local worker w.r.t env      : {sy.local_worker}")
@@ -135,33 +135,44 @@ def connect_to_workers(keys, reg_records, dockerised=True, log_msgs=False, verbo
         config['log_msgs'] = log_msgs
         config['verbose'] = verbose
 
-        curr_worker = WebsocketClientWorker(
-            hook=grid_hook,
+        try:
+            curr_worker = WebsocketClientWorker(
+                hook=grid_hook,
 
-            # When False, PySyft manages object clean up. Here, this is done on
-            # purpose, since there is no need to propagate gradient tracking
-            # tensors back to the worker node. This ensures that the grid is
-            # self-contained at the TTP, and that the workers' local grid is not
-            # polluted with unncessary tensors. Doing so optimizes tag searches.
-            is_client_worker=True, 
+                # When False, PySyft manages object clean up. Here, this is done on
+                # purpose, since there is no need to propagate gradient tracking
+                # tensors back to the worker node. This ensures that the grid is
+                # self-contained at the TTP, and that the workers' local grid is not
+                # polluted with unncessary tensors. Doing so optimizes tag searches.
+                is_client_worker=False, #True
 
-            **config
-        )
+                **config
+            )
 
-        #####################################################################
-        # Optimal Setup -  Use NodeClient objects for in-house SMPC support #
-        #####################################################################
-        # Issue: Unable to connect to WSSW object remotely, raises the 
-        #        `binascii.Error: Non-hexadecimal digit found` exception.
+        except OSError:
+            curr_worker = grid_hook.local_worker._known_workers[config['id']]
+
+        # #####################################################################
+        # # Optimal Setup -  Use NodeClient objects for in-house SMPC support #
+        # #####################################################################
+        # # Issue: Unable to connect to WSSW object remotely, raises the 
+        # #        `binascii.Error: Non-hexadecimal digit found` exception.
         # # Solution: K.I.V until issue is resolved
+        # config['address'] = f"ws://{config.pop('host')}:{config.pop('port')}".strip()
 
-        # curr_worker = NodeClient(
+        # logging.debug(f"config: {config} {type(config)}")
+
+        # curr_worker = CustomClientWorker(
         #     hook=grid_hook,
-        #     address=f"ws://{config['host']}:{config['port']}",
-        #     id=config['id'],
-        #     is_client_worker=True, 
-        #     log_msgs=config['log_msgs'],
-        #     verbose=config['verbose']
+
+        #     # When False, PySyft manages object clean up. Here, this is done on
+        #     # purpose, since there is no need to propagate gradient tracking
+        #     # tensors back to the worker node. This ensures that the grid is
+        #     # self-contained at the TTP, and that the workers' local grid is not
+        #     # polluted with unncessary tensors. Doing so optimizes tag searches.
+        #     is_client_worker=False, #True
+
+        #     **dict(config)
         # )
 
         workers.append(curr_worker)
@@ -191,7 +202,8 @@ def terminate_connections(ttp, workers):
     sy.local_worker = REF_WORKER
 
     # Finally destroy TTP
-    ttp.remove_worker_from_local_worker_registry()
+    ttp.remove_worker_from_local_worker_registry() # remove from ref
+    # ttp.remove_worker_from_registry('ttp')         # remove from itself
     del ttp
 
     try:
@@ -253,41 +265,16 @@ def load_selected_experiment(expt_record):
     return model
 
 
-def load_selected_runs(fl_params):
-    """ Load in specified federated experimental parameters to be conducted from
-        configuration files
-
-    Args:
-        fl_params (dict): Experiment Ids of experiments to be run
-    Returns:
-        runs (dict(str,Arguments))
-    """
-    runs = {run_id: Arguments(**params) for run_id, params in fl_params.items()}
-
-    logging.debug(f"Runs loaded: {runs.keys()}")
-
-    return runs
-
-
-def load_selected_models(model_params):
-    """ Load in specified federated model architectures to be used for training
-        from configuration files
-
-    Args:
-        model_params (dict): Specified models to be trained
-    Returns:
-        models (dict(str,Model))
-    """
-    models = {name: Model(structure) for name, structure in model_params.items()}
-
-    logging.debug(f"Models loaded: {models.keys()}")
-
-    return models
-
-
-def start_expt_run_training(keys: dict, registrations: list, 
-                            experiment: dict, run: dict, 
-                            dockerised: bool, log_msgs: bool, verbose: bool):
+def start_expt_run_training(
+    keys: dict, 
+    action: str,
+    registrations: list, 
+    experiment: dict, 
+    run: dict, 
+    dockerised: bool, 
+    log_msgs: bool, 
+    verbose: bool
+):
     """ Trains a model corresponding to a SINGLE experiment-run combination
 
     Args:
@@ -340,6 +327,7 @@ def start_expt_run_training(keys: dict, registrations: list,
 
         # Perform a Federated Learning experiment
         fl_expt = FederatedLearning(
+            action=action,
             arguments=args, 
             crypto_provider=ttp, 
             workers=workers, 
@@ -434,6 +422,7 @@ def start_proc(kwargs):
     Returns:
         Path-to-trained-models (list(str))
     """
+    action = kwargs['action']
     experiments = kwargs['experiments']
     runs = kwargs['runs']
     registrations = kwargs['registrations']
@@ -456,6 +445,7 @@ def start_proc(kwargs):
                 combination_key = (r_project_id, r_expt_id, r_run_id)
                 project_expt_run_params = {
                     'keys': run_key,
+                    'action': action,
                     'registrations': registrations,
                     'experiment': expt_record,
                     'run': run_record,
@@ -529,46 +519,3 @@ def start_proc(kwargs):
     }
 
     return completed_trainings
-
-##########
-# Script #
-##########
-
-if __name__ == "__main__":
-    
-    """
-    parser = argparse.ArgumentParser(
-        description="Run a Federated Learning experiment."
-    )
-
-    parser.add_argument(
-        "--models",
-        "-m",
-        type=str, 
-        nargs="+",
-        required=True,
-        help="Model architecture to load"
-    )
-
-    parser.add_argument(
-        "--experiments",
-        "-e",
-        type=str, 
-        nargs="+",
-        required=True,
-        help="Port number of the websocket server worker, e.g. --port 8020"
-    )
-
-    parser.add_argument(
-        "--verbose",
-        "-v",
-        action="store_true",
-        help="if set, websocket client worker will be started in verbose mode"
-    )
-
-    kwargs = vars(parser.parse_args())
-    logging.debug(f"TTP Parameters: {kwargs}")
-
-    start_proc(kwargs)
-    """
-

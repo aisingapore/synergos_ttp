@@ -287,6 +287,8 @@ class Analyser:
         Returns:
             Statistics (dict)
         """
+        project_action = reg_record['project']['action'] 
+        
         participant_details = reg_record['participant'].copy()
         participant_id = participant_details['id']
         participant_ip = participant_details['host']
@@ -306,7 +308,7 @@ class Analyser:
             run_id=self.run_id
         )
         
-        payload = {'inferences': inferences}
+        payload = {'action': project_action, 'inferences': inferences}
 
         # Trigger remote inference by posting alignments & ID mappings to 
         # `Predict` route in worker
@@ -568,7 +570,6 @@ class MLFlogger:
                 'mlflow_type': 'run',
                 'mlflow_id': run_mlflow_id,
                 'mlflow_uri': expt_mlflow_details['mlflow_uri'] # same as expt
-
             }
             new_run_mlflow_details = self.mlf_records.create(
                 project=project_id,
@@ -583,7 +584,17 @@ class MLFlogger:
 
 
     def delete_mlflow_run(self):
+        """
+
+        Args:
+            project_id (str): REST-RPC ID of specified project
+            expt_id (str): REST-RPC ID of specified experiment
+            run_id (str): REST-RPC ID of specified run
+        Returns:
+
+        """
         pass
+
 
 
     def log_losses(self, project_id: str, expt_id: str, run_id: str):

@@ -76,6 +76,7 @@ class BaseAlgorithm(AbstractAlgorithm):
     """
     def __init__(
         self, 
+        action: str,
         crypto_provider: sy.VirtualWorker,
         workers: List[WebsocketClientWorker],
         arguments: Arguments,
@@ -87,6 +88,9 @@ class BaseAlgorithm(AbstractAlgorithm):
         out_dir: str = '.',
         **kwargs
     ):
+        # General attributes
+        self.action = action
+
         # Network attributes
         self.crypto_provider = crypto_provider
         self.workers = workers
@@ -115,14 +119,17 @@ class BaseAlgorithm(AbstractAlgorithm):
         self.out_dir = out_dir
         self.checkpoints = {}
 
+        # Avoid Pytorch deadlock issues
+        th.set_num_threads(1)
+
     ############
     # Checkers #
     ############
 
 
-    ####################    
-    # Helper Functions #
-    ####################
+    ###########    
+    # Helpers #
+    ###########
 
     def build_custom_criterion(self):
         """ Augments a selected criterion with the ability to use FedProx
@@ -130,6 +137,8 @@ class BaseAlgorithm(AbstractAlgorithm):
         Returns:
             Surrogate criterion (SurrogateCriterion)
         """
+        CRITERION_NAME = self.arguments.criterion.__name__
+        ACTION = self.action
 
         class SurrogateCriterion(self.arguments.criterion):
             """ A wrapper class to augment a specified PyTorch criterion to 
@@ -137,6 +146,8 @@ class BaseAlgorithm(AbstractAlgorithm):
             
             Args:
                 mu (float): Regularisation term for gamma-inexact minimizer
+                l1_lambda (float): Regularisation term for L1 regularisation
+                l2_lambda (float): Regularisation term for L2 regularisation
                 **kwargs: Keyword arguments to pass to parent criterion
                 
             Attributes:
@@ -150,10 +161,103 @@ class BaseAlgorithm(AbstractAlgorithm):
                 self.l1_lambda = l1_lambda
                 self.l2_lambda = l2_lambda
 
+            def format_params(self, outputs: th.Tensor, labels: th.Tensor) -> th.Tensor:
+                """ Casts specified label tensors into an appropriate form
+                    compatible with the specified base criterion
+
+                Args:
+                    labels (th.Tensor): Target values used for loss calculation
+                Returns:
+                    Restructured labels (th.Tensor)
+                """
+
+                ###########################
+                # Implementation Footnote #
+                ###########################
+
+                # [Cause]
+                # Most criterions, if not all, can be split into 2 distinct 
+                # groups; 1 group requires both outputs & targets to have the
+                # exact same structure (i.e. (N,*)), while the other requires
+                # that the outputs (i.e. (N,C) or (N,D)) be different from 
+                # targets (i.e. (N,)). This is the result of specialised
+                # multiclass criterion as opposed to standard all purpose
+                # criterions.
+
+                # [Problems]
+                # Without explicitly stating the machine learning action to be 
+                # executed, labels are not handled properly, either being 
+                # inappropriately expanded/compressed, or not expressed in the 
+                # correct datatype/form. This results in criterion errors raised
+                # during the federated cycle
+
+                # [Solution]
+                # Add a parameter that explicitly specifies the machine learning 
+                # operation to be handled, and take the appropriate action. If
+                # labels handled are for a regression problem, it is assumed 
+                # that its (N,) structure is already correct -> No need for
+                # reformatting. However, if labels handled are instead for a
+                # classification problem, then labels for binary classification
+                # will remain unchanged (since outputs are (N,)), but labels
+                # for multiclass classification must be OHE-ed.
+
+                # Supported Criterions
+                N_STAR_FORMAT = [
+                    "L1Loss", "MSELoss", "PoissonNLLLoss", "KLDivLoss",
+                    "BCELoss", "BCEWithLogitsLoss", "SmoothL1Loss"
+                ]
+                N_C_N_FORMAT = [
+                    "CrossEntropyLoss", "NLLLoss", "MultiMarginLoss"
+                ]
+                N_C_N_C_FORMAT = [
+                    "MultiLabelMarginLoss", "MultiLabelSoftMarginLoss"
+                ]
+                STAR_FORMAT = [
+                    "HingeEmbeddingLoss", "SoftMarginLoss"
+                ]
+
+                # Unsupported Criterions
+                N_D_N_FORMAT = [
+                    "MarginRankingLoss"
+                ]
+                MISC_FORMAT = [
+                    "CosineEmbeddingLoss", "TripletMarginLoss", "CTCLoss"
+                ]
+
+                logging.debug(f"Action: {ACTION}, Output shape: {outputs.shape}, Target shape: {labels.shape}")
+                if CRITERION_NAME in MISC_FORMAT + N_D_N_FORMAT:
+                    raise ValueError("Specified criterion is currently not supported!")
+                elif (
+                    (ACTION == "classify" and outputs.shape[-1] > 1) and
+                    (CRITERION_NAME not in N_C_N_FORMAT)
+                ):
+                    # One-hot encode predicted labels
+                    ohe_labels = th.nn.functional.one_hot(
+                        labels,
+                        num_classes=outputs.shape[-1] # assume labels max dim = 2
+                    )
+                    formatted_labels = (
+                        ohe_labels
+                        if CRITERION_NAME in N_C_N_C_FORMAT 
+                        else ohe_labels.float()
+                    )
+                    return outputs, formatted_labels    # [(N,*), (N,*)]
+                else:
+                    # Labels are loaded as (N,1) by default in worker
+                    return outputs, labels  # [(N,1),(N,1)] or [(N,*),(N,1)]
+
             def forward(self, outputs, labels, w, wt):
+                # Format labels into criterion-compatible
+                formatted_outputs, formatted_labels = self.format_params(
+                    outputs=outputs,
+                    labels=labels
+                )
+    
                 # Calculate normal criterion loss
-                loss = super().forward(outputs, labels)
-                logging.debug(f"BCE Loss: {loss.location}")
+                logging.debug(f"Labels type: {labels.shape} {labels.type()}")
+                logging.debug(f"Formatted labels type: {formatted_labels.shape} {formatted_labels.type()}")
+                loss = super().forward(formatted_outputs, formatted_labels)
+                logging.debug(f"Criterion Loss: {loss.location}")
 
                 # Calculate regularisation terms
                 # Note: All regularisation terms have to be collected in some 
@@ -233,7 +337,7 @@ class BaseAlgorithm(AbstractAlgorithm):
         return SurrogateCriterion
 
 
-    def generate_local_models(self):
+    def generate_local_models(self) -> Dict[WebsocketClientWorker, sy.Plan]:
         """ Abstracts the generation of local models in a federated learning
             context. For default FL training (i.e. non-SNN/FedAvg/Fedprox),
             local models generated are clones of the previous round's global
@@ -249,12 +353,7 @@ class BaseAlgorithm(AbstractAlgorithm):
         Returns:
             Distributed context-specific local models (dict(str, Model))
         """
-        local_models = {
-            w: copy.deepcopy(self.global_model)
-            for w in self.workers
-        }
-
-        return local_models
+        return {w: self.global_model.copy() for w in self.workers}
 
 
     def perform_parallel_training(
@@ -289,7 +388,8 @@ class BaseAlgorithm(AbstractAlgorithm):
             trained local models
         """ 
         # Tracks which workers have reach an optimal/stagnated model
-        WORKERS_STOPPED = Manager().list()
+        # WORKERS_STOPPED = Manager().list()
+        WORKERS_STOPPED = []
 
         async def train_worker(packet):
             """ Train a worker on its single batch, and does an in-place 
@@ -324,32 +424,26 @@ class BaseAlgorithm(AbstractAlgorithm):
                 curr_global_model = curr_global_model.send(worker)
                 curr_local_model = curr_local_model.send(worker)
 
+                logging.debug(f"Location of global model: {curr_global_model.location}")
+                logging.debug(f"Location of local model: {curr_local_model.location}")
+                logging.debug(f"Location of X & y: {data.location} {labels.location}")
+
                 # Zero gradients to prevent accumulation  
                 curr_local_model.train()
-                curr_optimizer.zero_grad()
+                curr_optimizer.zero_grad() 
 
                 # Forward Propagation
-                predictions = curr_local_model(data.float())
+                outputs = curr_local_model(data)
                 logging.debug(f"Data shape: {data.shape}")
-                logging.debug(f"Prediction size: {predictions.shape}")
+                logging.debug(f"Output size: {outputs.shape}")
                 logging.debug(f"Augmented labels size: {labels.shape}")
 
-                if self.arguments.is_condensed:
-                    # To handle binomial context
-                    loss = curr_criterion(
-                        predictions, 
-                        labels.float(),
-                        w=curr_local_model.state_dict(),
-                        wt=curr_global_model.state_dict()
-                    )
-                else:
-                    # To handle multinomial context
-                    loss = curr_criterion(
-                        predictions, 
-                        th.max(labels, 1)[1],
-                        w=curr_local_model.state_dict(),
-                        wt=curr_global_model.state_dict()
-                    )
+                loss = curr_criterion(
+                    outputs=outputs, 
+                    labels=labels,
+                    w=curr_local_model.state_dict(),
+                    wt=curr_global_model.state_dict()
+                )
 
                 # Backward propagation
                 loss.backward()
@@ -548,7 +642,7 @@ class BaseAlgorithm(AbstractAlgorithm):
             logging.debug(f"packet: {packet}")
             try:
                 worker, (data, labels) = packet
-            except TypeError:
+            except (TypeError, ValueError):
                 (data, labels) = packet
                 assert data.location is labels.location
                 worker = data.location
@@ -562,7 +656,7 @@ class BaseAlgorithm(AbstractAlgorithm):
             # Skip predictions if filter was specified, and current worker was
             # not part of the selected workers
             if workers and (worker.id not in workers):
-                return {}
+                return {}, None
 
             self.global_model = self.global_model.send(worker)
             self.local_models[worker.id] = self.local_models[worker.id].send(worker)
@@ -573,38 +667,34 @@ class BaseAlgorithm(AbstractAlgorithm):
 
                 outputs = self.global_model(data).detach()
 
-                if self.arguments.is_condensed:
-                    predictions = (outputs > 0.5).float()
-                    
+                if self.action == "regress":
+                    # Predictions are the raw outputs
+                    pass
+
+                elif self.action == "classify":
+                    class_count = outputs.shape[1]
+                    # If multi-class, use argmax
+                    if class_count > 2:
+                        # One-hot encode predicted labels
+                        _, predictions = outputs.max(axis=1)
+                    else:
+                        # For binary, use 0.5 as threshold
+                        predictions = (outputs > 0.5).float()
+
                 else:
-                    # Find best predicted class label representative of sample
-                    _, predicted_labels = outputs.max(axis=1)
-                    
-                    # One-hot encode predicted labels
-                    predictions = th.FloatTensor(labels.shape)
-                    predictions.zero_()
-                    predictions.scatter_(1, predicted_labels.view(-1,1), 1)
+                    raise ValueError(f"ML action {self.action} is not supported!")
 
                 # Compute loss
                 surrogate_criterion = self.build_custom_criterion()(
                     **self.arguments.criterion_params
                 )
-                if self.arguments.is_condensed:
-                    # To handle binomial context
-                    loss = surrogate_criterion(
-                        outputs, 
-                        labels.float(),
-                        w=self.local_models[worker.id].state_dict(),
-                        wt=self.global_model.state_dict()
-                    )
-                else:
-                    # To handle multinomial context
-                    loss = surrogate_criterion(
-                        outputs, 
-                        th.max(labels, 1)[1],
-                        w=self.local_models[worker.id].state_dict(),
-                        wt=self.global_model.state_dict()
-                    )
+
+                loss = surrogate_criterion(
+                    outputs=outputs, 
+                    labels=labels,
+                    w=self.local_models[worker.id].state_dict(),
+                    wt=self.global_model.state_dict()
+                )
 
             self.local_models[worker.id] = self.local_models[worker.id].get()
             self.global_model = self.global_model.get()
@@ -696,7 +786,11 @@ class BaseAlgorithm(AbstractAlgorithm):
             # with derivative information. 
 
             outputs = outputs.get()
-            predictions = predictions.get()
+            predictions = (
+                predictions.get()
+                if self.action == "classify" 
+                else outputs # for regression, predictions are raw outputs
+            )
             loss = loss.get()
 
             return {worker: {"y_pred": predictions, "y_score": outputs}}, loss
@@ -851,8 +945,12 @@ class BaseAlgorithm(AbstractAlgorithm):
                 for worker_id, batch_outputs in all_worker_outputs.items()
             }
             
-            avg_loss = th.mean(th.stack(all_losses), dim=0)
-
+            relevant_losses = [loss for loss in all_losses if loss is not None]
+            avg_loss = (
+                th.mean(th.stack(relevant_losses), dim=0) 
+                if relevant_losses 
+                else None
+            )
             return all_combined_outputs, avg_loss
 
             ####################################################################
@@ -908,16 +1006,17 @@ class BaseAlgorithm(AbstractAlgorithm):
         prev_models = self.generate_local_models()
         
         optimizers = {
-            w: self.arguments.optimizer(
-                params=model.parameters(), 
-                **self.arguments.optimizer_params
+            w: self.arguments.optimizer( 
+                **self.arguments.optimizer_params,
+                params=model.parameters()
             ) for w, model in local_models.items()
         }
 
         schedulers = {
-            w: CyclicLR(optimizer, **self.arguments.lr_decay_params) 
-                if self.arguments.use_CLR
-                else LambdaLR(optimizer, **self.arguments.lr_decay_params)
+            w: self.arguments.lr_scheduler(
+                **self.arguments.lr_decay_params,
+                optimizer=optimizer
+            )
             for w, optimizer in optimizers.items()
         }
 
@@ -971,8 +1070,8 @@ class BaseAlgorithm(AbstractAlgorithm):
         pbar = tqdm(total=self.arguments.rounds, desc='Rounds', leave=True)
         while rounds < self.arguments.rounds:
 
-            logging.debug(f"Current global model:\n {self.global_model.state_dict()}")
-            logging.debug(f"Global Gradients:\n {list(self.global_model.parameters())[0].grad}")
+            # logging.debug(f"Current global model:\n {self.global_model.state_dict()}")
+            # logging.debug(f"Global Gradients:\n {list(self.global_model.parameters())[0].grad}")
 
             (
                 local_models,

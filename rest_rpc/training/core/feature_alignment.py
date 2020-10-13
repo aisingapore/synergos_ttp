@@ -507,7 +507,41 @@ class MultipleFeatureAligner:
         handshake_alignments = []
         for combination in itertools.combinations(self.headers, 2):
 
-            pwf_aligner = PairwiseFeatureAligner(*combination)
+            ###########################
+            # Implementation Footnote #
+            ###########################
+
+            # [Cause]
+            # In pairwise alignment, order of M & N sequences specified will
+            # affect the order where spacers are to be inserted. 
+            # eg. ['cp_1', 'cp_2', 'cp_3', 'cp_4', 'exang_0', 'exang_1', 'fbs_0', 'fbs_1',  None,      None,      None,    None  ]
+            #     [ None,  'cp_2', 'cp_3', 'cp_4',  None,      None,      None,    None,   'exang_3', 'exang_4', 'fbs_3', 'fbs_4']
+            #     vs
+            #     ['cp_1', 'cp_2', 'cp_3', 'cp_4',  None,      None,      None,    None,   'exang_0', 'exang_1', 'fbs_0', 'fbs_1']
+            #     [ None,  'cp_2', 'cp_3', 'cp_4', 'exang_3', 'exang_4', 'fbs_3', 'fbs_4',  None,      None,      None,    None  ]
+            
+            # [Problems]
+            # This results compounded insertions when combining pairwise 
+            # alignments in MFA, since each variant is considered to be unique
+            # resulting in redundant insertions
+            # eg. Seeding pairs:
+            #  1) ['cp_1', 'cp_2', 'cp_3', 'cp_4', 'exang_0', 'exang_1', 'fbs_0', 'fbs_1',  None,      None,      None,    None  ]
+            #     [ None,  'cp_2', 'cp_3', 'cp_4',  None,      None,      None,    None,   'exang_3', 'exang_4', 'fbs_3', 'fbs_4']
+            #  2) ['cp_1', 'cp_2', 'cp_3', 'cp_4', 'exang_0', 'exang_1', 'fbs_0', 'fbs_1',  None,      None,      None,    None  ]
+            #     ['cp_1', 'cp_2', 'cp_3', 'cp_4',  None,      None,      None,    None,   'exang_0', 'exang_1', 'fbs_0', 'fbs_1']
+            #  3) ['cp_1', 'cp_2', 'cp_3', 'cp_4',  None,      None,      None,    None,   'exang_0', 'exang_1', 'fbs_0', 'fbs_1']
+            #     [ None,  'cp_2', 'cp_3', 'cp_4', 'exang_3', 'exang_4', 'fbs_3', 'fbs_4',  None,      None,      None,    None  ]
+            #     Resultant MFA:
+            #     ['cp_1', 'cp_2', 'cp_3', 'cp_4', None, None, None, None, 'exang_0', 'exang_1', 'fbs_0', 'fbs_1', None,      None,      None,    None  ]
+            #     [ None,  'cp_2', 'cp_3', 'cp_4', None, None, None, None,  None,      None,      None,    None,  'exang_3', 'exang_4', 'fbs_3', 'fbs_4']
+            #     ['cp_1', 'cp_2', 'cp_3', 'cp_4', None, None, None, None, 'exang_0', 'exang_1', 'fbs_0', 'fbs_1', None,      None,      None,    None  ]
+
+            # [Solution]
+            # Explicitly ensure that all pairwise combinations are first sorted!
+
+            # Sort combination before performing pairwise alignment
+            sorted_combination = sorted(combination)
+            pwf_aligner = PairwiseFeatureAligner(*sorted_combination)
             
             pw_alignment = pwf_aligner.align(
                 match=match, 
@@ -712,4 +746,27 @@ class MultipleFeatureAligner:
         ordered_mf_alignment = self.arrange_alignment(mf_alignment)
         return ordered_mf_alignment
         
-        
+#########        
+# Tests #
+#########
+
+if __name__ == "__main__":
+    X_data_headers = [
+        ['age', 'ca_0', 'ca_1', 'ca_2', 'ca_3', 'chol', 'cp_1', 'cp_2', 'cp_3', 'cp_4', 'exang_0', 'exang_1', 'fbs_0', 'fbs_1', 'oldpeak', 'restecg_0', 'restecg_1', 'restecg_2', 'sex_0', 'sex_1', 'slope_1', 'slope_2', 'slope_3', 'thal_3', 'thal_6', 'thal_7', 'thalach', 'trestbps'],
+        ['age', 'ca_0', 'ca_1', 'chol', 'cp_2', 'cp_3', 'cp_4', 'exang_0.0', 'exang_1.0', 'fbs_0.0', 'fbs_1.0', 'oldpeak', 'restecg_0', 'restecg_1', 'restecg_2', 'sex_0', 'sex_1', 'slope_1', 'slope_2', 'slope_3', 'thal_3', 'thal_6', 'thal_7', 'thalach', 'trestbps'], 
+        ['age', 'ca_0', 'ca_1', 'ca_2', 'ca_3', 'chol', 'cp_1', 'cp_2', 'cp_3', 'cp_4', 'exang_0', 'exang_1', 'fbs_0', 'fbs_1', 'oldpeak', 'restecg_0', 'restecg_1', 'restecg_2', 'sex_0', 'sex_1', 'slope_1', 'slope_2', 'slope_3', 'thal_3', 'thal_6', 'thal_7', 'thalach', 'trestbps']
+    ]
+
+    X_mfa_aligner = MultipleFeatureAligner(headers=X_data_headers)
+    X_mf_alignments = X_mfa_aligner.align()
+
+    print(X_mf_alignments)
+
+    """
+    [
+        ['age', 'ca_0', 'ca_1', 'ca_2', 'ca_3', 'chol', 'cp_1', 'cp_2', 'cp_3', 'cp_4', None, None, None, None, 'exang_0', 'exang_1', 'fbs_0', 'fbs_1',  None,        None,        None,      None,     'oldpeak', 'restecg_0', 'restecg_1', 'restecg_2', 'sex_0', 'sex_1', 'slope_1', 'slope_2', 'slope_3', 'thal_3', 'thal_6', 'thal_7', 'thalach', 'trestbps'], 
+        ['age', 'ca_0', 'ca_1',  None,   None,  'chol',  None,  'cp_2', 'cp_3', 'cp_4', None, None, None, None,  None,      None,      None,    None,   'exang_0.0', 'exang_1.0', 'fbs_0.0', 'fbs_1.0', 'oldpeak', 'restecg_0', 'restecg_1', 'restecg_2', 'sex_0', 'sex_1', 'slope_1', 'slope_2', 'slope_3', 'thal_3', 'thal_6', 'thal_7', 'thalach', 'trestbps'], 
+        ['age', 'ca_0', 'ca_1', 'ca_2', 'ca_3', 'chol', 'cp_1', 'cp_2', 'cp_3', 'cp_4', None, None, None, None, 'exang_0', 'exang_1', 'fbs_0', 'fbs_1',  None,        None,        None,      None,     'oldpeak', 'restecg_0', 'restecg_1', 'restecg_2', 'sex_0', 'sex_1', 'slope_1', 'slope_2', 'slope_3', 'thal_3', 'thal_6', 'thal_7', 'thalach', 'trestbps']
+    ]
+
+    """

@@ -5,6 +5,21 @@
     "type": "object",
     "properties": {
 
+        "R2": {
+            "description": "Computed R-squared value given specified grid settings",
+            "type": "number"
+        },
+
+        "MSE": {
+            "description": "Computed mean squared error of predictions given specified grid settings",
+            "type": "number"
+        },
+
+        "MAE": {
+            "description": "Computed mean absolute error of predictions given specified grid settings",
+            "type": "number"
+        },
+
         "accuracy": {
             "description": "Computed accuracy of predictions given specified grid settings",
             "type": "number"

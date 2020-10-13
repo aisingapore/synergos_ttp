@@ -44,7 +44,7 @@ role_model = ns_api.model(
     }
 )
 
-incentives_field = fields.Wildcard(fields.List(fields.String())) # tentative
+incentives_field = fields.Wildcard(fields.Raw()) # tentative
 incentive_model = ns_api.model(
     name="registered_incentives",
     model={"*": incentives_field}
@@ -74,6 +74,7 @@ registration_model = ns_api.inherit(
                     'id': fields.String(required=True),
                     'host': fields.String(required=True),
                     'port': fields.Integer(required=True),
+                    'f_port': fields.Integer(required=True),
                     'log_msgs': fields.Boolean(),
                     'verbose': fields.Boolean()
                 }

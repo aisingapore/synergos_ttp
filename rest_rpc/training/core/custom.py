@@ -5,240 +5,335 @@
 ####################
 
 # Generic
+import json
+import requests
+import logging
+import ssl
+import websocket
+import websockets
+from requests_toolbelt import MultipartEncoder, MultipartEncoderMonitor
+from typing import Dict, List, Tuple, Union
+
+from urllib.parse import urlparse
+
+# Syft imports
+from syft.serde import serialize
+from syft.version import __version__
+from syft.execution.plan import Plan
+from syft.codes import REQUEST_MSG, RESPONSE_MSG
+from syft.generic.abstract.tensor import AbstractTensor
 
 # Libs
 import syft as sy
 import torch as th
 from torch import nn
+from syft.workers.websocket_client import WebsocketClientWorker
+from syft.grid.clients.data_centric_fl_client import DataCentricFLClient
 
-################################
-# Custom Class - FedproxConfig #
-################################
+###########################################
+# Custom Async Class - CustomClientWorker #
+###########################################
 
-class FedproxConfig(sy.TrainConfig):
-    """ 
-    Adaptation of TrainConfig abstraction to cater to Fedprox operations. A 
-    wrapper object that contains all that is needed to run a Fedprox training 
-    loop remotely on a federated learning setup.
-    """
+class CustomWSClient(WebsocketClientWorker):
     def __init__(
         self,
-        model: torch.jit.ScriptModule,
-        prev_model: torch.jit.ScriptModule,
-        loss_fn: torch.jit.ScriptModule,
-        owner: AbstractWorker = None,
-        batch_size: int = 32,
-        epochs: int = 1,
-        optimizer: str = "SGD",
-        optimizer_args: dict = {"lr": 0.1},
-        id: Union[int, str] = None,
-        max_nr_batches: int = -1,
-        shuffle: bool = True,
-        loss_fn_id: int = None,
-        model_id: int = None,
+        hook,
+        host: str,
+        port: int,
+        secure: bool = False,
+        id: Union[int, str] = 0,
+        is_client_worker: bool = False,
+        log_msgs: bool = False,
+        verbose: bool = False,
+        data: List[Union[th.Tensor, AbstractTensor]] = None,
+        timeout: int = None,
     ):
-
-        self.cache
+        """A client which will forward all messages to a remote worker running a
+        WebsocketServerWorker and receive all responses back from the server.
+        """
         super().__init__(
-            model=model,
-            loss_fn=loss_fn,
-            owner=owner,
-            batch_size=batch_size,
-            epochs=epochs,
-            optimizer=optimizer,
-            optimizer_args=optimizer_args,
+            hook=hook,
+            host=host,
+            port=port,
+            secure=secure,
             id=id,
-            max_nr_batches=max_nr_batches,
-            shuffle=shuffle,
-            loss_fn_id=loss_fn_id,
-            model_id=model_id
+            is_client_worker=is_client_worker,
+            log_msgs=log_msgs,
+            verbose=verbose,
+            data=data,
+            timeout=timeout
         )
 
+    
+    def connect(self):
+        args_ = {"max_size": None, "timeout": self.timeout, "url": self.url}
 
-class TrainConfig:
-    """
-    """
+        if self.secure:
+            args_["sslopt"] = {"cert_reqs": ssl.CERT_NONE}
+
+        self.ws = websocket.create_connection(**args_)
+        logging.debug(f"Websocket: {self.ws}")
+
+        self._log_msgs_remote(self.log_msgs)
+
+
+class CustomClientWorker(CustomWSClient):
 
     def __init__(
         self,
-        model: torch.jit.ScriptModule,
-        loss_fn: torch.jit.ScriptModule,
-        owner: AbstractWorker = None,
-        batch_size: int = 32,
-        epochs: int = 1,
-        optimizer: str = "SGD",
-        optimizer_args: dict = {"lr": 0.1},
-        id: Union[int, str] = None,
-        max_nr_batches: int = -1,
-        shuffle: bool = True,
-        loss_fn_id: int = None,
-        model_id: int = None,
+        hook,
+        address,
+        id: Union[int, str] = 0,
+        is_client_worker: bool = False,
+        log_msgs: bool = False,
+        verbose: bool = False,
+        encoding: str = "ISO-8859-1",
+        timeout: int = None,
     ):
-        """Initializer for TrainConfig.
-        Args:
-            model: A traced torch nn.Module instance.
-            loss_fn: A jit function representing a loss function which
-                shall be used to calculate the loss.
-            batch_size: Batch size used for training.
-            epochs: Epochs used for training.
-            optimizer: A string indicating which optimizer should be used.
-            optimizer_args: A dict containing the arguments to initialize the optimizer. Defaults to {'lr': 0.1}.
-            owner: An optional BaseWorker object to specify the worker on which
-                the tensor is located.
-            id: An optional string or integer id of the tensor.
-            max_nr_batches: Maximum number of training steps that will be performed. For large datasets
-                            this can be used to run for less than the number of epochs provided.
-            shuffle: boolean, whether to access the dataset randomly (shuffle) or sequentially (no shuffle).
-            loss_fn_id: The id_at_location of (the ObjectWrapper of) a loss function which
-                        shall be used to calculate the loss. This is used internally for train config deserialization.
-            model_id: id_at_location of a traced torch nn.Module instance (objectwrapper). . This is used internally for train config deserialization.
         """
-        # syft related attributes
-        self.owner = owner if owner else sy.hook.local_worker
-        self.id = id if id is not None else sy.ID_PROVIDER.pop()
-        self.location = None
-
-        # training related attributes
-        self.model = model
-        self.loss_fn = loss_fn
-        self.batch_size = batch_size
-        self.epochs = epochs
-        self.optimizer = optimizer
-        self.optimizer_args = optimizer_args
-        self.max_nr_batches = max_nr_batches
-        self.shuffle = shuffle
-
-        # pointers
-        self.model_ptr = None
-        self.loss_fn_ptr = None
-
-        # internal ids
-        self._model_id = model_id
-        self._loss_fn_id = loss_fn_id
-
-    def __str__(self) -> str:
-        """Returns the string representation of a TrainConfig."""
-        out = "<"
-        out += str(type(self)).split("'")[1].split(".")[-1]
-        out += " id:" + str(self.id)
-        out += " owner:" + str(self.owner.id)
-
-        if self.location:
-            out += " location:" + str(self.location.id)
-
-        out += " epochs: " + str(self.epochs)
-        out += " batch_size: " + str(self.batch_size)
-        out += " optimizer_args: " + str(self.optimizer_args)
-
-        out += ">"
-        return out
-
-    def _wrap_and_send_obj(self, obj, location):
-        """Wrappers object and send it to location."""
-        obj_with_id = ObjectWrapper(id=sy.ID_PROVIDER.pop(), obj=obj)
-        obj_ptr = self.owner.send(obj_with_id, location)
-        obj_id = obj_ptr.id_at_location
-        return obj_ptr, obj_id
-
-    def send(self, location: BaseWorker) -> weakref:
-        """Gets the pointer to a new remote object.
-        One of the most commonly used methods in PySyft, this method serializes
-        the object upon which it is called (self), sends the object to a remote
-        worker, creates a pointer to that worker, and then returns that pointer
-        from this function.
         Args:
-            location: The BaseWorker object which you want to send this object
-                to. Note that this is never actually the BaseWorker but instead
-                a class which instantiates the BaseWorker abstraction.
-        Returns:
-            A weakref instance.
+            hook : a normal TorchHook object.
+            address : Address used to connect with remote node.
+            id : the unique id of the worker (string or int)
+            is_client_worker : An optional boolean parameter to indicate
+                whether this worker is associated with an end user client. If
+                so, it assumes that the client will maintain control over when
+                variables are instantiated or deleted as opposed to handling
+                tensor/variable/model lifecycle internally. Set to True if this
+                object is not where the objects will be stored, but is instead
+                a pointer to a worker that eists elsewhere.
+                log_msgs : whether or not all messages should be
+                saved locally for later inspection.
+            verbose : a verbose option - will print all messages
+                sent/received to stdout.
+            encoding : Encoding pattern used to send/retrieve models.
+            timeout : connection's timeout with the remote worker.
         """
-        # Send traced model
-        self.model_ptr, self._model_id = self._wrap_and_send_obj(self.model, location)
+        self.address = address
+        self.encoding = encoding
 
-        # Send loss function
-        self.loss_fn_ptr, self._loss_fn_id = self._wrap_and_send_obj(self.loss_fn, location)
+        # Parse address string to get scheme, host and port
+        self.secure, self.host, self.port = self._parse_address(address)
 
-        # Send train configuration itself
-        ptr = self.owner.send(self, location)
-
-        return ptr
-
-    def get(self, location):
-        return self.owner.request_obj(self, location)
-
-    def get_model(self):
-        if self.model is not None:
-            return self.model_ptr.get()
-
-    def get_loss_fn(self):
-        if self.loss_fn is not None:
-            return self.loss_fn.get()
-
-    @staticmethod
-    def simplify(worker: AbstractWorker, train_config: "TrainConfig") -> tuple:
-        """Takes the attributes of a TrainConfig and saves them in a tuple.
-        Attention: this function does not serialize the model and loss_fn attributes
-        of a TrainConfig instance, these are serialized and sent before. TrainConfig
-        keeps a reference to the sent objects using _model_id and _loss_fn_id which
-        are serialized here.
-        Args:
-            worker: the worker doing the serialization
-            train_config: a TrainConfig object
-        Returns:
-            tuple: a tuple holding the unique attributes of the TrainConfig object
-        """
-        return (
-            train_config._model_id,
-            train_config._loss_fn_id,
-            train_config.batch_size,
-            train_config.epochs,
-            sy.serde.msgpack.serde._simplify(worker, train_config.optimizer),
-            sy.serde.msgpack.serde._simplify(worker, train_config.optimizer_args),
-            sy.serde.msgpack.serde._simplify(worker, train_config.id),
-            train_config.max_nr_batches,
-            train_config.shuffle,
-        )
-
-    @staticmethod
-    def detail(worker: AbstractWorker, train_config_tuple: tuple) -> "TrainConfig":
-        """This function reconstructs a TrainConfig object given it's attributes in the form of a tuple.
-        Args:
-            worker: the worker doing the deserialization
-            train_config_tuple: a tuple holding the attributes of the TrainConfig
-        Returns:
-            train_config: A TrainConfig object
-        """
-
-        (
-            model_id,
-            loss_fn_id,
-            batch_size,
-            epochs,
-            optimizer,
-            optimizer_args,
+        # Initialize WebsocketClientWorker / Federated Client
+        super().__init__(
+            hook,
+            self.host,
+            self.port,
+            self.secure,
             id,
-            max_nr_batches,
-            shuffle,
-        ) = train_config_tuple
-
-        id = sy.serde.msgpack.serde._detail(worker, id)
-        detailed_optimizer = sy.serde.msgpack.serde._detail(worker, optimizer)
-        detailed_optimizer_args = sy.serde.msgpack.serde._detail(worker, optimizer_args)
-
-        train_config = TrainConfig(
-            model=None,
-            loss_fn=None,
-            owner=worker,
-            id=id,
-            model_id=model_id,
-            loss_fn_id=loss_fn_id,
-            batch_size=batch_size,
-            epochs=epochs,
-            optimizer=detailed_optimizer,
-            optimizer_args=detailed_optimizer_args,
-            max_nr_batches=max_nr_batches,
-            shuffle=shuffle,
+            is_client_worker,
+            log_msgs,
+            verbose,
+            None,  # initial data
+            timeout,
         )
 
-        return train_config
+        # Update Node reference using node's Id given by the remote node
+        self._update_node_reference(self._get_node_infos())
+
+    @property
+    def url(self) -> str:
+        """ Get Node URL Address.
+        Returns:
+            address (str) : Node's address.
+        """
+        if self.port:
+            return (
+                f"wss://{self.host}:{self.port}" if self.secure else f"ws://{self.host}:{self.port}"
+            )
+        else:
+            return self.address
+
+    # @property
+    # def models(self) -> list:
+    #     """ Get models stored at remote node.
+    #     Returns:
+    #         models (List) : List of models stored in this node.
+    #     """
+    #     message = {REQUEST_MSG.TYPE_FIELD: REQUEST_MSG.LIST_MODELS}
+    #     response = self._forward_json_to_websocket_server_worker(message)
+    #     return self._return_bool_result(response, RESPONSE_MSG.MODELS)
+
+    def _update_node_reference(self, new_id: str):
+        """ Update worker references changing node id references at hook structure.
+        Args:
+            new_id (str) : New worker ID.
+        """
+        del self.hook.local_worker._known_workers[self.id]
+        self.id = new_id
+        self.hook.local_worker._known_workers[new_id] = self
+
+    def _parse_address(self, address: str) -> tuple:
+        """ Parse Address string to define secure flag and split into host and port.
+        Args:
+            address (str) : Adress of remote worker.
+        """
+        url = urlparse(address)
+        secure = True if url.scheme == "wss" else False
+        return (secure, url.hostname, url.port)
+
+    def _get_node_infos(self) -> str:
+        """ Get Node ID from remote node worker
+        Returns:
+            node_id (str) : node id used by remote worker.
+        """
+        message = {REQUEST_MSG.TYPE_FIELD: REQUEST_MSG.GET_ID}
+        response = self._forward_json_to_websocket_server_worker(message)
+        node_version = response.get(RESPONSE_MSG.SYFT_VERSION, None)
+        if node_version != __version__:
+            raise RuntimeError(
+                "Library version mismatch, The PySyft version of your environment is "
+                + __version__
+                + " the Grid Node Syft version is "
+                + node_version
+            )
+
+        return response.get(RESPONSE_MSG.NODE_ID, None)
+
+    def _forward_json_to_websocket_server_worker(self, message: dict) -> dict:
+        """ Prepare/send a JSON message to a remote node and receive the response.
+        Args:
+            message (dict) : message payload.
+        Returns:
+            node_response (dict) : response payload.
+        """
+        logging.debug(f"Forwarded encoded message: {json.dumps(message)}")
+        self.ws.send(json.dumps(message))
+        return json.loads(self.ws.recv())
+
+    # def _forward_to_websocket_server_worker(self, message: bin) -> bin:
+    #     """ Send a bin message to a remote node and receive the response.
+    #     Args:
+    #         message (bytes) : message payload.
+    #     Returns:
+    #         node_response (bytes) : response payload.
+    #     """
+    #     self.ws.send_binary(message)
+    #     response = self.ws.recv()
+    #     return response
+
+    # def _return_bool_result(self, result, return_key=None):
+    #     if result.get(RESPONSE_MSG.SUCCESS):
+    #         return result[return_key] if return_key is not None else True
+    #     elif result.get(RESPONSE_MSG.ERROR):
+    #         raise RuntimeError(result[RESPONSE_MSG.ERROR])
+    #     else:
+    #         raise RuntimeError("Something went wrong.")
+
+    # def connect_nodes(self, node) -> dict:
+    #     """ Connect two remote workers between each other.
+    #     Args:
+    #         node (WebsocketFederatedClient) : Node that will be connected with this remote worker.
+    #     Returns:
+    #         node_response (dict) : node response.
+    #     """
+    #     message = {
+    #         REQUEST_MSG.TYPE_FIELD: REQUEST_MSG.CONNECT_NODE,
+    #         "address": node.address,
+    #         "id": node.id,
+    #     }
+    #     return self._forward_json_to_websocket_server_worker(message)
+
+    # def serve_model(
+    #     self,
+    #     model,
+    #     model_id: str = None,
+    #     mpc: bool = False,
+    #     allow_download: bool = False,
+    #     allow_remote_inference: bool = False,
+    # ):
+    #     """ Hosts the model and optionally serve it using a Socket / Rest API.
+    #     Args:
+    #         model : A jit model or Syft Plan.
+    #         model_id (str): An integer/string representing the model id.
+    #         If it isn't provided and the model is a Plan we use model.id,
+    #         if the model is a jit model we raise an exception.
+    #         allow_download (bool) : Allow to copy the model to run it locally.
+    #         allow_remote_inference (bool) : Allow to run remote inferences.
+    #     Returns:
+    #         result (bool) : True if model was served sucessfully.
+    #     Raises:
+    #         ValueError: model_id isn't provided and model is a jit model.
+    #         RunTimeError: if there was a problem during model serving.
+    #     """
+
+    #     # If the model is a Plan we send the model
+    #     # and host the plan version created after
+    #     # the send action
+    #     if isinstance(model, Plan):
+    #         # We need to use the same id in the model
+    #         # as in the POST request.
+    #         pointer_model = model.send(self)
+    #         res_model = pointer_model
+    #     else:
+    #         res_model = model
+
+    #     serialized_model = serialize(res_model).decode(self.encoding)
+
+    #     message = {
+    #         REQUEST_MSG.TYPE_FIELD: REQUEST_MSG.HOST_MODEL,
+    #         "encoding": self.encoding,
+    #         "model_id": model_id,
+    #         "allow_download": str(allow_download),
+    #         "mpc": str(mpc),
+    #         "allow_remote_inference": str(allow_remote_inference),
+    #         "model": serialized_model,
+    #     }
+
+    #     url = self.address.replace("ws", "http") + "/data_centric/serve-model/"
+
+    #     # Multipart encoding
+    #     form = MultipartEncoder(message)
+    #     upload_size = form.len
+
+    #     # Callback that shows upload progress
+    #     def progress_callback(monitor):
+    #         upload_progress = "{} / {} ({:.2f} %)".format(
+    #             monitor.bytes_read, upload_size, (monitor.bytes_read / upload_size) * 100
+    #         )
+    #         print(upload_progress, end="\r")
+    #         if monitor.bytes_read == upload_size:
+    #             print()
+
+    #     monitor = MultipartEncoderMonitor(form, progress_callback)
+    #     headers = {"Prefer": "respond-async", "Content-Type": monitor.content_type}
+
+    #     session = requests.Session()
+    #     response = session.post(url, headers=headers, data=monitor).content
+    #     session.close()
+    #     return self._return_bool_result(json.loads(response))
+
+    # def run_remote_inference(self, model_id, data):
+    #     """ Run a dataset inference using a remote model.
+    #     Args:
+    #         model_id (str) : Model ID.
+    #         data (Tensor) : dataset to be inferred.
+    #     Returns:
+    #         inference (Tensor) : Inference result
+    #     Raises:
+    #         RuntimeError : If an unexpected behavior happen.
+    #     """
+    #     serialized_data = serialize(data).decode(self.encoding)
+    #     message = {
+    #         REQUEST_MSG.TYPE_FIELD: REQUEST_MSG.RUN_INFERENCE,
+    #         "model_id": model_id,
+    #         "data": serialized_data,
+    #         "encoding": self.encoding,
+    #     }
+    #     response = self._forward_json_to_websocket_server_worker(message)
+    #     return self._return_bool_result(response, RESPONSE_MSG.INFERENCE_RESULT)
+
+    # def delete_model(self, model_id: str) -> bool:
+    #     """ Delete a model previously registered.
+    #     Args:
+    #         model_id (String) : ID of the model that will be deleted.
+    #     Returns:
+    #         result (bool) : If succeeded, return True.
+    #     """
+    #     message = {REQUEST_MSG.TYPE_FIELD: REQUEST_MSG.DELETE_MODEL, "model_id": model_id}
+    #     response = self._forward_json_to_websocket_server_worker(message)
+    #     return self._return_bool_result(response)
+
+    # def __str__(self) -> str:
+    #     return f"<Federated Worker id:{self.id}>"

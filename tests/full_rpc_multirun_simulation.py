@@ -56,7 +56,8 @@ base_ttp_train_url = f"http://{ttp_host}:{ttp_port}/ttp/train"
 project_train_url = f"{base_ttp_train_url}/projects/{project_id}"
 
 alignment_init_url = f"{project_train_url}/alignments"
-model_init_url = f"{project_train_url}/models/{expt_id_2}/{run_id_2}"
+model_init_url = f"{project_train_url}/models/{expt_id_1}/{run_id_1}"
+optim_init_url = f"{project_train_url}/models/{expt_id_1}/optimizations"
 
 # Relevant Evaluation Endpoints
 base_ttp_eval_url = f"http://{ttp_host}:{ttp_port}/ttp/evaluate"
@@ -66,6 +67,7 @@ prediction_init_url = f"{base_ttp_eval_url}/participants/test_participant_1/pred
 # Project Simulation
 test_project = {
     "project_id": project_id,
+    "action": "classify",
     "incentives": {
         "tier_1": ["test_worker_1"],
         "tier_2": ["test_worker_2"]
@@ -99,7 +101,7 @@ test_experiment_2 = {
             "structure": {
                 "bias": True,
                 "in_features": 15,
-                "out_features": 100
+                "out_features": 10
             }
         },
         {
@@ -108,7 +110,97 @@ test_experiment_2 = {
             "l_type": "Linear",
             "structure": {
                 "bias": True,
-                "in_features": 100,
+                "in_features": 10,
+                "out_features": 90
+            }
+        },
+        {
+            "activation": "sigmoid",
+            "is_input": True,
+            "l_type": "Linear",
+            "structure": {
+                "bias": True,
+                "in_features": 90,
+                "out_features": 80
+            }
+        },
+        {
+            "activation": "sigmoid",
+            "is_input": True,
+            "l_type": "Linear",
+            "structure": {
+                "bias": True,
+                "in_features": 80,
+                "out_features": 70
+            }
+        },
+        {
+            "activation": "sigmoid",
+            "is_input": True,
+            "l_type": "Linear",
+            "structure": {
+                "bias": True,
+                "in_features": 70,
+                "out_features": 60
+            }
+        },
+        {
+            "activation": "sigmoid",
+            "is_input": True,
+            "l_type": "Linear",
+            "structure": {
+                "bias": True,
+                "in_features": 60,
+                "out_features": 50
+            }
+        },
+        {
+            "activation": "sigmoid",
+            "is_input": True,
+            "l_type": "Linear",
+            "structure": {
+                "bias": True,
+                "in_features": 50,
+                "out_features": 40
+            }
+        },
+        {
+            "activation": "sigmoid",
+            "is_input": True,
+            "l_type": "Linear",
+            "structure": {
+                "bias": True,
+                "in_features": 40,
+                "out_features": 30
+            }
+        },
+        {
+            "activation": "sigmoid",
+            "is_input": True,
+            "l_type": "Linear",
+            "structure": {
+                "bias": True,
+                "in_features": 30,
+                "out_features": 20
+            }
+        },
+        {
+            "activation": "sigmoid",
+            "is_input": True,
+            "l_type": "Linear",
+            "structure": {
+                "bias": True,
+                "in_features": 20,
+                "out_features": 10
+            }
+        },
+        {
+            "activation": "sigmoid",
+            "is_input": True,
+            "l_type": "Linear",
+            "structure": {
+                "bias": True,
+                "in_features": 10,
                 "out_features": 1
             }
         }
@@ -118,6 +210,7 @@ test_experiment_2 = {
 # Run Simulation
 test_run_1 = {
     "run_id": run_id_1,
+    "algorithm": "FedProx",
     "batch_size": 32,
     "rounds": 2,
     "epochs": 1,
@@ -126,10 +219,13 @@ test_run_1 = {
     "mu": 0.4,
     "l1_lambda": 0.01,
     "l2_lambda": 0.01,
+    "base_lr": 0.001, 
+    "max_lr": 0.1
 }
 
 test_run_2 = {
     "run_id": run_id_2,
+    "algorithm": "FedProx",
     "batch_size": 32,
     "rounds": 2,
     "epochs": 1,
@@ -139,11 +235,14 @@ test_run_2 = {
     "l1_lambda": 0.2,
     "l2_lambda": 0.3,
     "patience": 2,
-    "delta": 0.0001
+    "delta": 0.0001,
+    "base_lr": 0.001, 
+    "max_lr": 0.1
 }
 
 test_run_3 = {
     "run_id": run_id_3,
+    "algorithm": "FedProx",
     "batch_size": 32,
     "rounds": 1,
     "epochs": 1,
@@ -152,6 +251,8 @@ test_run_3 = {
     "mu": 0.2,
     "l1_lambda": 0.2,
     "l2_lambda": 0.3,
+    "base_lr": 0.001, 
+    "max_lr": 0.1
 }
 
 # 20-party participant Simulation
@@ -171,7 +272,7 @@ for p_idx in range(1, participant_count+1):
         "port": 8020,
         "log_msgs": False,
         "verbose": False,
-        "f_port": 5000      
+        "f_port": 5000  
     }
 
     registration_payload = {"role": "guest"}
@@ -216,20 +317,40 @@ init_params = {
     "log_msgs": True
 }
 
-# Inference initialisation simulation
-infer_params = {
-    "dockerised": True,
-    "tags": {
-        "test_project": [["iid_1"]]
-    }
+tuning_params = {
+    'search_space': {
+        "batch_size": {"_type":"choice", "_value": [16, 32, 64, 128]},
+        "hidden_size":{"_type":"choice","_value":[128, 256, 512, 1024]},
+        "lr":{"_type":"choice","_value":[0.0001, 0.001, 0.01, 0.1]},
+        "momentum":{"_type":"uniform","_value":[0, 1]}
+    },
+    'tuner': "TPE",
+    'metric': "accuracy",
+    'optimize_mode': "maximize",
+    'trial_concurrency': 1,
+    'max_exec_duration': "1h",
+    'max_trial_num': 10,
+    'is_remote': True,
+    'use_annotation': True,
+    'dockerised': True,
+    'verbose': True,
+    'log_msgs': True
 }
 
+# # Inference initialisation simulation
 # infer_params = {
 #     "dockerised": True,
 #     "tags": {
-#         "test_project": [["predict"]]
+#         "test_project": [["iid_1"]]
 #     }
 # }
+
+infer_params = {
+    "dockerised": True,
+    "tags": {
+        "test_project": [["predict"]]
+    }
+}
 
 ###################
 # Helper Function #
@@ -308,14 +429,18 @@ if __name__ == "__main__":
     model_resp = execute_post(url=model_init_url, payload=init_params)
     logging.debug(f"New model: {model_resp}")
 
+    # Step 3: TTP commences hyperparameter tuning for specified model
+    optim_resp = execute_post(url=optim_init_url, payload=tuning_params)
+    logging.debug(f"New optimization set: {optim_resp}")
+
     ##############
     # Evaluation #
     ##############
 
-    # Step 1: TTP commences post-mortem model validation
-    val_resp = execute_post(url=validation_init_url, payload=init_params)
-    logging.debug(f"New prediction: {val_resp}")
+    # # Step 1: TTP commences post-mortem model validation
+    # val_resp = execute_post(url=validation_init_url, payload=init_params)
+    # logging.debug(f"New prediction: {val_resp}")
 
-    # Step 2: Participant requests trained global models from TTP for inference
-    predict_resp = execute_post(url=prediction_init_url, payload=infer_params)
-    logging.debug(f"New prediction: {predict_resp}")
+    # # Step 2: Participant requests trained global models from TTP for inference
+    # predict_resp = execute_post(url=prediction_init_url, payload=infer_params)
+    # logging.debug(f"New prediction: {predict_resp}")

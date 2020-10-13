@@ -18,6 +18,9 @@ from rest_rpc.connection.core.utils import (
     TopicalPayload, 
     RunRecords
 )
+from rest_rpc.training.models import model_output_model
+from rest_rpc.evaluation.validations import val_output_model
+from rest_rpc.evaluation.predictions import pred_output_model
 
 ##################
 # Configurations #
@@ -98,6 +101,24 @@ run_output_model = ns_api.inherit(
                     'run_id': fields.String()
                 }
             ),
+            required=True
+        ),
+        'relations': fields.Nested(
+            ns_api.model(
+                name='run_relations',
+                model={
+                    'Model': fields.List(
+                        fields.Nested(model_output_model, skip_none=True)
+                    ),
+                    'Validation': fields.List(
+                        fields.Nested(val_output_model, skip_none=True)
+                    ),
+                    'Prediction': fields.List(
+                        fields.Nested(pred_output_model, skip_none=True)
+                    )
+                }
+            ),
+            default={},
             required=True
         )
     }
@@ -217,6 +238,12 @@ class Run(Resource):
                 run_id=run_id,
                 updates=run_updates
             )
+            retrieved_run = run_records.read(
+                project_id=project_id, 
+                expt_id=expt_id,
+                run_id=run_id
+            )
+            assert updated_run.doc_id == retrieved_run.doc_id
             success_payload = payload_formatter.construct_success_payload(
                 status=200,
                 method="run.put",
@@ -225,7 +252,7 @@ class Run(Resource):
                     'expt_id': expt_id,
                     "run_id": run_id
                 },
-                data=updated_run
+                data=retrieved_run
             )
             return success_payload, 200
 

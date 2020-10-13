@@ -13,7 +13,7 @@ from flask_restx import Api
 # Custom
 from rest_rpc.training.alignments import ns_api as alignment_ns
 from rest_rpc.training.models import ns_api as model_ns
-from rest_rpc.training.models import Models
+from rest_rpc.training.optimizations import ns_api as optim_ns
 
 ##################
 # Configurations #
@@ -31,6 +31,10 @@ api = Api(
 ############################
 # Alignment management API #
 ############################
+"""
+Supported routes:
+1) "/projects/<project_id>/alignments"
+"""
 
 api.add_namespace(
     alignment_ns,
@@ -50,4 +54,17 @@ Supported routes:
 api.add_namespace(
     model_ns,
     path="/projects/<project_id>/models"
+)
+
+###############################
+# Optimization management API #
+###############################
+"""
+Supported routes:
+1) "/projects/<project_id>/models/<expt_id>/optimizations/"
+"""
+
+api.add_namespace(
+    optim_ns,
+    path="/projects/<project_id>/models/<expt_id>/optimizations"
 )

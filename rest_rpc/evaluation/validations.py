@@ -73,7 +73,7 @@ mlf_logger = MLFlogger()
 
 # Marshalling inputs 
 input_model = ns_api.model(
-    name="input",
+    name="validation_input",
     model={
         'dockerised': fields.Boolean(default=False, required=True),
         'verbose': fields.Boolean(default=False),
@@ -85,22 +85,26 @@ input_model = ns_api.model(
 stats_model = ns_api.model(
     name="statistics",
     model={
-        'accuracy': fields.Float(),
-        'roc_auc_score': fields.Float(),
-        'pr_auc_score': fields.Float(),
-        'f_score': fields.Float(),
-        'TPR': fields.Float(),
-        'TNR': fields.Float(),
-        'PPV': fields.Float(),
-        'NPV': fields.Float(),
-        'FPR': fields.Float(),
-        'FNR': fields.Float(),
-        'FDR': fields.Float(),
-        'TP': fields.Integer(),
-        'TN': fields.Integer(),
-        'FP': fields.Integer(),
-        'FN': fields.Integer()
-    }
+        'R2': fields.Float(),
+        'MSE': fields.Float(),
+        'MAE': fields.Float(),
+        'accuracy': fields.List(fields.Float()),
+        'roc_auc_score': fields.List(fields.Float()),
+        'pr_auc_score': fields.List(fields.Float()),
+        'f_score': fields.List(fields.Float()),
+        'TPRs': fields.List(fields.Float()),
+        'TNRs': fields.List(fields.Float()),
+        'PPVs': fields.List(fields.Float()),
+        'NPVs': fields.List(fields.Float()),
+        'FPRs': fields.List(fields.Float()),
+        'FNRs': fields.List(fields.Float()),
+        'FDRs': fields.List(fields.Float()),
+        'TPs': fields.List(fields.Integer()),
+        'TNs': fields.List(fields.Integer()),
+        'FPs': fields.List(fields.Integer()),
+        'FNs': fields.List(fields.Integer())
+    },
+    skip_none=True
 )
 
 meta_stats_model = ns_api.model(
@@ -176,18 +180,14 @@ class Validations(Resource):
         """
         filter = {k:v for k,v in request.view_args.items() if v is not None}
 
-        retrieved_validations = registration_records.read_all(filter=filter)
+        retrieved_validations = validation_records.read_all(filter=filter)
         
         if retrieved_validations:
             
             success_payload = payload_formatter.construct_success_payload(
                 status=200,
                 method="validations.get",
-                params={
-                    'project_id': project_id, 
-                    'expt_id': expt_id,
-                    'run_id': run_id    
-                },
+                params=request.view_args,
                 data=retrieved_validations
             )
             return success_payload, 200
@@ -227,6 +227,7 @@ class Validations(Resource):
 
         # Retrieves expt-run supersets (i.e. before filtering for relevancy)
         retrieved_project = project_records.read(project_id=project_id)
+        project_action = retrieved_project['action']
         experiments = retrieved_project['relations']['Experiment']
         runs = retrieved_project['relations']['Run']
 
@@ -265,6 +266,7 @@ class Validations(Resource):
 
         # Template for starting FL grid and initialising validation
         kwargs = {
+            'action': project_action,
             'experiments': experiments,
             'runs': runs,
             'registrations': registrations,

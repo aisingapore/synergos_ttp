@@ -78,6 +78,7 @@ class FederatedLearning:
     
     def __init__(
         self, 
+        action: str,
         crypto_provider: sy.VirtualWorker, 
         workers: list, 
         arguments: Arguments,
@@ -85,6 +86,9 @@ class FederatedLearning:
         out_dir: str = '.',
         loop=None
     ):
+        # General attributes
+        self.action = action
+
         # Network attributes
         self.crypto_provider = crypto_provider
         self.workers = workers
@@ -194,7 +198,32 @@ class FederatedLearning:
         
         return train_datasets, eval_datasets, test_datasets
     
-    
+
+    # def build_reference_plan(
+    #     self, 
+    #     *sources: Dict[sy.WebsocketClientWorker, sy.BaseDataset],
+    # ):
+    #     """ Dynamically builds global model reference plan using grid sources
+
+    #     Args:
+    #         *sources: Any no. of dataset mappings detected
+    #     """
+    #     if not self.reference.is_built:
+
+    #         # Ensure that all datasets have the same shape
+    #         all_source_shapes = {
+    #             (1,) + tuple(dataset.data.shape)[1:]    # arbitrary no. of observations
+    #             for meta_datasets in sources
+    #             for worker, dataset in meta_datasets.items()
+    #         }
+    #         assert len(all_source_shapes) == 1
+            
+    #         reference_shape = max(all_source_shapes)
+    #         logging.debug(f"Reference shape: {reference_shape} {type(reference_shape)}")
+
+    #         self.reference.build(shape=reference_shape)
+
+
     def convert_to_FL_batches(self, 
         train_datasets: dict, 
         eval_datasets: dict, 
@@ -292,21 +321,24 @@ class FederatedLearning:
         Returns:
             Algorithm (BaseAlgorithm)
         """ 
-        try:
-            algorithm = getattr(algorithms, self.arguments.algorithm)(
-                crypto_provider=self.crypto_provider,
-                workers=self.workers,
-                arguments=self.arguments,
-                train_loader=train_loader,
-                eval_loader=eval_loader,
-                test_loader=test_loader,
-                global_model=copy.deepcopy(self.reference), # copy of reference 
-                out_dir=self.out_dir
-            )
-            return algorithm
+        # if not self.reference.is_built:
+        #     raise ValueError("Reference plan has not been built!")
 
-        except AttributeError:
-            logging.error(f"Specified algorithm '{self.arguments.algorithm}' is not supported!")
+        algorithm = getattr(algorithms, self.arguments.algorithm)
+        if not algorithm:
+            raise AttributeError(f"Specified algorithm '{self.arguments.algorithm}' is not supported!")
+
+        return algorithm(
+            action=self.action,
+            crypto_provider=self.crypto_provider,
+            workers=self.workers,
+            arguments=self.arguments,
+            train_loader=train_loader,
+            eval_loader=eval_loader,
+            test_loader=test_loader,
+            global_model=self.reference,#.copy(),#copy.deepcopy(self.reference), # copy of reference 
+            out_dir=self.out_dir
+        )
 
     ##################
     # Core functions #
@@ -348,6 +380,13 @@ class FederatedLearning:
             # Extract data pointers from workers
             train_datasets, eval_datasets, test_datasets = self.setup_FL_env()
 
+            # # Build model reference plan(s)
+            # self.build_reference_plan(
+            #     train_datasets, 
+            #     eval_datasets, 
+            #     test_datasets
+            # )
+            
             # Generate federated minibatches via loaders 
             train_loader, eval_loader, test_loader = self.convert_to_FL_batches(
                 train_datasets, 
