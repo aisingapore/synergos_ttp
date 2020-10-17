@@ -75,6 +75,7 @@ mlf_logger = MLFlogger()
 input_model = ns_api.model(
     name="validation_input",
     model={
+        'auto_align': fields.Boolean(default=True, required=True),
         'dockerised': fields.Boolean(default=False, required=True),
         'verbose': fields.Boolean(default=False),
         'log_msgs': fields.Boolean(default=False)
@@ -219,6 +220,7 @@ class Validations(Resource):
             Sample payload:
 
             {
+                "auto_align": true,
                 "dockerised": true
             }
         """

@@ -58,6 +58,7 @@ def enumerate_expt_run_conbinations(
     experiments: list,
     runs: list,
     registrations: list,
+    auto_align: bool = True,
     dockerised: bool = True,
     log_msgs: bool = True,
     verbose: bool = True,
@@ -69,6 +70,7 @@ def enumerate_expt_run_conbinations(
         experiments (list): All experimental models to be reconstructed
         runs (dict): All hyperparameter sets to be used during grid FL inference
         registrations (list): Registry of all participants involved
+        auto_align (bool): Toggles if multiple feature alignments will be used
         dockerised (bool): Toggles if current FL grid is containerised or not. 
             If true (default), hosts & ports of all participants are locked at
             "0.0.0.0" & 8020 respectively. Otherwise, participant specified
@@ -96,6 +98,7 @@ def enumerate_expt_run_conbinations(
                     'registrations': registrations,
                     'experiment': expt_record,
                     'run': run_record,
+                    'auto_align': auto_align,
                     'dockerised': dockerised, 
                     'log_msgs': log_msgs, 
                     'verbose': verbose
@@ -113,6 +116,7 @@ def start_expt_run_inference(
     experiment: dict, 
     run: dict, 
     metas: list = ['train', 'evaluate', 'predict'],
+    auto_align: bool = True,
     dockerised: bool = True, 
     log_msgs: bool = True, 
     verbose: bool = True,
@@ -127,6 +131,7 @@ def start_expt_run_inference(
         experiment (dict): Parameters for reconstructing experimental model
         run (dict): Hyperparameters to be used during grid FL inference
         metas (list): Type(s) of datasets to perform inference on
+        auto_align (bool): Toggles if multiple feature alignments will be used
         dockerised (bool): Toggles if current FL grid is containerised or not. 
             If true (default), hosts & ports of all participants are locked at
             "0.0.0.0" & 8020 respectively. Otherwise, participant specified
@@ -200,7 +205,7 @@ def start_expt_run_inference(
     logging.info(f"Current combination: {keys}")
 
     # Send initialisation signal to all remote worker WSSW objects
-    governor = Governor(dockerised=dockerised, **keys)
+    governor = Governor(auto_align=auto_align, dockerised=dockerised, **keys)
     governor.initialise(reg_records=registrations)
 
     participants_inferences = infer_combination()
@@ -221,7 +226,7 @@ def start_expt_run_inference(
     logging.debug(f"Polled statistics: {polled_stats}")
 
     # Send terminate signal to all participants' worker nodes
-    governor = Governor(dockerised=dockerised, **keys)
+    # governor = Governor(dockerised=dockerised, **keys)
     governor.terminate(reg_records=registrations)
 
     return polled_stats

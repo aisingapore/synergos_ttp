@@ -28,7 +28,7 @@ from rest_rpc import app
 from rest_rpc.training.core.arguments import Arguments
 from rest_rpc.training.core.model import Model, ModelPlan
 from rest_rpc.training.core.federated_learning import FederatedLearning
-from rest_rpc.training.core.utils import Governor, RPCFormatter
+from rest_rpc.training.core.utils import Poller, Governor, RPCFormatter
 from rest_rpc.training.core.custom import CustomClientWorker, CustomWSClient
 
 ##################
@@ -271,6 +271,7 @@ def start_expt_run_training(
     registrations: list, 
     experiment: dict, 
     run: dict, 
+    auto_align: bool,
     dockerised: bool, 
     log_msgs: bool, 
     verbose: bool
@@ -279,10 +280,17 @@ def start_expt_run_training(
 
     Args:
         keys (dict): Relevant Project ID, Expt ID & Run ID
-        ttp (sy.VirtualWorker): Allocated trusted third party in the FL grid
-        workers (list(WebsocketClientWorker)): All WSCWs for each participant
+        action (str): Type of machine learning operation to be executed
+        registrations (dict): Registry of all participants for current project
         experiment (dict): Parameters for reconstructing experimental model
         run (dict): Hyperparameters to be used during grid FL training
+        auto_align (bool): Toggles if multiple feature alignments will be used
+        dockerised (bool): Toggles if current FL grid is containerised or not. 
+            If true (default), hosts & ports of all participants are locked at
+            "0.0.0.0" & 8020 respectively. Otherwise, participant specified
+            configurations will be used (grid architecture has to be finalised).
+        log_msgs (bool): Toggles if computation operations should be logged
+        verbose (bool): Toggles verbosity of computation logging
     Returns:
         Path-to-trained-models (dict(str))
     """
@@ -361,7 +369,7 @@ def start_expt_run_training(
     logging.info(f"Current combination: {keys}")
 
     # Send initialisation signal to all remote worker WSSW objects
-    governor = Governor(dockerised=dockerised, **keys)
+    governor = Governor(auto_align=auto_align, dockerised=dockerised, **keys)
     governor.initialise(reg_records=registrations)
 
     try:
@@ -387,7 +395,7 @@ def start_expt_run_training(
         print("Caught this OS problem...")
 
     # Send terminate signal to all participants' worker nodes
-    governor = Governor(dockerised=dockerised, **keys)
+    # governor = Governor(dockerised=dockerised, **keys)
     governor.terminate(reg_records=registrations)
 
     return results
@@ -429,6 +437,7 @@ def start_proc(kwargs):
     is_verbose = kwargs['verbose']
     log_msgs = kwargs['log_msgs']
     is_dockerised = kwargs['dockerised']
+    auto_align = kwargs['auto_align']
 
     training_combinations = {}
     for expt_record in experiments:
@@ -449,6 +458,7 @@ def start_proc(kwargs):
                     'registrations': registrations,
                     'experiment': expt_record,
                     'run': run_record,
+                    'auto_align': auto_align,
                     'dockerised': is_dockerised, 
                     'log_msgs': log_msgs, 
                     'verbose': is_verbose

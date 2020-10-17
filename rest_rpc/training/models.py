@@ -27,6 +27,7 @@ from rest_rpc.connection.core.utils import (
 from rest_rpc.training.core.utils import (
     AlignmentRecords, 
     ModelRecords,
+    Poller,
     RPCFormatter
 )
 from rest_rpc.training.core.server import start_proc
@@ -65,6 +66,7 @@ rpc_formatter = RPCFormatter()
 input_model = ns_api.model(
     name="training_input",
     model={
+        'auto_align': fields.Boolean(default=True, required=True),
         'dockerised': fields.Boolean(default=False, required=True),
         'verbose': fields.Boolean(default=False),
         'log_msgs': fields.Boolean(default=False)
@@ -217,6 +219,29 @@ class Models(Resource):
         registrations = registration_records.read_all(
             filter={'project_id': project_id}
         )
+
+        ###########################
+        # Implementation Footnote #
+        ###########################
+
+        # [Cause]
+        # Decoupling of MFA from training cycle is required. With this, polling is
+        # skipped since alignment is not triggered
+
+        # [Problems]
+        # When alignment is not triggered, workers are not polled for their headers
+        # and schemas. Since project logs are generated via polling, not doing so
+        # results in an error for subsequent operations
+
+        # [Solution]
+        # Poll irregardless of alignment. Modify Worker's Poll endpoint to be able 
+        # to handle repeated initiialisations (i.e. create project logs if it does
+        # not exist, otherwise retrieve)
+
+        auto_align = init_params['auto_align']
+        if not auto_align:
+            poller = Poller(project_id=project_id)
+            poller.poll(registrations)
 
         # Template for starting FL grid and initialising training
         kwargs = {

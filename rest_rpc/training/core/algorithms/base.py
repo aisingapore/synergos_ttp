@@ -170,15 +170,25 @@ class BaseAlgorithm(AbstractAlgorithm):
                 Returns:
                     Restructured labels (th.Tensor)
                 """
+                # Supported Losses
                 N_STAR_FORMAT = [
                     "L1Loss", "MSELoss", "PoissonNLLLoss", "KLDivLoss",
                     "BCELoss", "BCEWithLogitsLoss", "SmoothL1Loss"
                 ]
-                N_C_N_FORMAT = [
-                    "CrossEntropyLoss", "NLLLoss", "MultiLabelMarginLoss", 
-                    "MultiLabelSoftMarginLoss", 
-                ]
+                N_C_N_FORMAT = ["CrossEntropyLoss", "NLLLoss"]
                 STAR_FORMAT = ["HingeEmbeddingLoss", "SoftMarginLoss"]
+
+                # Unsupported Losses
+                N_C_N_C_FORMAT = [
+                    "MultiLabelMarginLoss", 
+                    "MultiLabelSoftMarginLoss"
+                ]
+                N_D_N_FORMAT = [
+                    "MarginRankingLoss"
+                ]
+                MISC_FORMAT = [
+                    "CosineEmbeddingLoss", "TripletMarginLoss", "CTCLoss"
+                ]
 
                 ###########################
                 # Implementation Footnote #
@@ -617,15 +627,11 @@ class BaseAlgorithm(AbstractAlgorithm):
                     data to be evaluated upon
             """ 
             logging.debug(f"packet: {packet}")
-            try:
-                worker, (data, labels) = packet
-            except (TypeError, ValueError):
-                (data, labels) = packet
-                assert data.location is labels.location
-                worker = data.location
 
+            worker, (data, labels) = packet
             logging.debug(f"Data: {data}, {type(data)}, {data.shape}")
             logging.debug(f"Labels: {labels}, {type(labels)}, {labels.shape}")
+            logging.debug(f"Worker: {worker}, {type(worker)}")
 
             for i in list(self.global_model.parameters()):
                 logging.debug(f"Model parameters: {i}, {type(i)}, {i.shape}")
@@ -848,8 +854,11 @@ class BaseAlgorithm(AbstractAlgorithm):
             # If only 1 prediction set is declared (i.e. only 1 guest present), 
             # batch will be a tuple i.e. (data, label)
             elif isinstance(batch, tuple):
-
-                evaluated_worker_batch, loss = await evaluate_worker(batch)
+                data, labels = batch
+                if data.location != labels.location:
+                    raise RuntimeError("Feature data and label data are not in the same location!")
+                packet = (data.location, batch)
+                evaluated_worker_batch, loss = await evaluate_worker(packet)
                 batch_evaluations.update(evaluated_worker_batch)
                 batch_losses.append(loss)
 
