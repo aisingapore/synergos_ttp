@@ -170,7 +170,6 @@ class BaseAlgorithm(AbstractAlgorithm):
                 Returns:
                     Restructured labels (th.Tensor)
                 """
-<<<<<<< HEAD
                 # Supported Losses
                 N_STAR_FORMAT = [
                     "L1Loss", "MSELoss", "PoissonNLLLoss", "KLDivLoss",
@@ -178,8 +177,6 @@ class BaseAlgorithm(AbstractAlgorithm):
                 ]
                 N_C_N_FORMAT = ["CrossEntropyLoss", "NLLLoss"]
                 STAR_FORMAT = ["HingeEmbeddingLoss", "SoftMarginLoss"]
-=======
->>>>>>> 9968cd171055059eb17868b25657edbec22f9833
 
                 # Unsupported Losses
                 N_C_N_C_FORMAT = [
