@@ -365,10 +365,16 @@ class Poller:
         payload = {'action': project_action, 'tags': stripped_tags}
 
         # Poll for headers by posting tags to `Poll` route in worker
-        timeout = aiohttp.ClientTimeout(total=None)
+        timeout = aiohttp.ClientTimeout(
+            total=None, 
+            connect=None,
+            sock_connect=None, 
+            sock_read=None
+        ) # `0` or None value to disable timeout
         async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.post(
                 destination_url,
+                timeout=timeout,
                 json=payload
             ) as response:
                 resp_json = await response.json(content_type='application/json')
@@ -556,10 +562,16 @@ class Governor:
         
         # Initialise WSSW object on participant's worker node by posting tags &
         # alignments to `initialise` route in worker's REST-RPC
-        timeout = aiohttp.ClientTimeout(total=None)
+        timeout = aiohttp.ClientTimeout(
+            total=None, 
+            connect=None,
+            sock_connect=None, 
+            sock_read=None
+        ) # `0` or None value to disable timeout
         async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.post(
                 destination_url,
+                timeout=timeout,
                 json=payload
             ) as response:
                 resp_json = await response.json(content_type='application/json')
@@ -595,9 +607,17 @@ class Governor:
 
         # Terminate WSSW object on participant's worker node (if possible) by
         # posting to `terminate` route in worker's REST-RPC
-        timeout = aiohttp.ClientTimeout(total=None)
+        timeout = aiohttp.ClientTimeout(
+            total=None, 
+            connect=None,
+            sock_connect=None, 
+            sock_read=None
+        ) # `0` or None value to disable timeout
         async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.post(destination_url) as response:
+            async with session.post(
+                destination_url,
+                timeout=timeout
+            ) as response:
                 resp_json = await response.json(content_type='application/json')
         
         state = resp_json['data']

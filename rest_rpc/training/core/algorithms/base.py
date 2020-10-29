@@ -170,26 +170,6 @@ class BaseAlgorithm(AbstractAlgorithm):
                 Returns:
                     Restructured labels (th.Tensor)
                 """
-                # Supported Losses
-                N_STAR_FORMAT = [
-                    "L1Loss", "MSELoss", "PoissonNLLLoss", "KLDivLoss",
-                    "BCELoss", "BCEWithLogitsLoss", "SmoothL1Loss"
-                ]
-                N_C_N_FORMAT = ["CrossEntropyLoss", "NLLLoss"]
-                STAR_FORMAT = ["HingeEmbeddingLoss", "SoftMarginLoss"]
-
-                # Unsupported Losses
-                N_C_N_C_FORMAT = [
-                    "MultiLabelMarginLoss", 
-                    "MultiLabelSoftMarginLoss"
-                ]
-                N_D_N_FORMAT = [
-                    "MarginRankingLoss"
-                ]
-                MISC_FORMAT = [
-                    "CosineEmbeddingLoss", "TripletMarginLoss", "CTCLoss"
-                ]
-
                 ###########################
                 # Implementation Footnote #
                 ###########################
@@ -220,22 +200,19 @@ class BaseAlgorithm(AbstractAlgorithm):
                 # will remain unchanged (since outputs are (N,)), but labels
                 # for multiclass classification must be OHE-ed.
 
-                # Supported Criterions
+                # Supported Losses
                 N_STAR_FORMAT = [
                     "L1Loss", "MSELoss", "PoissonNLLLoss", "KLDivLoss",
                     "BCELoss", "BCEWithLogitsLoss", "SmoothL1Loss"
                 ]
-                N_C_N_FORMAT = [
-                    "CrossEntropyLoss", "NLLLoss", "MultiMarginLoss"
-                ]
-                N_C_N_C_FORMAT = [
-                    "MultiLabelMarginLoss", "MultiLabelSoftMarginLoss"
-                ]
-                STAR_FORMAT = [
-                    "HingeEmbeddingLoss", "SoftMarginLoss"
-                ]
+                N_C_N_FORMAT = ["CrossEntropyLoss", "NLLLoss"]
+                STAR_FORMAT = ["HingeEmbeddingLoss", "SoftMarginLoss"]
 
-                # Unsupported Criterions
+                # Unsupported Losses
+                N_C_N_C_FORMAT = [
+                    "MultiLabelMarginLoss", 
+                    "MultiLabelSoftMarginLoss"
+                ]
                 N_D_N_FORMAT = [
                     "MarginRankingLoss"
                 ]

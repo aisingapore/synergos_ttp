@@ -29,7 +29,7 @@ infinite_nested_dict = lambda: defaultdict(infinite_nested_dict)
 
 SRC_DIR = Path(__file__).parent.absolute()
 
-API_VERSION = "0.0.1"
+API_VERSION = "0.1.0"
 
 ####################
 # Helper Functions #
