@@ -46,4 +46,14 @@ Stopping container manually
 > docker container stop <CONTAINER ID>
 
 
+######################################################## Testing on Synergos TTP/Worker (docker run) ########################################################
+Run graylog server with "docker-compose up" in synergos_logger directory
 
+Running both Worker
+> docker run -v /Users/kelvinsoh/Desktop/Synergos/abalone/data1:/worker/data -v /Users/kelvinsoh/Desktop/Synergos/outputs_1:/worker/outputs --name worker_1 worker:pysyft_demo
+> docker run -v /Users/kelvinsoh/Desktop/Synergos/abalone/data2:/worker/data -v /Users/kelvinsoh/Desktop/Synergos/outputs_2:/worker/outputs --name worker_2 worker:pysyft_demo
+
+Running TTP
+> docker run -p 0.0.0.0:5000:5000 -p 5678:5678 -p 8020:8020 -p 8080:8080 -v /Users/kelvinsoh/Desktop/Synergos/abalone/ttp_data:/ttp/data -vUsers/kelvinsoh/desktop/Synergos/mlflow_test:/ttp/mlflow --name ttp --link worker_1 --link worker_2 --link graylog --net synergos_logger_default ttp:pysyft_demo
+
+The log should be reflected in localhost:9000
