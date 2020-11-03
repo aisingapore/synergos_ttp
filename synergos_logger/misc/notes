@@ -1,0 +1,10 @@
+Graylog logging level format
+https://stackoverflow.com/questions/29564739/how-can-i-find-messages-in-graylog-based-on-level-syslog-severity-priority
+
+Graylog fields p.g. 13
+https://readthedocs.org/projects/graypy/downloads/pdf/stable/
+
+graylog query (Filter all logging with level <= 5)
+level: <=5
+
+structlog https://www.structlog.org/en/stable/standard-library.html
