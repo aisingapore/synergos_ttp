@@ -27,11 +27,23 @@ from rest_rpc.training.models import model_output_model
 from rest_rpc.evaluation.validations import val_output_model
 from rest_rpc.evaluation.predictions import pred_output_model
 
+from SynergosLogger.SynergosLogger import SynergosLogger
+from SynergosLogger import config
+import os
+CONST_TTP = config.TTP
+# Initializing SynergosLogger with the graylog server and port
+file_path = os.path.dirname(os.path.abspath(__file__) + '/' + __file__) # The file path of where the logger is being called
+syn_logger = SynergosLogger(server=CONST_TTP['SERVER'], port=CONST_TTP['PORT'], logging_level=logging.DEBUG, debugging_fields=True, file_path=file_path, logger_name=CONST_TTP['LOGGER'])
+# If there are logs to be censored, pass in optional argument "censor_keys" to censor log messages else empty [].
+logging, logger = syn_logger.initialize_structlog()
+logging.info("testing", something="somethingx")
+
+
 ##################
 # Configurations #
 ##################
 
-logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.DEBUG)
+# logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.DEBUG)
 
 ns_api = Namespace(
     "projects", 
