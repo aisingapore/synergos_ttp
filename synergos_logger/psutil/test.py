@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 '''
 The method is to spawn new process using the subprocess module when running FL training/evaluate/prediction phases
 Reduce the inter-dependencies required for changing the Synergos TTP/Worker code
@@ -25,3 +26,4 @@ class Test():
         Sysmetrics.terminate()
 
 Test.test_func()
+print(os.getcwd())

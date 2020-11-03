@@ -38,7 +38,6 @@ class StructlogUtils:
         return event_dict
 
     def graypy_structlog_processor(self, _, __, event_dict):
-        print(event_dict)
         args = (event_dict.get('event', ''),)
         kwargs = {'extra': event_dict}
         ## The following are default graypy metrics which is logged to the graylog server
