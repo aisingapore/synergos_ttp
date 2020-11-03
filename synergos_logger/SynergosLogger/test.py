@@ -34,7 +34,8 @@ class TestFilter_1(logging.Filter):
 CONST_TTP = config.TTP
 
 # Initializing SynergosLogger with the graylog server and port
-file_path = os.path.dirname(os.path.abspath(__file__) + '/' + __file__) # The file path of where the logger is being called
+# file_path = os.path.dirname(os.path.abspath(__file__)) # The file path of where the logger is being called
+file_path = os.path.abspath(__file__)
 syn_logger = SynergosLogger(server=CONST_TTP['SERVER'], port=12202, logging_level=logging.DEBUG, debugging_fields=True, file_path=file_path, logger_name=CONST_TTP['LOGGER'], filter_function=[TestFilter(), TestFilter_1()])
 
 # If there are logs to be censored, pass in optional argument "censor_keys" to censor log messages else empty [].

@@ -16,8 +16,8 @@ import os
 class Test():
 
     def test_func():
-        file_path = os.path.dirname(os.path.abspath(__file__) + '/' + __file__)
-
+        # file_path = os.path.dirname(os.path.abspath(__file__) + '/' + __file__)
+        file_path = os.path.abspath(__file__)
         Sysmetrics.run(file_path=file_path, class_name=Test.__name__, function_name=Test.test_func.__name__)
 
         for i in range(1000000): # ... do other stuff while subprocess is running
@@ -26,4 +26,3 @@ class Test():
         Sysmetrics.terminate()
 
 Test.test_func()
-print(os.getcwd())

@@ -8,3 +8,6 @@ graylog query (Filter all logging with level <= 5)
 level: <=5
 
 structlog https://www.structlog.org/en/stable/standard-library.html
+
+Dynamically create inputs
+https://docs.graylog.org/en/3.3/pages/content_packs.html
