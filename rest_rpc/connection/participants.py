@@ -35,8 +35,6 @@ ns_api = Namespace(
 
 SUBJECT = "Participant"
 
-PAYLOAD_TEMPLATE = {'success': 0, 'id': 0, 'type': 'participants', 'data': None}
-
 schemas = app.config['SCHEMAS']
 db_path = app.config['DB_PATH']
 

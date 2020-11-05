@@ -365,10 +365,16 @@ class Poller:
         payload = {'action': project_action, 'tags': stripped_tags}
 
         # Poll for headers by posting tags to `Poll` route in worker
-        timeout = aiohttp.ClientTimeout(total=None)
+        timeout = aiohttp.ClientTimeout(
+            total=None, 
+            connect=None,
+            sock_connect=None, 
+            sock_read=None
+        ) # `0` or None value to disable timeout
         async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.post(
                 destination_url,
+                timeout=timeout,
                 json=payload
             ) as response:
                 resp_json = await response.json(content_type='application/json')
@@ -444,9 +450,17 @@ class Governor:
         project_id (str): Unique identifier of project
         expt_id (str): Unique identifier of experiment
         run_id (str): Unique identifier of run
-        dockerised (bool): Defines if the worker nodes are dockerised or not. 
+        auto_align (bool): Toggles if multiple feature alignments will be used
+        dockerised (bool): Defines if the worker nodes are dockerised or not
     """
-    def __init__(self, project_id, expt_id, run_id, dockerised=True):
+    def __init__(
+        self, 
+        project_id: str,
+        expt_id: str, 
+        run_id: str, 
+        auto_align: bool = True,
+        dockerised: bool = True
+    ):
         self.__DEFAULT_SERVER_CONFIG = {
             'host': "0.0.0.0",
             'port': 8020
@@ -455,6 +469,7 @@ class Governor:
         self.project_id = project_id
         self.expt_id = expt_id
         self.run_id = run_id
+        self.auto_align = auto_align
         self.dockerised = dockerised
 
     ###########
@@ -496,8 +511,40 @@ class Governor:
         relevant_tags = reg_record['relations']['Tag'][0]
         stripped_tags = self.__rpc_formatter.strip_keys(relevant_tags)
 
-        relevant_alignments = reg_record['relations']['Alignment'][0]
-        stripped_alignments = self.__rpc_formatter.strip_keys(relevant_alignments)
+        ###########################
+        # Implementation Footnote #
+        ###########################
+
+        # [Cause]
+        # Decoupling of MFA from training should be made more explicit
+
+        # [Problems]
+        # Auto-alignment is not scalable to datasets that have too many features
+        # and can consume too much computation resources such that the container 
+        # will crash.
+
+        # [Solution]
+        # Explicitly declare a new state parameter that allows alignments to be
+        # be skipped when necessary, provided that the declared model parameters
+        # are CORRECT!!! If `auto-align` is true, then MFA indexes will be 
+        # loaded into the grid, on the condition that MFA has already been 
+        # performed, otherwise a Runtime Error will be thrown. If `auto-align` 
+        # is false, then an empty set of MFA indexes will be declared. 
+
+        if self.auto_align:
+            try:
+                relevant_alignments = reg_record['relations']['Alignment'][0]
+                stripped_alignments = self.__rpc_formatter.strip_keys(
+                    relevant_alignments
+                )
+            except (KeyError, AttributeError) as e:
+                logging.error(f"Governor._initialise_participant: Error - {e}")
+                raise RuntimeError("No prior alignments have been detected! Please run multiple feature alignment first and try again!")
+        else:
+            stripped_alignments = {
+                meta: {"X": [], "y": []} # do not apply any alignment indexes
+                for meta, _ in stripped_tags.items()
+            }
 
         payload = {
             'action': project_action,
@@ -515,10 +562,16 @@ class Governor:
         
         # Initialise WSSW object on participant's worker node by posting tags &
         # alignments to `initialise` route in worker's REST-RPC
-        timeout = aiohttp.ClientTimeout(total=None)
+        timeout = aiohttp.ClientTimeout(
+            total=None, 
+            connect=None,
+            sock_connect=None, 
+            sock_read=None
+        ) # `0` or None value to disable timeout
         async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.post(
                 destination_url,
+                timeout=timeout,
                 json=payload
             ) as response:
                 resp_json = await response.json(content_type='application/json')
@@ -554,9 +607,17 @@ class Governor:
 
         # Terminate WSSW object on participant's worker node (if possible) by
         # posting to `terminate` route in worker's REST-RPC
-        timeout = aiohttp.ClientTimeout(total=None)
+        timeout = aiohttp.ClientTimeout(
+            total=None, 
+            connect=None,
+            sock_connect=None, 
+            sock_read=None
+        ) # `0` or None value to disable timeout
         async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.post(destination_url) as response:
+            async with session.post(
+                destination_url,
+                timeout=timeout
+            ) as response:
                 resp_json = await response.json(content_type='application/json')
         
         state = resp_json['data']

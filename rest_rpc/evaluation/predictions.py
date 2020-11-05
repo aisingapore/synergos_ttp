@@ -75,6 +75,7 @@ prediction_tag_model = ns_api.model(
 pred_input_model = ns_api.model(
     name="prediction_input",
     model={
+        'auto_align': fields.Boolean(default=True, required=True),
         'dockerised': fields.Boolean(default=False, required=True),
         'tags': fields.Nested(model=prediction_tag_model, skip_none=True)
     }
@@ -183,6 +184,7 @@ class Predictions(Resource):
             Sample payload:
 
             {
+                "auto_align": true,
                 "dockerised": true,
                 "tags": {
                     "test_project_1": [["non_iid_2"]],
@@ -190,6 +192,7 @@ class Predictions(Resource):
                 }
             }
         """
+        auto_align = request.json['auto_align']
         is_dockerised = request.json['dockerised']
         new_pred_tags = request.json['tags']
         logging.debug(f"Keys: {request.view_args}")
@@ -262,28 +265,51 @@ class Predictions(Resource):
             (X_data_headers, y_data_headers,
              key_sequences, _) = rpc_formatter.aggregate_metadata(all_metadata)
 
-            X_mfa_aligner = MultipleFeatureAligner(headers=X_data_headers)
-            X_mf_alignments = X_mfa_aligner.align()
+            ###########################
+            # Implementation Footnote #
+            ###########################
 
-            y_mfa_aligner = MultipleFeatureAligner(headers=y_data_headers)
-            y_mf_alignments = y_mfa_aligner.align()
+            # [Cause]
+            # Decoupling of MFA from inference should be made more explicit
 
-            spacer_collection = rpc_formatter.alignment_to_spacer_idxs(
-                X_mf_alignments=X_mf_alignments,
-                y_mf_alignments=y_mf_alignments,
-                key_sequences=key_sequences
-            )
+            # [Problems]
+            # Auto-alignment is not scalable to datasets that have too many 
+            # features and can consume too much computation resources such that 
+            # the container will crash.
 
-            for p_id, spacer_idxs in spacer_collection.items():
+            # [Solution]
+            # Explicitly declare a new state parameter that allows the alignment
+            # procedure to be skipped when necessary, provided that the declared
+            # model parameters are CORRECT!!! If `auto-align` is true, then MFA 
+            # will be performed to obtain alignment indexes for the newly 
+            # declared prediction data tags in preparation for inference. If 
+            # `auto-align` is false, then MFA is skipped (i.e. inference data is
+            # ASSUMED to have the same structure as that of training & 
+            # validation data)
 
-                logging.debug(f"Spacer Indexes: {spacer_idxs}")
-                alignment_records.update(
-                    project_id=registered_project_id,
-                    participant_id=p_id,
-                    updates=spacer_idxs
-                ) 
+            if auto_align:
+                X_mfa_aligner = MultipleFeatureAligner(headers=X_data_headers)
+                X_mf_alignments = X_mfa_aligner.align()
 
-            logging.debug(f"Alignments: {alignment_records.read_all(filter={'project_id': registered_project_id, 'participant_id': participant_id})}")
+                y_mfa_aligner = MultipleFeatureAligner(headers=y_data_headers)
+                y_mf_alignments = y_mfa_aligner.align()
+
+                spacer_collection = rpc_formatter.alignment_to_spacer_idxs(
+                    X_mf_alignments=X_mf_alignments,
+                    y_mf_alignments=y_mf_alignments,
+                    key_sequences=key_sequences
+                )
+
+                for p_id, spacer_idxs in spacer_collection.items():
+
+                    logging.debug(f"Spacer Indexes: {spacer_idxs}")
+                    alignment_records.update(
+                        project_id=registered_project_id,
+                        participant_id=p_id,
+                        updates=spacer_idxs
+                    ) 
+
+                logging.debug(f"Alignments: {alignment_records.read_all(filter={'project_id': registered_project_id, 'participant_id': participant_id})}")
 
             updated_project_registrations = registration_records.read_all(
                 filter={'project_id': registered_project_id}
@@ -293,6 +319,7 @@ class Predictions(Resource):
             # Template for initialising FL grid
             kwargs = {
                 'action': project_action,
+                'auto_align': auto_align,
                 'dockerised': is_dockerised,
                 'experiments': experiments,
                 'runs': runs,
