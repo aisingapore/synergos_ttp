@@ -22,11 +22,14 @@ from rest_rpc.training.models import model_output_model
 from rest_rpc.evaluation.validations import val_output_model
 from rest_rpc.evaluation.predictions import pred_output_model
 
+# Synergos logging
+from SynergosLogger.init_logging import logging
+
 ##################
 # Configurations #
 ##################
 
-logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.DEBUG)
+# logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.DEBUG)
 
 ns_api = Namespace(
     "runs", 
@@ -148,6 +151,7 @@ class Runs(Resource):
             params={'project_id': project_id, 'expt_id': expt_id},
             data=all_relevant_runs
         )
+        logging.info(f"Success Retrieved runs", code=200, description=success_payload, Class=Runs.__name__)
         return success_payload, 200        
 
     @ns_api.doc("register_run")
@@ -179,9 +183,11 @@ class Runs(Resource):
                 params={'project_id': project_id, 'expt_id': expt_id},
                 data=retrieved_run
             )
+            logging.info(f"Success created run", code=201, description=success_payload, Class=Runs.__name__)
             return success_payload, 201
 
         except jsonschema.exceptions.ValidationError:
+            logging.error(f"Error creating run", code=417, description="Inappropriate run configurations passed!", Class=Runs.__name__)
             ns_api.abort(
                 code=417,
                 message="Inappropriate run configurations passed!"
@@ -215,9 +221,11 @@ class Run(Resource):
                 },
                 data=retrieved_run
             )
+            logging.info(f"Success retrieved all runs", code=200, description=success_payload, Class=Run.__name__)
             return success_payload, 200
 
         else:
+            logging.error(f"Error retrieving all runs", code=404, description=f"Run '{run_id}' does not exist for Experiment {expt_id} under Project '{project_id}'!", Class=Run.__name__)
             ns_api.abort(
                 code=404, 
                 message=f"Run '{run_id}' does not exist for Experiment {expt_id} under Project '{project_id}'!"
@@ -254,9 +262,11 @@ class Run(Resource):
                 },
                 data=retrieved_run
             )
+            logging.info(f"Success update a run", code=200, description=success_payload, Class=Run.__name__)
             return success_payload, 200
 
         except jsonschema.exceptions.ValidationError:
+            logging.error(f"Error updating a run", code=417, description="Inappropriate experimental configurations passed!", Class=Run.__name__)
             ns_api.abort(                
                 code=417,
                 message="Inappropriate experimental configurations passed!"
@@ -279,9 +289,11 @@ class Run(Resource):
                 params=request.view_args,
                 data=deleted_run
             )
+            logging.info(f"Success delete a run", code=200, description=success_payload, Class=Run.__name__)
             return success_payload, 200
 
         else:
+            logging.error(f"Error deleting a run", code=404, description=f"Run '{run_id}' does not exist in for Experiment {expt_id} under Project '{project_id}'!", Class=Run.__name__)
             ns_api.abort(
                 code=404, 
                 message=f"Run '{run_id}' does not exist in for Experiment {expt_id} under Project '{project_id}'!"

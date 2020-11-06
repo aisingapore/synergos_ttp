@@ -37,11 +37,12 @@ from rest_rpc.training.core.server import (
 )
 from rest_rpc.evaluation.core.utils import Analyser
 
+# Synergos logging
+from SynergosLogger.init_logging import logging
+
 ##################
 # Configurations #
 ##################
-
-logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.DEBUG)
 
 out_dir = app.config['OUT_DIR']
 
@@ -142,6 +143,12 @@ def start_expt_run_inference(
         Statistics (dict)
     """
 
+    from HardwareStatsLogger import Sysmetrics
+    from SynergosLogger import syn_logger_config
+    HARDWARE_STATS_LOGGER = syn_logger_config.SYSMETRICS['HARDWARE_STATS_LOGGER']
+    file_path = os.path.abspath(__file__)
+    Sysmetrics.run(hardware_stats_logger=HARDWARE_STATS_LOGGER, file_path=file_path, class_name="", function_name="start_expt_run_inference")  
+
     def infer_combination():
 
         # Create worker representation for local machine as TTP
@@ -202,14 +209,15 @@ def start_expt_run_inference(
 
         return participants_inferences
 
-    logging.info(f"Current combination: {keys}")
+    # logging.info(f"Current combination: {keys}")
+    logging.info(f"Current combination", description=keys)
 
     # Send initialisation signal to all remote worker WSSW objects
     governor = Governor(auto_align=auto_align, dockerised=dockerised, **keys)
     governor.initialise(reg_records=registrations)
 
     participants_inferences = infer_combination()
-    logging.debug(f"Aggregated predictions: {participants_inferences}")
+    #logging.debug(f"Aggregated predictions: {participants_inferences}")
 
     # Stats will only be computed for relevant participants
     # (i.e. contributed datasets used for inference)
@@ -223,12 +231,15 @@ def start_expt_run_inference(
     # Convert collection of object IDs accumulated from minibatch 
     analyser = Analyser(**keys, inferences=participants_inferences, metas=metas)
     polled_stats = analyser.infer(reg_records=relevant_registrations)
-    logging.debug(f"Polled statistics: {polled_stats}")
+    # logging.debug(f"Polled statistics: {polled_stats}")
+    logging.debug(f"Polled statistics", description=polled_stats)
 
     # Send terminate signal to all participants' worker nodes
     # governor = Governor(dockerised=dockerised, **keys)
     governor.terminate(reg_records=registrations)
 
+    Sysmetrics.terminate()
+    
     return polled_stats
 
 

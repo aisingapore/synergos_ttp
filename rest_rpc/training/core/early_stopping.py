@@ -13,11 +13,12 @@ import torch as th
 #from ignite.engine import Engine, Events
 #from ignite.handlers import EarlyStopping
 
+# Synergos logging
+from SynergosLogger.init_logging import logging
+
 ##################
 # Configurations #
 ##################
-
-logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.DEBUG)
 
 ############################################
 # Model optimisation Class - EarlyStopping #
@@ -71,7 +72,7 @@ class EarlyStopping:
         elif score < self.best_score + self.delta:
             self.counter += 1
             logging.info(
-                f'EarlyStopping counter: {self.counter} out of {self.patience}'
+                f'EarlyStopping counter: {self.counter} out of {self.patience}', Class=EarlyStopping.__name__
             )
             if self.counter >= self.patience:
                 self.early_stop = True
@@ -89,7 +90,7 @@ class EarlyStopping:
         """ Saves model when validation loss decrease
         """
         if self.verbose:
-            logging.info(f'Validation loss decreased ({self.val_loss_min:.6f} --> {val_loss:.6f}).  Saving model ...')
+            logging.info(f'Validation loss decreased ({self.val_loss_min:.6f} --> {val_loss:.6f}).  Saving model ...', Class=EarlyStopping.__name__)
 
         # th.save(model.state_dict(), 'checkpoint.pt')
         self.val_loss_min = val_loss

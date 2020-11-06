@@ -70,6 +70,7 @@ class FedProx(BaseAlgorithm):
             local_models=local_models,
             out_dir=out_dir
         )
+        # enter logging statement: initialize fedprox algo 
 
     ##################
     # Core functions #

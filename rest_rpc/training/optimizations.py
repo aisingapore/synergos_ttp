@@ -22,11 +22,15 @@ from rest_rpc.training.core.hypertuners import NNITuner, optim_prefix
 from rest_rpc.evaluation.core.utils import ValidationRecords
 # from rest_rpc.evaluation.validations import val_output_model
 
+
+# Synergos logging
+from SynergosLogger.init_logging import logging
+
 ##################
 # Configurations #
 ##################
 
-logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.DEBUG)
+# logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.DEBUG)
 
 ns_api = Namespace(
     "optimizations", 
@@ -172,9 +176,11 @@ class Optimizations(Resource):
                 params=request.view_args,
                 data=optim_validations
             )
+            logging.info("Success retrieve optimizations", code=200, description=success_payload, Class=Optimizations.__name__)
             return success_payload, 200
 
         else:
+            logging.info("Error retrieving optimizations", code=404, description=f"Optimizations do not exist for specified keyword filters!", Class=Optimizations.__name__)
             ns_api.abort(
                 code=404, 
                 message=f"Optimizations do not exist for specified keyword filters!"
@@ -228,13 +234,13 @@ class Optimizations(Resource):
             **tuning_params
         )
 
-        logging.debug(f"NNI Experiment status: {nni_expt.get_experiment_status()}")
+        logging.debug(f"NNI Experiment status: {nni_expt.get_experiment_status()}", Class=Optimizations.__name__)
         curr_status = nni_expt.get_experiment_status()['status']
         while curr_status == "RUNNING":
-            logging.info(f"NNI Experiment is still running, idling for now...")
+            logging.info(f"NNI Experiment is still running, idling for now...", Class=Optimizations.__name__)
             time.sleep(1)
             curr_status = nni_expt.get_experiment_status()['status']
-        logging.info(f"NNI Experiment has completed! Fetching results...") 
+        logging.info(f"NNI Experiment has completed! Fetching results...", Class=Optimizations.__name__) 
 
 
         filter_keys = request.view_args
@@ -273,9 +279,11 @@ class Optimizations(Resource):
                 params=request.view_args,
                 data=optim_validations
             )
+            logging.info("Success completed optimizations", code=200, description=success_payload, Class=Optimizations.__name__)
             return success_payload, 200
 
         else:
+            logging.info("Error running optimizations", code=404, description=f"Optimizations do not exist for specified keyword filters!", Class=Optimizations.__name__)
             ns_api.abort(
                 code=404, 
                 message=f"Optimizations do not exist for specified keyword filters!"

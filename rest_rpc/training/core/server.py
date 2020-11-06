@@ -31,11 +31,12 @@ from rest_rpc.training.core.federated_learning import FederatedLearning
 from rest_rpc.training.core.utils import Poller, Governor, RPCFormatter
 from rest_rpc.training.core.custom import CustomClientWorker, CustomWSClient
 
+# Synergos logging
+from SynergosLogger.init_logging import logging
+
 ##################
 # Configurations #
 ##################
-
-logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.DEBUG)
 
 out_dir = app.config['OUT_DIR']
 
@@ -295,6 +296,12 @@ def start_expt_run_training(
         Path-to-trained-models (dict(str))
     """
 
+    from HardwareStatsLogger import Sysmetrics
+    from SynergosLogger import syn_logger_config
+    HARDWARE_STATS_LOGGER = syn_logger_config.SYSMETRICS['HARDWARE_STATS_LOGGER']
+    file_path = os.path.abspath(__file__)
+    Sysmetrics.run(hardware_stats_logger=HARDWARE_STATS_LOGGER, file_path=file_path, class_name="", function_name="start_expt_run_training")  
+
     def train_combination():
 
         logging.debug(f"Before Initialisation - Reference Worker            : {REF_WORKER}")
@@ -347,7 +354,7 @@ def start_expt_run_training(
 
         out_paths = fl_expt.export()
 
-        logging.info(f"Final model: {fl_expt.algorithm.global_model.state_dict()}")
+        #logging.info(f"Final model: {fl_expt.algorithm.global_model.state_dict()}")
         logging.info(f"Final model stored at {out_paths}")
         logging.info(f"Loss history: {fl_expt.algorithm.loss_history}")
 
@@ -397,6 +404,8 @@ def start_expt_run_training(
     # Send terminate signal to all participants' worker nodes
     # governor = Governor(dockerised=dockerised, **keys)
     governor.terminate(reg_records=registrations)
+
+    Sysmetrics.terminate()
 
     return results
 
@@ -527,5 +536,4 @@ def start_proc(kwargs):
         combination_key: start_expt_run_training(**kwargs) 
         for combination_key, kwargs in training_combinations.items()
     }
-
     return completed_trainings

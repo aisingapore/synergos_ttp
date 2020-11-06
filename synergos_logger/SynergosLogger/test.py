@@ -1,7 +1,6 @@
 import logging
 from SynergosLogger import SynergosLogger
-# from Constant_Class import Constant_Class
-import config
+import syn_logger_config as config
 import os
 import datetime
 
@@ -54,7 +53,7 @@ class Test:
 
     def something():
         syn_logger.add_filter_function(logger, [TestFilter(), TestFilter_1()])
-        logging.critical(event="PHASE 1: CONNECT - Submitting TTP & Participant metadata",
+        logging.warning(event="PHASE 1: CONNECT - Submitting TTP & Participant metadata",
                 more_message="Experiment 1 does not exist in project test_project", passwordx="SECRET", other_stuff0="other_stuff0", Class=Test.__name__)
                 # ,classes=Test.__name__, function=Test.some_func.__name__, passwordx="SECRET")
 Test.something()

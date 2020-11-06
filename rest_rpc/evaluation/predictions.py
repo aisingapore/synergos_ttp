@@ -35,11 +35,12 @@ from rest_rpc.evaluation.core.server import start_proc
 from rest_rpc.evaluation.core.utils import PredictionRecords
 from rest_rpc.evaluation.validations import meta_stats_model
 
+# Synergos logging
+from SynergosLogger.init_logging import logging
+
 ##################
 # Configurations #
 ##################
-
-logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.DEBUG)
 
 ns_api = Namespace(
     "predictions", 
@@ -155,9 +156,11 @@ class Predictions(Resource):
                 params=request.view_args,
                 data=retrieved_predictions
             )
+            logging.info("Success retrieved predictions", code=200, description=success_payload, Class=Predictions.__name__)
             return success_payload, 200
 
         else:
+            logging.error("Error retrieving predictions", code=404, description=f"Predictions do not exist for specified keyword filters!", Class=Predictions.__name__)
             ns_api.abort(
                 code=404, 
                 message=f"Predictions do not exist for specified keyword filters!"
@@ -195,7 +198,8 @@ class Predictions(Resource):
         auto_align = request.json['auto_align']
         is_dockerised = request.json['dockerised']
         new_pred_tags = request.json['tags']
-        logging.debug(f"Keys: {request.view_args}")
+        # logging.debug(f"Keys: {request.view_args}")
+        logging.debug("Keys", description=request.view_args, Class=Predictions.__name__)
 
         # Update prediction tags for all queried projects
         for queried_project_id, tags in new_pred_tags.items():
@@ -212,11 +216,12 @@ class Predictions(Resource):
             'project_id': project_id
         }
         key_filter = {k:v for k,v in key_filter.items() if v is not None}
-        logging.debug(f"{key_filter}")
+        logging.debug("key_filter", description=f"{key_filter}", Class=Predictions.__name__)
         participant_registrations = registration_records.read_all(
             filter=key_filter
         )
-        logging.debug(participant_registrations)
+        # logging.debug(participant_registrations)
+        logging.debug(f"participant registrations", description=participant_registrations, Class=Predictions.__name__)
 
         project_combinations = {}
         for registration in participant_registrations:
@@ -260,7 +265,8 @@ class Predictions(Resource):
             poller = Poller(project_id=registered_project_id)
             all_metadata = poller.poll(project_registrations)
 
-            logging.debug(f"All metadata polled: {all_metadata}")
+            # logging.debug(f"All metadata polled: {all_metadata}", Class=Predictions.__name__)
+            logging.debug("All metadata polled", description=all_metadata, Class=Predictions.__name__)
 
             (X_data_headers, y_data_headers,
              key_sequences, _) = rpc_formatter.aggregate_metadata(all_metadata)
@@ -302,20 +308,22 @@ class Predictions(Resource):
 
                 for p_id, spacer_idxs in spacer_collection.items():
 
-                    logging.debug(f"Spacer Indexes: {spacer_idxs}")
+                    logging.debug(f"Spacer Indexes: {spacer_idxs}", Class=Predictions.__name__)
                     alignment_records.update(
                         project_id=registered_project_id,
                         participant_id=p_id,
                         updates=spacer_idxs
                     ) 
 
-                logging.debug(f"Alignments: {alignment_records.read_all(filter={'project_id': registered_project_id, 'participant_id': participant_id})}")
+                # logging.debug(f"Alignments: {alignment_records.read_all(filter={'project_id': registered_project_id, 'participant_id': participant_id})}", Class=Predictions.__name__)
+                logging.debug("Alignments", description=alignment_records.read_all(filter={'project_id': registered_project_id, 'participant_id': participant_id}), Class=Predictions.__name__)
 
             updated_project_registrations = registration_records.read_all(
                 filter={'project_id': registered_project_id}
             )
 
-            logging.debug(f"Project registrations: {updated_project_registrations}")
+            # logging.debug(f"Project registrations: {updated_project_registrations}", Class=Predictions.__name__)
+            logging.debug("Project registrations", description=updated_project_registrations, Class=Predictions.__name__)
             # Template for initialising FL grid
             kwargs = {
                 'action': project_action,
@@ -330,15 +338,17 @@ class Predictions(Resource):
             }
             project_combinations[registered_project_id] = kwargs
 
-        logging.debug(f"{project_combinations}")
+        # logging.debug(f"Project combinations: {project_combinations}", Class=Predictions.__name__)
+        logging.debug("Project combinations", description=project_combinations, Class=Predictions.__name__)
 
         completed_inferences = start_proc(project_combinations)
-        logging.debug(f"Completed Inferences: {completed_inferences}")
+        #logging.debug(f"Completed Inferences: {completed_inferences}")
         
         # Store output metadata into database
         retrieved_predictions = []
         for combination_key, inference_stats in completed_inferences.items():
-            logging.debug(f"Inference stats: {inference_stats}")
+            # logging.debug(f"Inference stats: {inference_stats}", Class=Predictions.__name__)
+            logging.debug(f"Inference stats", description=inference_stats, Class=Predictions.__name__)
 
             combination_key = (participant_id,) + combination_key
 
@@ -358,4 +368,5 @@ class Predictions(Resource):
             params=request.view_args,
             data=retrieved_predictions
         )
+        logging.info("Completed inferences", description=success_payload, Class=Predictions.__name__)
         return success_payload, 200

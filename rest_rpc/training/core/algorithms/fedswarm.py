@@ -74,6 +74,7 @@ class FedSwarm(BaseAlgorithm):
             local_models=local_models,
             out_dir=out_dir
         )
+        # enter logging statement:  initialize fedswarm algo 
         
         # Insert your own attributes here!
 

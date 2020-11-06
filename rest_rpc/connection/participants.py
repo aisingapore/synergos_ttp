@@ -22,11 +22,14 @@ from rest_rpc.connection.registration import (
 ) 
 from rest_rpc.connection.tags import Tag, tag_output_model
 
+# Synergos logging
+from SynergosLogger.init_logging import logging
+
 ##################
 # Configurations #
 ##################
 
-logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.DEBUG)
+# logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.DEBUG)
 
 ns_api = Namespace(
     "participants", 
@@ -124,6 +127,7 @@ class Participants(Resource):
             params={},
             data=all_relevant_participants
         )
+        logging.info(f"Success retrieved metadata for participants", code=200, description=success_payload, Class=Participants.__name__)
         return success_payload, 200
 
     @ns_api.doc('register_participant')
@@ -154,9 +158,11 @@ class Participants(Resource):
                 params={},
                 data=retrieved_participant
             )
+            logging.info(f"New participant created: {participant_id}", code=201, description=success_payload, type_=type(success_payload), Class=Participants.__name__)
             return success_payload, 201
 
         except jsonschema.exceptions.ValidationError:
+            logging.error(f"Error creating participant: {participant_id}", code=417, description="Inappropriate participant configurations passed!", Class=Participants.__name__)
             ns_api.abort(
                 code=417,
                 message="Inappropriate participant configurations passed!"
@@ -187,9 +193,11 @@ class Participant(Resource):
                 params={'participant_id': participant_id},
                 data=retrieved_participant
             )
+            logging.info(f"Success retrieved participant: {participant_id}", code=200, description=success_payload, Class=Participant.__name__)
             return success_payload, 200
 
         else:
+            logging.error(f"Error retrieving participant: {participant_id}", code=404, description=f"Participant '{participant_id}' does not exist!", Class=Participant.__name__)
             ns_api.abort(
                 code=404, 
                 message=f"Participant '{participant_id}' does not exist!"
@@ -220,9 +228,11 @@ class Participant(Resource):
                 params={'participant_id': participant_id},
                 data=retrieved_participant
             )
+            logging.info(f"Success update participant: {participant_id}", code=200, description=success_payload, Class=Participant.__name__)
             return success_payload, 200
 
         except jsonschema.exceptions.ValidationError:
+            logging.error(f"Error updating participant: {participant_id}", code=417, description="Inappropriate participant configurations passed!", Class=Participant.__name__)
             ns_api.abort(                
                 code=417,
                 message="Inappropriate participant configurations passed!"
@@ -249,9 +259,11 @@ class Participant(Resource):
                 params={'participant_id': participant_id},
                 data=retrieved_participant
             )
+            logging.info(f"Success delete participant: {participant_id}", code=200, description="Inappropriate participant configurations passed!", Class=Participant.__name__)
             return success_payload
 
         else:
+            logging.error(f"Error deleting participant: {participant_id}", code=404, description=f"Participant '{participant_id}' does not exist!", Class=Participant.__name__)
             ns_api.abort(
                 code=404, 
                 message=f"Participant '{participant_id}' does not exist!"

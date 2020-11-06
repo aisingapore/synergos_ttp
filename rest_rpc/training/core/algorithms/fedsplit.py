@@ -68,6 +68,7 @@ class FedSplit(BaseAlgorithm):
             local_models=local_models,
             out_dir=out_dir
         )
+        # enter logging statement:  initialize fedsplit algo 
 
     ##################
     # Core functions #

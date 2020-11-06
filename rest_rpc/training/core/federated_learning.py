@@ -44,6 +44,9 @@ from rest_rpc.training.core.early_stopping import EarlyStopping
 from rest_rpc.training.core.model import Model
 from rest_rpc.training.core import algorithms
 
+# Synergos logging
+from SynergosLogger.init_logging import logging
+
 ##################
 # Configurations #
 ##################
@@ -92,8 +95,8 @@ class FederatedLearning:
         # Network attributes
         self.crypto_provider = crypto_provider
         self.workers = workers
-        logging.debug(f"crypto_provider: {self.crypto_provider}")
-        logging.debug(f"workers: {self.workers}")
+        logging.debug(f"crypto_provider: {self.crypto_provider}", Class=FederatedLearning.__name__)
+        logging.debug(f"workers: {self.workers}", Class=FederatedLearning.__name__)
         self.grid = sy.PrivateGridNetwork(self.crypto_provider, *self.workers)
         self._aliases = {w.id: w for w in self.grid.workers}
         
@@ -326,6 +329,7 @@ class FederatedLearning:
 
         algorithm = getattr(algorithms, self.arguments.algorithm)
         if not algorithm:
+            logging.error(f"AttributeError: Specified algorithm '{self.arguments.algorithm}' is not supported!", Class=FederatedLearning.__name__)
             raise AttributeError(f"Specified algorithm '{self.arguments.algorithm}' is not supported!")
 
         return algorithm(
@@ -416,6 +420,7 @@ class FederatedLearning:
             Cached local models  (dict(Model))
         """
         if not self.is_loaded():
+            logging.error(f"RuntimeError: Grid data has not been aggregated! Call '.load()' first & try again.", Class=FederatedLearning.__name__)
             raise RuntimeError("Grid data has not been aggregated! Call '.load()' first & try again.")
             
         # Run training using specified algorithm
@@ -443,6 +448,7 @@ class FederatedLearning:
             Inferences (dict(worker_id, dict(result_type, th.tensor)))
         """
         if not self.is_loaded():
+            logging.error("RuntimeError: Grid data has not been aggregated! Call '.load()' first & try again.", Class=FederatedLearning.__name__)
             raise RuntimeError("Grid data has not been aggregated! Call '.load()' first & try again.")
 
         # Run algorithm for evaluation

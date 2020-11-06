@@ -17,11 +17,14 @@ from rest_rpc import app
 from rest_rpc.connection.core.utils import TopicalPayload, RegistrationRecords
 from rest_rpc.connection.tags import tag_output_model
 
+# Synergos logging
+from SynergosLogger.init_logging import logging
+
 ##################
 # Configurations #
 ##################
 
-logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.DEBUG)
+# logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.DEBUG)
 
 ns_api = Namespace(
     "registration", 
@@ -159,6 +162,7 @@ class Registrations(Resource):
             params={},
             data=all_relevant_registration
         )
+        logging.info("Success retrieved registrations", code=200, description=success_payload, Class=Registrations.__name__)      
         return success_payload, 200
 
 
@@ -189,9 +193,11 @@ class Registration(Resource):
                 },
                 data=retrieved_registration
             )
+            logging.info(f"Success retrieved registration for project_id: {project_id}, participant_id: {participant_id}", code=200, description=success_payload, Class=Registration.__name__)
             return success_payload, 200
 
         else:
+            logging.error(f"Error retrieving registration for project_id: {project_id}, participant_id: {participant_id}", code=404, description=f"Participant '{participant_id}' has not registered for Project '{project_id}'!", Class=Registration.__name__)
             ns_api.abort(
                 code=404, 
                 message=f"Participant '{participant_id}' has not registered for Project '{project_id}'!"
@@ -227,9 +233,11 @@ class Registration(Resource):
                 params={},
                 data=retrieved_registration
             )
+            logging.info(f"Success create registration for project_id: {project_id}, participant_id: {participant_id}", code=201, description=success_payload, Class=Registration.__name__)
             return success_payload, 201
 
         except jsonschema.exceptions.ValidationError:
+            logging.info(f"Error creating registration for project_id: {project_id}, participant_id: {participant_id}", code=417, description="Inappropriate registration configurations passed!", Class=Registration.__name__)
             ns_api.abort(
                 code=417,
                 message="Inappropriate registration configurations passed!"
@@ -265,9 +273,11 @@ class Registration(Resource):
                 },
                 data=retrieved_registration
             )
+            logging.info(f"Success update registration for project_id: {project_id}, participant_id: {participant_id}", code=200, description=success_payload, Class=Registration.__name__)
             return success_payload, 200
 
         except jsonschema.exceptions.ValidationError:
+            logging.error(f"Error updating registration for project_id: {project_id}, participant_id: {participant_id}", code=417, description="Inappropriate registration configurations passed!", Class=Registration.__name__)
             ns_api.abort(                
                 code=417,
                 message="Inappropriate registration configurations passed!"
@@ -296,9 +306,11 @@ class Registration(Resource):
                 params={'project_id': project_id},
                 data=retrieved_registration
             )
+            logging.info(f"Success delete registration for project_id: {project_id}, participant_id: {participant_id}", code=200, description=success_payload, Class=Registration.__name__)
             return success_payload
 
         else:
+            logging.error(f"Error deleting registration for project_id: {project_id}, participant_id: {participant_id}", code=404, description=f"Participant '{participant_id}' has not registered for Project '{project_id}'!", Class=Registration.__name__)
             ns_api.abort(
                 code=404, 
                 message=f"Participant '{participant_id}' has not registered for Project '{project_id}'!"
