@@ -6,16 +6,26 @@
 
 # Generic/Built-in
 import logging
+import os
+import shutil
+from pathlib import Path
 
 # Libs
 import jsonschema
+import mlflow
 from flask import request
 from flask_restx import Namespace, Resource, fields
 
 # Custom
 from rest_rpc import app
-from rest_rpc.connection.core.utils import TopicalPayload, ExperimentRecords
+from rest_rpc.connection.core.utils import (
+    TopicalPayload, 
+    ExperimentRecords
+)
 from rest_rpc.connection.runs import run_output_model
+from rest_rpc.training.models import model_output_model
+from rest_rpc.evaluation.validations import val_output_model
+from rest_rpc.evaluation.predictions import pred_output_model
 
 ##################
 # Configurations #
@@ -30,19 +40,131 @@ ns_api = Namespace(
 
 SUBJECT = "Experiment" # table name
 
-schemas = app.config['SCHEMAS']
 db_path = app.config['DB_PATH']
+expt_records = ExperimentRecords(db_path=db_path)
+
+expt_schema = app.config['SCHEMAS']['experiment_schema']
 
 ###########################################################
 # Models - Used for marshalling (i.e. moulding responses) #
 ###########################################################
 
+# Note: In Flask-restx==0.2.0, 
+# Creating a marshallable model from a specified JSON schema is bugged. While it
+# is possible to use a schema model for formatting expectations, it cannot be
+# used for marshalling outputs.
+# Error thrown -> AttributeError: 'SchemaModel' object has no attribute 'items'
+# Mitigation   -> Manually implement schema model until bug is fixed
+""" 
+[REDACTED in Flask-restx==0.2.0]
+structure_model = ns_api.schema_model(name='structure', schema=expt_schema)
+"""
+class ListableInteger():
+    def format(self, value):
+        return value
+
 structure_model = ns_api.model(
     name='structure',
     model={
-        'in_features': fields.Integer(),
-        'out_features': fields.Integer(),
-        'bias': fields.Boolean(required=True)
+        "activation": fields.String(),
+        "add_bias_kv": fields.Boolean(),
+        "add_zero_attn": fields.Boolean(),
+        "affine": fields.Boolean(),
+        "align_corners": fields.Boolean(),
+        "alpha": fields.Float(),
+        "batch_first": fields.Boolean(),
+        "beta": fields.Float(),
+        "bias": fields.Boolean(),
+        "bidirectional": fields.Boolean(),
+        "blank": fields.Integer(),
+        "ceil_mode": fields.Boolean(),
+        "count_include_pad": fields.Boolean(),
+        "cutoffs": fields.List(fields.String()),
+        "d_model": fields.Integer(),
+        "device_ids": fields.List(fields.Integer()),
+        "dilation": fields.Integer(),
+        "dim": fields.Integer(),
+        "dim_feedforward": fields.Integer(),
+        "div_value": fields.Float(),
+        # "divisor_override": {
+        #     "description": "if specified, it will be used as divisor in place of kernel_size"
+        # },
+        "dropout": fields.Float(),
+        "elementwise_affine": fields.Boolean(),
+        "embed_dim": fields.Integer(),
+        "embedding_dim": fields.Integer(),
+        "end_dim": fields.Integer(),
+        "eps": fields.Float(),
+        "full": fields.Boolean(),
+        "groups": fields.Integer(),
+        "head_bias": fields.Boolean(),
+        "hidden_size": fields.Integer(),        # Flagged for arrayable value,
+        "ignore_index": fields.Integer(),
+        "in1_features": fields.Integer(),
+        "in2_features": fields.Integer(),
+        "in_channels": fields.Integer(),
+        "in_features": fields.Integer(),
+        "init": fields.Float(),
+        "inplace": fields.Boolean(),
+        "input_size": fields.Integer(),
+        "k": fields.Float(),
+        "kdim": fields.Integer(),
+        "keepdim": fields.Boolean(),
+        "kernel_size": fields.Integer(),        # Flagged for arrayable value
+        "lambd": fields.Float(),
+        "log_input": fields.Boolean(),
+        "lower": fields.Float(),
+        "margin": fields.Float(),
+        "max_norm": fields.Float(),
+        "max_val": fields.Float(),
+        "min_val": fields.Float(),
+        "mode": fields.String(),
+        "momentum": fields.Float(),
+        "n_classes": fields.Integer(),
+        "negative_slope": fields.Float(),
+        "nhead": fields.Integer(),
+        "nonlinearity": fields.String(),
+        "norm_type": fields.Float(),
+        "normalized_shape": fields.Integer(),   # Flagged for arrayable value
+        "num_channels": fields.Integer(),
+        "num_chunks": fields.Integer(),
+        "num_decoder_layers": fields.Integer(),
+        "num_embeddings": fields.Integer(),
+        "num_encoder_layers": fields.Integer(),
+        "num_features": fields.Integer(),
+        "num_groups": fields.Integer(),
+        "num_heads": fields.Integer(),
+        "num_layers": fields.Integer(),
+        "num_parameters": fields.Integer(),
+        "out_channels": fields.Integer(),
+        "out_features": fields.Integer(),
+        "output_device": fields.Integer(),
+        "output_padding": fields.Integer(),
+        "output_ratio": fields.Float(),         # Flagged for arrayable value
+        "output_size": fields.Integer(),        # Flagged for arrayable value
+        "p": fields.Float(),
+        "padding": fields.Integer(),
+        "padding_idx": fields.Integer(),
+        "padding_mode": fields.String(),
+        "pos_weight": fields.List(fields.Float()),
+        "reduction": fields.String(),
+        "requires_grad": fields.Boolean(),
+        "return_indices": fields.Boolean(),
+        "scale_factor": fields.Float(),         # Flagged for arrayable value
+        "scale_grad_by_freq": fields.Boolean(),
+        "size": fields.Integer(),               # Flagged for arrayable value
+        "size_average": fields.Boolean(),
+        "sparse": fields.Boolean(),
+        "start_dim": fields.Integer(),
+        "stride": fields.Integer(),             # Flagged for arrayable value
+        "swap": fields.Boolean(),
+        "threshold": fields.Float(),
+        "track_running_stats": fields.Boolean(),
+        "upper": fields.Float(),
+        "upscale_factor": fields.Integer(),
+        "value": fields.Float(),
+        "vdim": fields.Integer(),
+        "zero_infinity": fields.Boolean()
     }
 )
 
@@ -63,7 +185,7 @@ layer_model = ns_api.model(
 expt_model = ns_api.model(
     name="experiment",
     model={
-        "model": fields.List(
+        'model': fields.List(
             fields.Nested(layer_model, required=True, skip_none=True)
         )
     }
@@ -72,7 +194,7 @@ expt_model = ns_api.model(
 expt_input_model = ns_api.inherit(
     "experiment_input",
     expt_model,
-    {"expt_id": fields.String()}
+    {'expt_id': fields.String()}
 )
 
 expt_output_model = ns_api.inherit(
@@ -97,6 +219,15 @@ expt_output_model = ns_api.inherit(
                 model={
                     'Run': fields.List(
                         fields.Nested(run_output_model, skip_none=True)
+                    ),
+                    'Model': fields.List(
+                        fields.Nested(model_output_model, skip_none=True)
+                    ),
+                    'Validation': fields.List(
+                        fields.Nested(val_output_model, skip_none=True)
+                    ),
+                    'Prediction': fields.List(
+                        fields.Nested(pred_output_model, skip_none=True)
                     )
                 }
             ),
@@ -121,7 +252,6 @@ class Experiments(Resource):
     @ns_api.marshal_list_with(payload_formatter.plural_model)
     def get(self, project_id):
         """ Retrieve all run configurations queued for training """
-        expt_records = ExperimentRecords(db_path=db_path)
         all_relevant_expts = expt_records.read_all(
             filter={'project_id': project_id}
         )
@@ -135,40 +265,41 @@ class Experiments(Resource):
 
     @ns_api.doc("register_experiment")
     @ns_api.expect(expt_input_model)
-    @ns_api.marshal_with(payload_formatter.singular_model)
+    # @ns_api.marshal_with(payload_formatter.singular_model)
     @ns_api.response(201, "New experiment created!")
     @ns_api.response(417, "Inappropriate experiment configurations passed!")
     def post(self, project_id):
         """ Takes a model configuration to be queued for training and stores it
         """
-        try:
-            new_expt_details = request.json
-            expt_id = new_expt_details.pop('expt_id')
+        # try:
+        new_expt_details = request.json
+        expt_id = new_expt_details.pop('expt_id')
 
-            expt_records = ExperimentRecords(db_path=db_path)
-            new_expt = expt_records.create(
-                project_id=project_id, 
-                expt_id=expt_id,
-                details=new_expt_details
-            )
-            retrieved_expt = expt_records.read(
-                project_id=project_id, 
-                expt_id=expt_id
-            )
-            assert new_expt.doc_id == retrieved_expt.doc_id
-            success_payload = payload_formatter.construct_success_payload(
-                status=201, 
-                method="experiments.post",
-                params={'project_id': project_id},
-                data=retrieved_expt
-            )
-            return success_payload, 201
+        new_expt = expt_records.create(
+            project_id=project_id, 
+            expt_id=expt_id,
+            details=new_expt_details
+        )
+        retrieved_expt = expt_records.read(
+            project_id=project_id, 
+            expt_id=expt_id
+        )
+        logging.debug(f"Retrieved experiment: {retrieved_expt}")
+        assert new_expt.doc_id == retrieved_expt.doc_id
 
-        except jsonschema.exceptions.ValidationError:
-            ns_api.abort(
-                code=417,
-                message="Inappropriate experimental configurations passed!"
-            )
+        success_payload = payload_formatter.construct_success_payload(
+            status=201, 
+            method="experiments.post",
+            params={'project_id': project_id},
+            data=retrieved_expt
+        )
+        return success_payload, 201
+
+        # except jsonschema.exceptions.ValidationError:
+        #     ns_api.abort(
+        #         code=417,
+        #         message="Inappropriate experimental configurations passed!"
+        #     )
 
 
 @ns_api.route('/<expt_id>')
@@ -186,7 +317,6 @@ class Experiment(Resource):
         """ Retrieves all experimental parameters corresponding to a specified
             project
         """
-        expt_records = ExperimentRecords(db_path=db_path)
         retrieved_expt = expt_records.read(
             project_id=project_id, 
             expt_id=expt_id
@@ -199,7 +329,7 @@ class Experiment(Resource):
                 params={'project_id': project_id, 'expt_id': expt_id},
                 data=retrieved_expt
             )
-            return success_payload
+            return success_payload, 200
 
         else:
             ns_api.abort(
@@ -217,7 +347,6 @@ class Experiment(Resource):
         try:
             expt_updates = request.json
 
-            expt_records = ExperimentRecords(db_path=db_path)
             updated_expt = expt_records.update(
                 project_id=project_id, 
                 expt_id=expt_id,
@@ -234,7 +363,7 @@ class Experiment(Resource):
                 params={'project_id': project_id, 'expt_id': expt_id},
                 data=retrieved_expt
             )
-            return success_payload
+            return success_payload, 200
 
         except jsonschema.exceptions.ValidationError:
             ns_api.abort(                
@@ -245,10 +374,9 @@ class Experiment(Resource):
     @ns_api.doc("delete_experiment")
     @ns_api.marshal_with(payload_formatter.singular_model)
     def delete(self, project_id, expt_id):
-        """ De-registers participant from previously registered experiment(s),
-            and clears out all their data
+        """ De-registers previously registered experiment, and clears out all 
+            metadata
         """
-        expt_records = ExperimentRecords(db_path=db_path)
         retrieved_expt = expt_records.read(
             project_id=project_id, 
             expt_id=expt_id
@@ -257,12 +385,13 @@ class Experiment(Resource):
             project_id=project_id,
             expt_id=expt_id
         )
+
         if deleted_expt:
             assert deleted_expt.doc_id == retrieved_expt.doc_id
             success_payload = payload_formatter.construct_success_payload(
                 status=200,
                 method="experiment.delete",
-                params={'project_id': project_id, 'expt_id': expt_id},
+                params=request.view_args,
                 data=retrieved_expt
             )
             return success_payload

@@ -1,0 +1,16 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Registration for participants to projects (Payload)",
+    "description": "Registration mappings between project and participants for PySyft FL training",
+    "type": "object",
+    "properties": {
+
+        "role": {
+            "description": "Role of the participant in the FL grid",
+            "type": "string",
+            "enum": ["host", "guest", "arbiter"]
+        }
+    },
+
+    "required": ["role"]
+}

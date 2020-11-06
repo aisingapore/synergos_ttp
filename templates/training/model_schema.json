@@ -1,0 +1,33 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "File paths to all exported models, both global & local) (Payload)",
+    "description": "Abstracted payload schema for handling SNN model tracking",
+    "type": "object",
+    "properties": {
+
+        "global": {
+            "description": "Global model trained using experimental model structure, with run arguments",
+            "type": "object",
+            "properties": {
+                "origin": {"type": "string"},
+                "path": {"type": "string"},
+                "loss_history": {"type": "string"}
+            }
+        }
+    },
+    "patternProperties": {
+
+        "local_": {
+            "type": "object",
+            "properties": {
+                "origin": {"type": "string"},
+                "path": {"type": "string"},
+                "loss_history": {"type": "string"}
+            }
+        }
+    },
+
+    "additionalProperties": false,
+
+    "required": ["global"]
+}

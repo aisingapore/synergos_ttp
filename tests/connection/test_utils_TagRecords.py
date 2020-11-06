@@ -14,7 +14,8 @@ from tinydb import where
 
 # Custom
 from rest_rpc import app
-from rest_rpc.connection.core.utils import TagRecords, AlignmentRecords
+from rest_rpc.connection.core.utils import TagRecords
+from rest_rpc.training.core.utils import AlignmentRecords
 
 ##################
 # Configurations #
@@ -23,13 +24,17 @@ from rest_rpc.connection.core.utils import TagRecords, AlignmentRecords
 tag_details = {
     "train": [["2018","interpolated_eicu_worker_0"]],
     "evaluate": [["2019", "interpolated_eicu_validation"]],
-    "predict": []
+    "predict": [],
+    "model": ["2018", "interpolated_model"],
+    "hyperparameters": ["2018", "hyperparameters"]
 }
 
 tag_updates ={
     "train": [["2019","interpolated_eicu_worker_0"]],
     "evaluate": [],
-    "predict": [["2020","interpolated_eicu_prediction"]]
+    "predict": [["2020","interpolated_eicu_prediction"]],
+    "model": ["2019", "interpolated_model"],
+    "hyperparameters": ["2019", "hyperparameters"]
 }
 
 alignment_details = {
@@ -49,9 +54,33 @@ alignment_details = {
 
 project_id = "eicu_hospital_collab"
 participant_id = "CGH"
-tag_id = "SS_2019"
 
 test_db_path = os.path.join(app.config['TEST_DIR'], "test_database.json")
+
+####################################
+# Association Evaluation Functions #
+####################################
+
+def check_equivalence_and_format(record):
+    assert 'created_at' in record.keys()
+    record.pop('created_at')
+    assert "key" in record.keys()
+    key = record.pop('key')
+    assert set([project_id, participant_id]) == set(key.values())
+    assert "link" in record.keys()
+    link = record.pop('link')
+    assert not set(link.items()).issubset(set(key.items()))
+    return record 
+
+def check_relation_equivalence_and_format(record):
+    assert 'relations' in record.keys()
+    relations = record.pop('relations')
+    assert (set(relations.keys()) == set(["Alignment"]))
+    return record 
+
+def check_detail_equivalence(details):
+    assert details == tag_details
+    return details
 
 ##########################
 # TagRecords Class Tests #
@@ -62,14 +91,10 @@ def test_TagRecords_create():
     created_tag = tag_records.create(
         project_id=project_id,
         participant_id=participant_id,
-        tag_id=tag_id,
         details=tag_details
     )
-    assert 'created_at' in created_tag.keys()
-    created_tag.pop('created_at')
-    key = created_tag.pop('key')
-    assert set([project_id, participant_id, tag_id]) == set(key.values())
-    assert created_tag == tag_details
+    raw_details = check_equivalence_and_format(created_tag)
+    check_detail_equivalence(raw_details)
 
 
 def test_TagRecords_read_all():
@@ -77,12 +102,9 @@ def test_TagRecords_read_all():
     all_tags = tag_records.read_all()
     assert len(all_tags) == 1
     retrieved_tag = all_tags[0]
-    key = retrieved_tag.pop('key')
-    assert set([project_id, participant_id, tag_id]) == set(key.values())
-    assert 'relations' in retrieved_tag.keys()
-    retrieved_tag.pop('created_at')
-    retrieved_tag.pop('relations')
-    assert retrieved_tag == tag_details
+    trimmed_details = check_equivalence_and_format(retrieved_tag)
+    raw_details = check_relation_equivalence_and_format(trimmed_details)
+    check_detail_equivalence(raw_details)
 
 
 def test_TagRecords_read():
@@ -90,28 +112,21 @@ def test_TagRecords_read():
     retrieved_tag = tag_records.read(
         project_id=project_id,
         participant_id=participant_id,
-        tag_id=tag_id
     )
     assert retrieved_tag is not None
-    key = retrieved_tag.pop('key')
-    assert set([project_id, participant_id, tag_id]) == set(key.values())
-    assert 'relations' in retrieved_tag.keys()
-    retrieved_tag.pop('created_at')
-    retrieved_tag.pop('relations')
-    assert retrieved_tag == tag_details
-
+    trimmed_details = check_equivalence_and_format(retrieved_tag)
+    raw_details = check_relation_equivalence_and_format(retrieved_tag)
+    check_detail_equivalence(raw_details)
 
 def test_TagRecords_update():
     tag_records = TagRecords(db_path=test_db_path)
     targeted_tag = tag_records.read(
         project_id=project_id,
         participant_id=participant_id,
-        tag_id=tag_id
     )
     updated_tag = tag_records.update(
         project_id=project_id,
         participant_id=participant_id,
-        tag_id=tag_id,
         updates=tag_updates
     )
     assert targeted_tag.doc_id == updated_tag.doc_id
@@ -125,30 +140,25 @@ def test_TagRecords_delete():
     created_alignment = alignment_records.create(
         project_id=project_id,
         participant_id=participant_id,
-        tag_id=tag_id,
         details=alignment_details
     )
     # Now perform tag deletion, checking for cascading deletion into alignment
     tag_records = TagRecords(db_path=test_db_path)
     targeted_tag = tag_records.read(
         project_id=project_id,
-        participant_id=participant_id,
-        tag_id=tag_id
+        participant_id=participant_id
     )
     deleted_tag = tag_records.delete(
         project_id=project_id,
-        participant_id=participant_id,
-        tag_id=tag_id
+        participant_id=participant_id
     )
     assert targeted_tag.doc_id == deleted_tag.doc_id
     assert tag_records.read(
         project_id=project_id,
-        participant_id=participant_id,
-        tag_id=tag_id
+        participant_id=participant_id
     ) is None
     assert created_alignment.doc_id == deleted_tag['relations']['Alignment'][0].doc_id
     assert alignment_records.read(
         project_id=project_id,
-        participant_id=participant_id,
-        tag_id=tag_id
+        participant_id=participant_id
     ) is None

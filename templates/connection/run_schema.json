@@ -167,7 +167,5 @@
             "description": "Cumulative delta allowed before earlystopping is employed",
             "type": "boolean"
         }
-    },
-
-    "required": ["input_size", "output_size"]
+    }
 } 

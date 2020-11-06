@@ -1,9 +1,26 @@
 {
-    "Alignment": {},
-    "Experiment": {},
-    "Participant": {},
-    "Project": {},
-    "Run": {},
-    "Tag": {},
-    "_default": {}
+    "Alignment": {
+
+    },
+    "Experiment": {
+
+    },
+    "Participant": {
+
+    },
+    "Project": {
+
+    },
+    "Registration": {
+
+    },
+    "Run": {
+
+    },
+    "Tag": {
+
+    },
+    "_default": {
+
+    }
 }

@@ -10,6 +10,12 @@
             "type": "string"
         },
 
+        "action": {
+            "description": "Type of machine learning inference to be made",
+            "type": "string",
+            "enum": ["regress", "classify"]
+        },
+
         "universe_alignment": {
             "description": "Universal header obtained from MFA across all parties",
             "type": "array",
@@ -22,11 +28,6 @@
         "incentives": {
             "description": "Experiments registered for FL training under this project",
             "type": "object"
-        },
-
-        "created_at": {
-            "description": "Date at which project was created",
-            "type": "string"
         },
 
         "start_at": {

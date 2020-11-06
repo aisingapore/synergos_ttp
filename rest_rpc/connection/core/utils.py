@@ -6,6 +6,7 @@
 
 # Generic/Built-in
 import logging
+import uuid
 from datetime import datetime
 
 # Libs
@@ -21,7 +22,10 @@ from tinydb_smartcache import SmartCacheTable
 
 # Custom
 from rest_rpc import app
-from .datetime_serialization import DateTimeSerializer, TimeDeltaSerializer
+from rest_rpc.connection.core.datetime_serialization import (
+    DateTimeSerializer, 
+    TimeDeltaSerializer
+)
 
 ##################
 # Configurations #
@@ -33,9 +37,39 @@ schemas = app.config['SCHEMAS']
 db_path = app.config['DB_PATH']
 payload_template = app.config['PAYLOAD_TEMPLATE']
 
-############################################
-# REST Response Formatting Class - Payload #
-############################################
+"""
+These are the subject-id-class mappings for the main utility records:
+{
+    'Project': {
+        'id': 'project_id',
+        'class': ProjectRecords
+    },
+    'Experiment': {
+        'id': 'expt_id',
+        'class': ExperimentRecords
+    },
+    'Run': {
+        'id': 'run_id',
+        'class': RunRecords
+    },
+    'Participant': {
+        'id': 'participant_id',
+        'class': ParticipantRecords
+    },
+    'Registration': {
+        'id': 'registration_id',
+        'class': RegistrationRecords
+    },
+    'Tag': {
+        'id': 'tag_id',
+        'class': TagRecords
+    }
+}
+"""
+
+###################################################
+# REST Response Formatting Class - TopicalPayload #
+###################################################
 
 class TopicalPayload:
     """ Helper class to standardise response formatting for the REST-RPC service
@@ -123,7 +157,10 @@ class TopicalPayload:
             def annotate_relations(document):
                 for subject, records in document['relations'].items():
                     annotated_records = [
-                        annotate_document(document, subject)
+                        annotate_document(
+                            encode_datetime_objects(document), 
+                            subject
+                        )
                         for document in records
                     ]
                     document['relations'][subject] = annotated_records
@@ -132,6 +169,7 @@ class TopicalPayload:
             encoded_document = encode_datetime_objects(document)
             annotated_document = annotate_document(encoded_document, kind)
             annotated_doc_and_relations = annotate_relations(annotated_document)
+            logging.debug(f"Annotated docs: {annotated_doc_and_relations}")
             return annotated_doc_and_relations
 
         self.__template['success'] = 1
@@ -154,7 +192,7 @@ class TopicalPayload:
         return self.__template        
 
 #####################################
-# Base Data Storage Class - Records #s
+# Base Data Storage Class - Records #
 #####################################
 
 class Records:
@@ -192,7 +230,7 @@ class Records:
             path=self.db_path, 
             sort_keys=True,
             indent=4,
-            separators=(',', ': '),
+            #separators=(',', ': '),
             storage=CachingMiddleware(serialization)
         )
 
@@ -261,7 +299,7 @@ class Records:
         Args:  
             subject (str): Table to be operated on
             key (str): Primary key of the current table
-            r_id (str): Identifier of specified records
+            r_id (dict): Identifier of specified records
         Returns:
             Specified record (tinydb.database.Document)
         """
@@ -279,7 +317,7 @@ class Records:
         Args:  
             subject (str): Table to be operated on
             key (str): Primary key of the current table
-            r_id (str): Identifier of specified records
+            r_id (dict): Identifier of specified records
             updates (dict): New key-value pairs to update existing record with
         Returns:
             Updated record (tinydb.database.Document)
@@ -304,7 +342,7 @@ class Records:
         Args:
             subject (str): Table to be operated on
             key (str): Primary key of the current table
-            r_id (str): Identifier of specified records
+            r_id (dict): Identifier of specified records
         Returns:
             Deleted record (tinydb.database.Document)
         """
@@ -324,12 +362,12 @@ class Records:
         
         return record
 
-#######################################
-# Data Storage Class - TopicalRecords #
-#######################################
+############################################
+# Base Data Storage Class - TopicalRecords #
+############################################
 
 class TopicalRecords(Records):
-    """
+    """ Customised class to handle relations within the PySyft REST-PRC service
     Args:
         subject (str): Main subject type of records
         identifier (str): Identifying key of record
@@ -343,12 +381,13 @@ class TopicalRecords(Records):
         self.relations = relations
         super().__init__(db_path=db_path)
 
-    def __get_related_metadata(self, r_id):
+    def _get_related_metadata(self, r_id, key):
         """ Retrieves all related records from specified relations
         
         Args:
             r_id (dict(str, str)): 
                 Record Identifier implemented as a composite collection of keys
+            key (str): Key to be used as a unique composite identifier
         Returns:
             Collection of all related records (dict(str,list(Document)))
         """
@@ -360,33 +399,35 @@ class TopicalRecords(Records):
             for subject in self.relations:
                 related_table = db.table(subject)
                 related_records = related_table.search(
-                    where('key')[self.identifier] == r_id[self.identifier]
+                    where(key)[self.identifier] == r_id[self.identifier]
                 )
                 all_related_records[subject] = related_records
 
         return all_related_records
 
-    def __expand_record(self, record):
+    def _expand_record(self, record, key):
         """ Adds additional metadata from related subjects to specified record
 
         Args:
             record (tinydb.database.Document): Record to be expanded
+            key (str): Key to be used as a unique composite identifier
         Returns:
             Expanded record (tinydb.database.Document)
         """
-        r_id = record['key']
-        related_records = self.__get_related_metadata(r_id)
+        r_id = record[key]
+        related_records = self._get_related_metadata(r_id, key)
         record['relations'] = related_records
         return record
 
     def create(self, new_record):
         return super().create(self.subject, "key", new_record)
 
-    def read_all(self, filter=None):
+    def read_all(self, f_key="key", filter={}):
         """ Retrieves entire collection of records, with an option to filter out
             ones with specific key-value pairs.
 
         Args:
+            f_key (str): Foreign key for extracting relations
             filter (dict(str,str)): Key-value pairs for filtering records
         Returns:
             Filtered records (list(tinydb.database.Document))
@@ -394,23 +435,27 @@ class TopicalRecords(Records):
         all_records = super().read_all(self.subject)
         expanded_records = []
         for record in all_records:
-            #  expanded_records = [self.__expand_record(r) for r in all_records]
-            if filter and not filter.items() <= record.items():
-                pass
-            exp_record = self.__expand_record(record)
+            if (
+                (not filter.items() <= record['key'].items()) and
+                (not filter.items() <= record[f_key].items()) and
+                (not filter.items() <= record.items())
+            ):
+                continue
+            exp_record = self._expand_record(record, f_key)
             expanded_records.append(exp_record)
         return expanded_records
 
-    def read(self, r_id):
+    def read(self, r_id, f_key="key"):
         main_record = super().read(self.subject, "key", r_id)
         if main_record:
-            return self.__expand_record(main_record)
+            return self._expand_record(main_record, f_key)
         return main_record
 
     def update(self, r_id, updates):
+        assert not ("key" in updates.keys())
         return super().update(self.subject, "key", r_id, updates)
 
-    def delete(self, r_id):
+    def delete(self, r_id, key="key"):
         """ Uses composite keys for efficient cascading deletion of child 
             relations in related subjects
 
@@ -426,8 +471,8 @@ class TopicalRecords(Records):
 
             # Archive record targeted for deletion for output
             subject_table = db.table(self.subject)
-            main_record = subject_table.get(where('key') == r_id)
-            expanded_record = self.__expand_record(main_record)
+            main_record = subject_table.get(where(key) == r_id)
+            expanded_record = self._expand_record(main_record, key)
 
             for subject in self.relations:
                 related_table = db.table(subject)
@@ -435,7 +480,7 @@ class TopicalRecords(Records):
                 # Perform cascading deletion of all involved relations
                 with transaction(related_table) as related_tr:
                     related_tr.remove(
-                        where('key')[self.identifier] == r_id[self.identifier]
+                        where(key)[self.identifier] == r_id[self.identifier]
                     )
 
                 ###################################################
@@ -445,16 +490,94 @@ class TopicalRecords(Records):
                 related_records = expanded_record['relations'][subject]
                 for r_record in related_records:
                     assert related_table.get(doc_id=r_record.doc_id) is None
-                    assert r_record['key'][self.identifier] == r_id[self.identifier]
+                    assert r_record[key][self.identifier] == r_id[self.identifier]
 
             # Finally, delete main entry itself
             with transaction(subject_table) as main_tr:
-                main_tr.remove(where('key') == r_id)
+                main_tr.remove(where(key) == r_id)
 
             assert subject_table.get(doc_id=main_record.doc_id) is None
-            assert main_record['key'] == r_id
+            assert main_record[key] == r_id
         
         return main_record
+
+#######################################################
+# Data Storage Association class - AssociationRecords #
+#######################################################
+
+class AssociationRecords(TopicalRecords):
+    """ The difference between associations and relations is that associations
+        can be thought of as a "reversed" relation. It is used to map 
+        dependencies upstream. 
+        
+        An example of structural relation is Project -> Experiment -> Run. A
+        project can access details in their experiments and runs. An experiment
+        can only access all runs, but not their parent projects. A run can only
+        access its own attributes.
+
+        An example of structural association is Registration <= Tag <= Alignment
+        An alignment can accumulate links from its associated tags and
+        registrations. A tag can accumulate links only from its associated 
+        registrations. A registration does not accumulate links from other 
+        entities. However, hierachy is still maintained in that these 
+        accumulated links are used to manage attribute access as in a structural
+        relation: Registration -> Tag -> Alignment, using accumulated links
+
+        IMPORTANT: AssociationRecords CANNOT modify downstream relations defined
+                   in its parent class TopicalRecords
+    """
+    def __init__(self, subject, identifier, db_path=db_path, relations=[], *associations):
+        self.associations =  associations
+        super().__init__(
+            subject,  
+            identifier, 
+            db_path,
+            *relations
+        )
+
+    def __generate_link(self):
+        return {self.identifier: uuid.uuid1().hex}
+
+    def create(self, new_record):
+        link = self.__generate_link()
+        # Use key to trace down associated records and store their links
+        key = new_record['key']
+        database = self.load_database()
+        with database as db:
+            for subject in self.associations:
+                associated_table = db.table(subject)
+                associated_records = associated_table.search(
+                    where('key') == key
+                )
+                assert len(associated_records) <= 1
+                for associated_record in associated_records:
+                    ext_link = associated_record['link']
+                    link.update(ext_link)
+        # Store all links alongside record details
+        new_record['link'] = link
+        return super().create(new_record)
+
+    def read_all(self, filter={}):
+        return super().read_all(f_key="link", filter=filter)
+
+    def read(self, r_id):
+        return super().read(r_id, f_key="link")
+
+    def update(self, r_id, updates):
+        assert not ("link" in updates.keys())
+        return super().update(r_id, updates)
+
+    def delete(self, r_id):
+        """ Switches to composite link keys for performing deletion cascade """
+        # Search for record using r_id
+        database = self.load_database()
+
+        with database as db:
+            subject_table = db.table(self.subject)
+            main_record = subject_table.get(where('key') == r_id)
+
+        link = main_record['link']
+        return super().delete(link, key="link")
 
 #######################################
 # Data Storage Class - ProjectRecords #
@@ -467,7 +590,16 @@ class ProjectRecords(TopicalRecords):
             "Project", 
             "project_id", 
             db_path,
-            *["Tag", "Alignment", "Experiment", "Run"]
+            *[
+                "Experiment", 
+                "Run", 
+                "Registration", 
+                "Tag", 
+                "Alignment", 
+                "Model",
+                "Validation",
+                "Prediction"
+            ]
         )
 
     def __generate_key(self, project_id):
@@ -504,7 +636,7 @@ class ParticipantRecords(TopicalRecords):
             "Participant", 
             "participant_id", 
             db_path,
-            *["Tag", "Alignment"]
+            *["Registration", "Tag", "Alignment"]
         )
 
     def __generate_key(self, participant_id):
@@ -542,7 +674,7 @@ class ExperimentRecords(TopicalRecords):
             "Experiment", 
             "expt_id", 
             db_path,
-            *["Run"]
+            *["Run", "Model", "Validation", "Prediction"]
         )
 
     def __generate_key(self, project_id, expt_id):
@@ -576,9 +708,10 @@ class RunRecords(TopicalRecords):
 
     def __init__(self, db_path=db_path):
         super().__init__(
-            subject="Run",  
-            identifier="run_id", 
-            db_path=db_path
+            "Run",  
+            "run_id", 
+            db_path,
+            *["Model", "Validation", "Prediction"]
         )
 
     def __generate_key(self, project_id, expt_id, run_id):
@@ -604,84 +737,132 @@ class RunRecords(TopicalRecords):
         run_key = self.__generate_key(project_id, expt_id, run_id)
         return super().delete(run_key)
 
+#################################################
+# Data Storage Association class - Registration #
+#################################################
+
+class RegistrationRecords(AssociationRecords):
+    """ RegistrationRecords documents associative records as a means to allow
+        participants to interact with different projects and vice-versa. 
+        Note: Associative records DO NOT have user-allocated IDs! They are
+              auto-generated to be used as foreign keys in other downstream
+              associative records. Registrations are associative records and
+              will not have a registration ID as part of its composite key.
+              Instead it will exist under the 'link' key.
+    """
+    def __init__(self, db_path=db_path):
+        super().__init__(
+            subject="Registration",  
+            identifier="registration_id", 
+            db_path=db_path,
+            relations=["Project", "Participant", "Tag", "Alignment"]
+        )
+        # Note: Registration has 2 hidden upstream relations
+
+    def __generate_key(self, project_id, participant_id):
+        return {"project_id": project_id, "participant_id": participant_id}
+
+    def __cross_link_subjects(self, project_id, participant_id, concise=True):
+        relevant_records = {}
+        # Retrieve relevant project using specified project ID
+        project_records = ProjectRecords(db_path=self.db_path)
+        relevant_project = project_records.read(
+            project_id=project_id
+        )
+        # Retrieve relevant participants using specified participant ID
+        participant_records = ParticipantRecords(db_path=self.db_path)
+        relevant_participant = participant_records.read(
+            participant_id=participant_id
+        )
+        # Remove details from internals nesting relations
+        if concise:
+            relevant_project.pop('relations')
+            relevant_participant.pop('relations')
+        relevant_records['project'] = relevant_project
+        relevant_records['participant'] = relevant_participant
+        # Check if relevant records accumulated are valid
+        assert set(["project", "participant"]) == set(relevant_records.keys())
+        assert None not in relevant_records.values()
+        return relevant_records
+
+    def create(self, project_id, participant_id, details):
+        # Check that new details specified conforms to experiment schema
+        jsonschema.validate(details, schemas["registration_schema"])
+        registration_key = self.__generate_key(project_id, participant_id)
+        new_registration = {'key': registration_key}
+        new_registration.update(details)
+        return super().create(new_registration)
+
+    def read_all(self, filter={}):
+        all_registrations = super().read_all(filter=filter)
+        cross_linked_registrations = []
+        for registration in all_registrations:
+            registration_key = registration['key']
+            relevant_records = self.__cross_link_subjects(**registration_key)
+            registration.update(relevant_records)
+            cross_linked_registrations.append(registration)
+        return cross_linked_registrations
+
+    def read(self, project_id, participant_id):
+        registration_key = self.__generate_key(project_id, participant_id)
+        registration = super().read(registration_key)
+        if registration:
+            relevant_records = self.__cross_link_subjects(**registration_key)
+            registration.update(relevant_records)
+        return registration
+
+    def update(self, project_id, participant_id, updates):
+        registration_key = self.__generate_key(project_id, participant_id)
+        return super().update(registration_key, updates)
+
+    def delete(self, project_id, participant_id):
+        registration_key = self.__generate_key(project_id, participant_id)
+        return super().delete(registration_key)
+
 ###############################################
 # Data Storage Association class - TagRecords #
 ###############################################
 
-class TagRecords(TopicalRecords):
-
+class TagRecords(AssociationRecords):
+    """ TagRecords documents the child associations of a participant with its
+        registered project, archiving data tags used to locate datasets to be
+        loaded during FL training.   
+        Note: Associative records DO NOT have user-allocated IDs! They are
+              auto-generated to be used as foreign keys in other downstream
+              associative records. Tags are associative records and will not 
+              have a tag ID as part of its composite key.
+    """
     def __init__(self, db_path=db_path):
         super().__init__(
             "Tag",  
             "tag_id", 
             db_path,
-            *["Alignment"]
+            ["Alignment"],
+            *["Registration"]
         )
 
-    def __generate_key(self, project_id, participant_id, tag_id):
+    def __generate_key(self, project_id, participant_id):
         return {
             "project_id": project_id, 
-            "participant_id": participant_id,
-            "tag_id": tag_id
+            "participant_id": participant_id
         }
 
-    def create(self, project_id, participant_id, tag_id, details):
+    def create(self, project_id, participant_id, details):
         # Check that new details specified conforms to experiment schema
         jsonschema.validate(details, schemas["tag_schema"])
-        tag_key = self.__generate_key(project_id, participant_id, tag_id)
+        tag_key = self.__generate_key(project_id, participant_id)
         new_tag = {'key': tag_key}
         new_tag.update(details)
         return super().create(new_tag)
 
-    def read(self, project_id, participant_id, tag_id):
-        run_key = self.__generate_key(project_id, participant_id, tag_id)
-        return super().read(run_key)
+    def read(self, project_id, participant_id):
+        tag_key = self.__generate_key(project_id, participant_id)
+        return super().read(tag_key)
 
-    def update(self, project_id, participant_id, tag_id, updates):
-        run_key = self.__generate_key(project_id, participant_id, tag_id)
-        return super().update(run_key, updates)
+    def update(self, project_id, participant_id, updates):
+        tag_key = self.__generate_key(project_id, participant_id)
+        return super().update(tag_key, updates)
 
-    def delete(self, project_id, participant_id, tag_id):
-        run_key = self.__generate_key(project_id, participant_id, tag_id)
-        return super().delete(run_key)
-
-#####################################################
-# Data Storage Association class - AlignmentRecords #
-#####################################################
-
-class AlignmentRecords(TopicalRecords):
-
-    def __init__(self, db_path=db_path):
-        super().__init__(
-            subject="Alignment",  
-            identifier="XXXX", # no primary identifier, just foreign keys
-            db_path=db_path
-        )
-
-    def __generate_key(self, project_id, participant_id, tag_id):
-        return {
-            "project_id": project_id, 
-            "participant_id": participant_id,
-            "tag_id": tag_id
-        }
-
-    def create(self, project_id, participant_id, tag_id, details):
-        # Check that new details specified conforms to experiment schema
-        jsonschema.validate(details, schemas["alignment_schema"])
-        alignment_key = self.__generate_key(project_id, participant_id, tag_id)
-        new_alignment = {'key': alignment_key}
-        new_alignment.update(details)
-        return super().create(new_alignment)
-
-    def read(self, project_id, participant_id, tag_id):
-        alignment_key = self.__generate_key(project_id, participant_id, tag_id)
-        return super().read(alignment_key)
-
-    def update(self, project_id, participant_id, tag_id, updates):
-        alignment_key = self.__generate_key(project_id, participant_id, tag_id)
-        return super().update(alignment_key, updates)
-
-    def delete(self, project_id, participant_id, tag_id):
-        alignment_key = self.__generate_key(project_id, participant_id, tag_id)
-        return super().delete(alignment_key)
-
+    def delete(self, project_id, participant_id):
+        tag_key = self.__generate_key(project_id, participant_id)
+        return super().delete(tag_key)

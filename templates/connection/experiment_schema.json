@@ -4,7 +4,6 @@
     "description": "Configurations for defininng a deep neural network model in PySyft FL training",
     "type": "object",
     "properties": {
-        
         "expt_id": {
             "description": "Unique Identifier for an experiment",
             "type": "string"
@@ -16,51 +15,468 @@
             "items": {
                 "type": "object",
                 "properties": {
-
                     "is_input": {
                         "description": "Toggles if the layer is an input layer",
                         "type": "boolean"
                     },
-
+                    "l_type": {
+                        "description": "Supported layer type of the layer",
+                        "type": "string"
+                    },
                     "structure": {
                         "description": "Structure of Deep neural network",
                         "type": "object",
                         "properties": {
-
-                            "in_features": {
-                                "description": "No. of input features to layer",
+                            "_random_samples": {
+                                "description": "PyTorch layer internal parameter 1"
+                            },
+                            "_weight": {
+                                "description": "PyTorch layer internal parameter 2"
+                            },
+                            "activation": {
+                                "description": "Activation function of intermediate layer",
+                                "type": "string"
+                            },
+                            "add_bias_kv": {
+                                "description": "Add bias to the key and value sequences at dim=0",
+                                "type": "boolean"
+                            },
+                            "add_zero_attn": {
+                                "description": "Add a new batch of zeros to the key and value sequences at dim=1",
+                                "type": "boolean"
+                            },
+                            "affine": {
+                                "description": "Toggles if a layer has learnable affine parameters",
+                                "type": "boolean"
+                            },
+                            "align_corners": {
+                                "description": "Toggles alignment of corner pixels of the input and output tensors, preserving the values at those pixels",
+                                "type": ["null", "boolean"]
+                            },
+                            "alpha": {
+                                "description": "Alpha value for the activation formulation",
+                                "type": "number"
+                            },
+                            "batch_first": {
+                                "description": "Toggles if input and output tensors are provided as (batch, seq, feature)",
+                                "type": "boolean"
+                            },
+                            "beta": {
+                                "description": "Beta value for the activation formulation",
+                                "type": ["integer", "number"]
+                            },
+                            "bias": {
+                                "description": "Toggles if layer has bias weights",
+                                "type": "boolean"
+                            },
+                            "bidirectional": {
+                                "description": "Toggles bidirection state of recurrent layers",
+                                "type": "boolean"
+                            },
+                            "blank": {
+                                "description": "Blank label",
                                 "type": "integer"
                             },
-                            
-                            "out_features": {
-                                "description": "No. of output features to layer",
-                                "type": "integer"                    
+                            "ceil_mode": {
+                                "description": "Toggles use of ceil instead of floor to compute the output shape",
+                                "type": "boolean"
                             },
-
-                            "bias": {
-                                "description": "Toggles if a bias term should be included",
-                                "type": "boolean"                                
+                            "count_include_pad": {
+                                "description": "Toggles if zero-padding will be included in the averaging calculation",
+                                "type": "boolean"
+                            },
+                            "custom_decoder": {
+                                "description": "Custom decoder"
+                            },
+                            "custom_encoder": {
+                                "description": "Custom encoder"
+                            },
+                            "cutoffs": {
+                                "description": "buffer",
+                                "type": "array",
+                                "items": {"type": "string"}
+                            },
+                            "d_model": {
+                                "description": "No. of expected features in the input ",
+                                "type": "integer"
+                            },
+                            "data": {
+                                "description": "Tensor containing packed sequence"
+                            },
+                            "decoder_layer": {
+                                "description": "Decoding layer of transformer layer"
+                            },
+                            "device_ids": {
+                                "description": "CUDA devices",
+                                "type": "array",
+                                "items": {"type": "integer"}
+                            },
+                            "dilation": {
+                                "description": "Spacing between kernel elements",
+                                "type": ["array", "integer"]
+                            },
+                            "dim": {
+                                "description": "Dimension along which loss will be computed",
+                                "type": "integer"
+                            },
+                            "dim_feedforward": {
+                                "description": "Dimension of the feedforward network model",
+                                "type": "integer"
+                            },
+                            "div_value": {
+                                "description": "Value used as an exponent to compute sizes of the clusters",
+                                "type": "number"
+                            },
+                            "divisor_override": {
+                                "description": "if specified, it will be used as divisor in place of kernel_size"
+                            },
+                            "dropout": {
+                                "description": "Introduce dropout layer of specified dropout probability",
+                                "type": "number"
+                            },
+                            "elementwise_affine": {
+                                "description": "Toggles if module has learnable per-element affine parameters initialized to ones (for weights) and zeros (for biases).",
+                                "type": "boolean"
+                            },
+                            "embed_dim": {
+                                "description": "Total dimension of the model"
+                            },
+                            "embedding_dim": {
+                                "description": "Size of each embedding vector",
+                                "type": "integer"
+                            },
+                            "encoder_layer": {
+                                "description": "Encoding Layer of transformer layer"
+                            },
+                            "end_dim": {
+                                "description": "Last dim to flatten",
+                                "type": "integer"
+                            },
+                            "eps": {
+                                "description": "Value added to the denominator for numerical stability",
+                                "type": "number"
+                            },
+                            "full": {
+                                "description": "Toggles whether to compute full loss",
+                                "type": "boolean"
+                            },
+                            "groups": {
+                                "description": "Controls the connections between inputs and outputs",
+                                "type": "integer"
+                            },
+                            "head_bias": {
+                                "description": "Toggles whether to adds a bias term to the ‘head’ of the adaptive softmax",
+                                "type": "boolean"
+                            },
+                            "hidden_size": {
+                                "description": "No. of features in the hidden state",
+                                "type": ["array", "integer"]
+                            },
+                            "ignore_index": {
+                                "description": "Specifies a target value that is ignored and does not contribute to the input gradient",
+                                "type": "integer"
+                            },
+                            "in1_features": {
+                                "description": "Size of each first input sample",
+                                "type": ["array", "integer"]
+                            },
+                            "in2_features": {
+                                "description": "Size of each first input sample",
+                                "type": ["array", "integer"]
+                            },
+                            "in_channels": {
+                                "description": "No. of channels in the input image",
+                                "type": "integer"
+                            },
+                            "in_features": {
+                                "description": "No. of features in the input tensor",
+                                "type": "integer"
+                            },
+                            "init": {
+                                "description": "Initial value of alpha for PReLU",
+                                "type": "number"
+                            },
+                            "inplace": {
+                                "description": "Toggles whether to do the operation in-place",
+                                "type": "boolean"
+                            },
+                            "input_size": {
+                                "description": "Expected no. of features in the input",
+                                "type": "array"
+                            },
+                            "k": {
+                                "description": "buffer",
+                                "type": "number"
+                            },
+                            "kdim": {
+                                "description": "Total number of features in key"
+                            },
+                            "keepdim": {
+                                "description": "Toggles whether or not to keep the vector dimension",
+                                "type": "boolean"
+                            },
+                            "kernel_size": {
+                                "description": "Size of the convolving kernel",
+                                "type": ["array", "integer"]
+                            },
+                            "lambd": {
+                                "description": "Lambda value for the shrink formulation",
+                                "type": "number"
+                            },
+                            "log_input": {
+                                "description": "Toggles if log is used to compute loss",
+                                "type": "boolean"
+                            },
+                            "lower": {
+                                "description": "Lower bound of the uniform distribution",
+                                "type": "number"
+                            },
+                            "margin": {
+                                "description": "Margin threshold value",
+                                "type": "number"
+                            },
+                            "max_norm": {
+                                "description": "Max norm of the gradients",
+                                "type": ["number", "integer"]
+                            },
+                            "max_val": {
+                                "description": "Maximum value of the linear region range",
+                                "type": "number"
+                            },
+                            "max_value": {
+                                "description": "Deprecated parameter replaced by max_val",
+                                "type": "null"
+                            },
+                            "min_val": {
+                                "description": "Minimum value of the linear region range",
+                                "type": "number"
+                            },
+                            "min_value": {
+                                "description": "Deprecated parameter replaced by min_val",
+                                "type": "null"
+                            },
+                            "mode": {
+                                "description": "Specifies the way to reduce the bag",
+                                "type": "string",
+                                "enum": ["sum", "mean", "max"]
+                            },
+                            "module": {
+                                "description": "Module to be parallelized"
+                            },
+                            "modules": {
+                                "description": "Device location of output for single-device CUDA modules"
+                            },
+                            "momentum": {
+                                "description": "Value used for running_mean and running_var computation",
+                                "type": "number"
+                            },
+                            "n_classes": {
+                                "description": "No. of classes in the dataset",
+                                "type": "integer"
+                            },
+                            "negative_slope": {
+                                "description": "Controls the angle of the negative slope of leaky ReLU",
+                                "type": "number"
+                            },
+                            "nhead": {
+                                "description": "No. of heads in the multiheadattention models",
+                                "type": "integer"
+                            },
+                            "nonlinearity": {
+                                "description": "The non-linearity to use",
+                                "type": "string",
+                                "enum": ["tanh", "relu"]
+                            },
+                            "norm": {
+                                "description": "Layer normalization component"
+                            },
+                            "norm_type": {
+                                "description": "The p of the p-norm to compute for the max_norm option",
+                                "type": "number"
+                            },
+                            "normalized_shape": {
+                                "description": "input shape from an expected input of size",
+                                "type": ["array", "integer"]
+                            },
+                            "num_channels": {
+                                "description": "No. of channels expected in input",
+                                "type": "integer"
+                            },
+                            "num_chunks": {
+                                "description": "buffer"
+                            },
+                            "num_decoder_layers": {
+                                "description": "No. of sub-decoder-layers in the decoder",
+                                "type": "integer"
+                            },
+                            "num_embeddings": {
+                                "description": "Size of the dictionary of embeddings",
+                                "type": "integer"
+                            },
+                            "num_encoder_layers": {
+                                "description": "No. of sub-encoder-layers in the encoder",
+                                "type": "integer"
+                            },
+                            "num_features": {
+                                "description": "CC from an expected input of size (N, C, L)(N,C,L) or LL from input of size (N, L)(N,L)",
+                                "type": "integer"
+                            },
+                            "num_groups": {
+                                "description": "No. of groups to separate the channels into",
+                                "type": "integer"
+                            },
+                            "num_heads": {
+                                "description": "Parallel attention heads",
+                                "type": "integer"
+                            },
+                            "num_layers": {
+                                "description": "Number of recurrent layers",
+                                "type": "integer"
+                            },
+                            "num_parameters": {
+                                "description": "No. of alpha to learn",
+                                "type": "integer"
+                            },
+                            "out_channels": {
+                                "description": "No. of channels produced by the convolution",
+                                "type": "integer"
+                            },
+                            "out_features": {
+                                "description": "Size of each output sample",
+                                "type": "integer"
+                            },
+                            "output_device": {
+                                "description": "Device location of output",
+                                "type": "integer"
+                            },
+                            "output_padding": {
+                                "description": "Controls the additional size added to one side of the output shape",
+                                "type": "integer"
+                            },
+                            "output_ratio": {
+                                "description": "Ratio of output size to input size",
+                                "type": ["number", "array"]
+                            },
+                            "output_size": {
+                                "description": "Shape of the spatial dimensions of the output",
+                                "type": ["array", "integer"]
+                            },
+                            "p": {
+                                "description": "Probability of an element to be zeroed",
+                                "type": "number"
+                            },
+                            "padding": {
+                                "description": "Zero-padding added to both sides of the input",
+                                "type": "integer"
+                            },
+                            "padding_idx": {
+                                "description": "If given, pads the output with the embedding vector at padding_idx (initialized to zeros) whenever it encounters the index",
+                                "type": "integer"
+                            },
+                            "padding_mode": {
+                                "description": "buffer",
+                                "type": "string",
+                                "enum": ["zeros", "reflect", "replicate", "circular"]
+                            },
+                            "parameters": {
+                                "description": "Iterable of Tensors or a single Tensor that will have gradients normalized"
+                            },
+                            "pos_weight": {
+                                "description": "Weight of positive examples. Must be a vector with length equal to the number of classes"
+                            },
+                            "process_group": {
+                                "description": "Process group to be used for distributed data all-reduction"
+                            },
+                            "reduce": {
+                                "description": "Deprecated version of reduction",
+                                "type": "null"
+                            },
+                            "reduction": {
+                                "description": "Specifies the reduction to apply to the output",
+                                "type": "string",
+                                "enum": ["none", "mean", "sum"]
+                            },
+                            "requires_grad": {
+                                "description": "Toggles if gradients are required",
+                                "type": "boolean"
+                            },
+                            "return_indices": {
+                                "description": "Toggles if the max indices will be returned along with the outputs",
+                                "type": "boolean"
+                            },
+                            "scale_factor": {
+                                "description": "Multiplier for spatial size",
+                                "type": ["number", "array"]
+                            },
+                            "scale_grad_by_freq": {
+                                "description": "Toggles if gradients will be scaled by the inverse of frequency of the words in the mini-batch",
+                                "type": "boolean"
+                            },
+                            "size": {
+                                "description": "Output spatial sizes",
+                                "type": ["integer", "array"]
+                            },
+                            "size_average": {
+                                "description": "Another deprecated version of reduction",
+                                "type": "boolean"
+                            },
+                            "sparse": {
+                                "description": "Toggles if gradient w.r.t. weight matrix will be a sparse tensor",
+                                "type": "boolean"
+                            },
+                            "start_dim": {
+                                "description": "Starting dimension",
+                                "type": "integer"
+                            },
+                            "stride": {
+                                "description": "Stride of the convolution",
+                                "type": ["integer", "array"]
+                            },
+                            "swap": {
+                                "description": "Toggles use of swap distance",
+                                "type": "boolean"
+                            },
+                            "threshold": {
+                                "description": "Value to threshold at",
+                                "type": ["integer", "number"]
+                            },
+                            "track_running_stats": {
+                                "description": "Toggles if the running mean and variance are tracked",
+                                "type": "boolean"
+                            },
+                            "upper": {
+                                "description": "Upper bound of the uniform distribution",
+                                "type": "number"
+                            },
+                            "upscale_factor": {
+                                "description": "Factor to increase spatial resolution by",
+                                "type": "integer"
+                            },
+                            "value": {
+                                "description": "Target value",
+                                "type": ["array", "number", "integer"]
+                            },
+                            "vdim": {
+                                "description": "Total number of features in key",
+                                "type": ["null", "integer"]
+                            },
+                            "weight": {
+                                "description": "Manual rescaling weight given to each class"
+                            },
+                            "zero_infinity": {
+                                "description": "Toggles whether to zero infinite losses and the associated gradients",
+                                "type": "boolean"
                             }
-                        },
-
-                        "required": ["bias"]
+                        }
                     },
-
-                    "l_type": {
-                        "description": "Supported layer type of the layer",
-                        "type": "string"                        
-                    },
-
                     "activation": {
                         "description": "Supported activation function of the layer",
-                        "type": "string"
+                        "type": ["string", "null"]
                     }
                 },
-
-                "required": ["is_input", "structure", "l_type", "activation"]
+                "required": ["is_input", "l_type", "structure", "activation"]
             }
         }
     },
-
     "required": ["model"]
 }
