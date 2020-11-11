@@ -73,4 +73,4 @@ It should return **Graylog server up and running.**
 
 ![graylog_up](https://gitlab.int.aisingapore.org/aims/federatedlearning/fedlearn-prototype/-/wikis/uploads/31e95f992e90cc429514c4d91ae2c212/graylog_up.png)
 
-For more information on how to use Graylog, please refer to https://gitlab.int.aisingapore.org/aims/federatedlearning/fedlearn-prototype/-/wikis/Centralized-logging-for-Synergos/edit
+For more information on how to use Graylog, please refer to https://gitlab.int.aisingapore.org/aims/federatedlearning/fedlearn-prototype/-/wikis/Centralized-logging-for-Synergos
