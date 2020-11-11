@@ -1,10 +1,18 @@
-# from pygelf import GelfTcpHandler
-import graypy
+#!/usr/bin/env python
+
+####################
+# Required Modules #
+####################
+
+# Generic/Built-in
 import logging
-import structlog
-from structlog import wrap_logger
 import sys
 import datetime
+
+# Lib
+import graypy
+import structlog
+from structlog import wrap_logger
 
 class StructlogUtils:
     """
@@ -76,9 +84,9 @@ class SynergosLogger:
 
     
     def add_filter_function(self, logger, filter_function):
-        '''
+        """
         filter_function: list of filter function (fields) to store in graylog server
-        '''
+        """
         for i in filter_function:
             logger.addFilter(i)
 
@@ -97,7 +105,9 @@ class SynergosLogger:
         get_file_path = structlogUtils.get_file_path
         add_timestamp = structlogUtils.add_timestamp
         graypy_structlog_processor = structlogUtils.graypy_structlog_processor
-        logging_variant = graypy_structlog_processor if self.logging_variant == 'graylog' else structlog.processors.JSONRenderer(indent=1)
+        logging_variant = graypy_structlog_processor \
+                        if self.logging_variant == 'graylog' \
+                        else structlog.processors.JSONRenderer(indent=1)
 
         structlog.configure(
             processors=[
@@ -130,12 +140,12 @@ class SynergosLogger:
             level=self.logging_level # default
         )
 
-        '''
+        """
         logging handler to connect to graylog server
         Add arbitrary arguments preceded by '_' to the graylog server by specifying more arguments in GelfTCPHandler,
         e.g. To add a new key "test" with value "testing" 
         GelfTcpHandler(host=self.server, port=self.port, _file_path=self.file_path, _test="testing" ...)
-        '''
+        """
         logger = logging.getLogger(self.logger_name) # logger name must tally for basic logging and structlog
         # logger.setLevel('INFO')
         # handler = graypy.GELFTCPHandler(host=self.server, port=self.port, include_extra_fields=True, _file_path=self.file_path, **kwargs)

@@ -1,18 +1,34 @@
-# https://github.com/tarekziade/system-metrics/blob/master/sysmetrics/__init__.py
+#!/usr/bin/env python
+
+####################
+# Required Modules #
+####################
+
+# Generic/Built-in
 import sys
-import psutil
 import asyncio
 import functools
 import signal
 import logging
-import structlog
-import json
 import os
 
+# Lib
+import structlog
+import psutil
+
+# Custom
 from SynergosLogger.SynergosLogger import SynergosLogger
 from SynergosLogger import syn_logger_config as config
 
+
+##############################################################
+# Logging Filter Class for logging dynamic generated inputs  # 
+##############################################################
+
 class CPU_Filter(logging.Filter):
+    """
+    Logging the CPU Usage
+    """
     def __init__(self):
         # In an actual use case would dynamically get this
         # (e.g. from memcache)
@@ -23,6 +39,9 @@ class CPU_Filter(logging.Filter):
         return True
 
 class Memory_Filter(logging.Filter):
+    """
+    Logging the Memory usage
+    """
     def __init__(self):
         # In an actual use case would dynamically get this
         # (e.g. from memcache)
@@ -39,6 +58,9 @@ class Memory_Filter(logging.Filter):
         return True
 
 class DiskIO_Filter(logging.Filter):
+    """
+    Logging the DiskIO usage
+    """
     def __init__(self):
         # In an actual use case would dynamically get this
         # (e.g. from memcache)
@@ -55,6 +77,9 @@ class DiskIO_Filter(logging.Filter):
         return True
 
 class NetIO_Filter(logging.Filter):
+    """
+    Logging the NetworkIO usage
+    """
     def __init__(self):
         # In an actual use case would dynamically get this
         # (e.g. from memcache)
@@ -70,49 +95,51 @@ class NetIO_Filter(logging.Filter):
         record.net_packets_recv = self.net_packets_recv
         return True
 
-loop = asyncio.get_event_loop()
-RESOLUTION = 1. # How often to probe for hardware usage in seconds
-
-# initializing TTP container information such as "Server", "Port" and "Logger name"
-CONST_SYSMETRICS = config.SYSMETRICS
-
-# Initializing SynergosLogger with the graylog server and port
-# file_path = os.path.dirname(os.path.abspath(__file__) + '/' + __file__)
-file_path = sys.argv[1]
-class_name = sys.argv[2]
-function_name = sys.argv[3]
-
-syn_logger = SynergosLogger(server=CONST_SYSMETRICS['SERVER'], port=CONST_SYSMETRICS['PORT'], logging_level=logging.DEBUG, file_path=file_path, logger_name=CONST_SYSMETRICS['LOGGER'], filter_function=[CPU_Filter(), Memory_Filter(), DiskIO_Filter(), NetIO_Filter()])
-# If there are logs to be censored, pass in optional argument "censor_keys" to censor log messages.
-logging, logger = syn_logger.initialize_structlog()
-
 def _exit(signame):
     loop.stop()
 
 def _probe():
     syn_logger.add_filter_function(logger, [CPU_Filter(), Memory_Filter(), DiskIO_Filter(), NetIO_Filter()])
-    # info = {'cpu_percent': psutil.cpu_percent(interval=None)}
     logging.info("logging cpu & memory usage", file_path=file_path, Class=class_name, function=function_name)
-    # logging.info(json.dumps(info))
     loop.call_later(RESOLUTION, _probe)
-    
 
 if __name__ == '__main__':
+    """
+        Run the HardwareStatsLogger with three input arguments
+        1. file_path
+        2. class_name
+        3. function_name
+    """
+    loop = asyncio.get_event_loop()
+    RESOLUTION = 1. # How often to probe for hardware usage in seconds
+
+    # initializing TTP container information such as "Server", "Port" and "Logger name"
+    CONST_SYSMETRICS = config.SYSMETRICS
+
+    # Initializing SynergosLogger with the graylog server and port
+    file_path = sys.argv[1]
+    class_name = sys.argv[2]
+    function_name = sys.argv[3]
+
+    syn_logger = SynergosLogger(server=CONST_SYSMETRICS['SERVER'], port=CONST_SYSMETRICS['PORT'], 
+                logging_level=logging.DEBUG, file_path=file_path, logger_name=CONST_SYSMETRICS['LOGGER'], 
+                filter_function=[CPU_Filter(), Memory_Filter(), DiskIO_Filter(), NetIO_Filter()])
+
+    # If there are logs to be censored, pass in optional argument "censor_keys" to censor log messages.
+    logging, logger = syn_logger.initialize_structlog()
+
+    # Terminate the process when one of the following signal is received
     for signame in ('SIGINT', 'SIGTERM'):
         loop.add_signal_handler(getattr(signal, signame),
                                 functools.partial(_exit, signame))
     # loop.add_signal_handler(signal.SIGINT, _exit)
     # loop.add_signal_handler(signal.SIGTERM, _exit)
+
     loop.call_later(RESOLUTION, _probe)
     print("Probing cpu, memory and disk...")
     try:
         loop.run_forever()
-        # loop.run_until_complete(test())
     finally:
         loop.close()
 
-# Graylog search debugging,
-# query = search from message in structlog
-# graylog fields for populating data in dashboard for real time monitoring
-# timestamp:["2019-07-23 09:53:08.175" TO "2019-07-23 09:53:08.575"]
-# timestamp:["2020-10-29 06:20:14.940" TO "2020-10-29 06:22:14.940"]
+# https://github.com/tarekziade/system-metrics/blob/master/sysmetrics/__init__.py

@@ -12,4 +12,5 @@ structlog https://www.structlog.org/en/stable/standard-library.html
 Dynamically create inputs
 https://docs.graylog.org/en/3.3/pages/content_packs.html
 
-Inside misc folder, edit content packs then go to graylog server to upload
+Inside misc folder, edit content packs then upload content packs to grayling server
+to dynamically create inputs.

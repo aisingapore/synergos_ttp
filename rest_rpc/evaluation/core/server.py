@@ -37,8 +37,10 @@ from rest_rpc.training.core.server import (
 )
 from rest_rpc.evaluation.core.utils import Analyser
 
-# Synergos logging
+# Synergos & HardwareStats logging
 from SynergosLogger.init_logging import logging
+from SynergosLogger import syn_logger_config
+from HardwareStatsLogger import Sysmetrics
 
 ##################
 # Configurations #
@@ -50,6 +52,11 @@ db_path = app.config['DB_PATH']
 model_records = ModelRecords(db_path=db_path)
 
 rpc_formatter = RPCFormatter()
+
+# Hardwarestats logging
+HARDWARE_STATS_LOGGER = syn_logger_config.SYSMETRICS['HARDWARE_STATS_LOGGER']
+file_path = os.path.abspath(__file__)
+
 
 #############
 # Functions #
@@ -143,11 +150,10 @@ def start_expt_run_inference(
         Statistics (dict)
     """
 
-    from HardwareStatsLogger import Sysmetrics
-    from SynergosLogger import syn_logger_config
-    HARDWARE_STATS_LOGGER = syn_logger_config.SYSMETRICS['HARDWARE_STATS_LOGGER']
-    file_path = os.path.abspath(__file__)
-    Sysmetrics.run(hardware_stats_logger=HARDWARE_STATS_LOGGER, file_path=file_path, class_name="", function_name="start_expt_run_inference")  
+    # Start hardware logging process for training
+    hw_logging_process = Sysmetrics.run(hardware_stats_logger=HARDWARE_STATS_LOGGER, 
+                                        file_path=file_path, class_name="", 
+                                        function_name="start_expt_run_inference")  
 
     def infer_combination():
 
@@ -238,7 +244,8 @@ def start_expt_run_inference(
     # governor = Governor(dockerised=dockerised, **keys)
     governor.terminate(reg_records=registrations)
 
-    Sysmetrics.terminate()
+    # Terminate the hardware logging process once training has completed
+    Sysmetrics.terminate(hw_logging_process)
     
     return polled_stats
 

@@ -31,8 +31,10 @@ from rest_rpc.training.core.federated_learning import FederatedLearning
 from rest_rpc.training.core.utils import Poller, Governor, RPCFormatter
 from rest_rpc.training.core.custom import CustomClientWorker, CustomWSClient
 
-# Synergos logging
+# Synergos & HardwareStats logging
 from SynergosLogger.init_logging import logging
+from SynergosLogger import syn_logger_config
+from HardwareStatsLogger import Sysmetrics
 
 ##################
 # Configurations #
@@ -43,6 +45,10 @@ out_dir = app.config['OUT_DIR']
 cache = mp.Queue()#app.config['CACHE']
 
 rpc_formatter = RPCFormatter()
+
+HARDWARE_STATS_LOGGER = syn_logger_config.SYSMETRICS['HARDWARE_STATS_LOGGER']
+file_path = os.path.abspath(__file__)
+
 
 # Instantiate a local hook for coordinating clients
 # Note: `is_client=True` ensures that all objects are deleted once WS connection
@@ -296,11 +302,11 @@ def start_expt_run_training(
         Path-to-trained-models (dict(str))
     """
 
-    from HardwareStatsLogger import Sysmetrics
-    from SynergosLogger import syn_logger_config
-    HARDWARE_STATS_LOGGER = syn_logger_config.SYSMETRICS['HARDWARE_STATS_LOGGER']
-    file_path = os.path.abspath(__file__)
-    Sysmetrics.run(hardware_stats_logger=HARDWARE_STATS_LOGGER, file_path=file_path, class_name="", function_name="start_expt_run_training")  
+
+    # Start hardware logging process for training
+    hw_logging_process = Sysmetrics.run(hardware_stats_logger=HARDWARE_STATS_LOGGER, 
+                                        file_path=file_path, class_name="", 
+                                        function_name="start_expt_run_training")
 
     def train_combination():
 
@@ -405,7 +411,8 @@ def start_expt_run_training(
     # governor = Governor(dockerised=dockerised, **keys)
     governor.terminate(reg_records=registrations)
 
-    Sysmetrics.terminate()
+    # Terminate the hardware logging process once training has completed
+    Sysmetrics.terminate(hw_logging_process)
 
     return results
 

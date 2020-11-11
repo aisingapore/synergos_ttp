@@ -1,4 +1,0 @@
-psutil==5.7.0
-pygelf==0.3.6
-structlog==20.1.0
-graypy==2.1.0
