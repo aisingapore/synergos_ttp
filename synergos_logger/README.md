@@ -3,7 +3,7 @@
 
 **Architecture - SynergosLogging**
 
-![Screenshot_2020-11-08_at_9.13.54_PM](uploads/6c68ca42e9550ce06b9fdd45ff4c82f0/Screenshot_2020-11-08_at_9.13.54_PM.png)
+![Screenshot_2020-11-08_at_9.13.54_PM](https://gitlab.int.aisingapore.org/aims/federatedlearning/fedlearn-prototype/-/wikis/uploads/6c68ca42e9550ce06b9fdd45ff4c82f0/Screenshot_2020-11-08_at_9.13.54_PM.png)
 
 ## Configure SynergosLogging
 
@@ -71,6 +71,6 @@ docker-compose up
 ```
 It should return **Graylog server up and running.**
 
-![graylog_up](uploads/31e95f992e90cc429514c4d91ae2c212/graylog_up.png)
+![graylog_up](https://gitlab.int.aisingapore.org/aims/federatedlearning/fedlearn-prototype/-/wikis/uploads/31e95f992e90cc429514c4d91ae2c212/graylog_up.png)
 
 For more information on how to use Graylog, please refer to https://gitlab.int.aisingapore.org/aims/federatedlearning/fedlearn-prototype/-/wikis/Centralized-logging-for-Synergos/edit
