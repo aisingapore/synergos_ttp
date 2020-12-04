@@ -68,7 +68,11 @@ REF_WORKER = sy.local_worker
 
 # Patching WebsocketClientWorker
 
-device = th.device('cuda' if th.cuda.is_available() else 'cpu')
+# GPU customisations
+gpu_count = app.config['GPU_COUNT']
+gpus = app.config['GPUS']
+use_gpu = app.config['USE_GPU']
+device = app.config['DEVICE']
 
 #############
 # Functions #
@@ -321,7 +325,20 @@ def start_expt_run_training(
         logging.debug(f"Before training - Registered workers in grid: {grid_hook.local_worker._known_workers}")
         logging.debug(f"Before training - Registered workers in env : {sy.local_worker._known_workers}")
 
+        ###########################
+        # Implementation FootNote #
+        ###########################
+        
+        # Mode customisation will be left here for now. But might be migrated
+        # into federated_learning.py if more gpu customisation parameters need
+        # to be forwarded into FederatedDataloader. This will localise all GPU
+        # integrations into a single file which is easier to maintain
+
         model = load_selected_experiment(expt_record=experiment)
+        if use_gpu and gpu_count > 1:
+            model = th.nn.DataParallel(model, device_ids=gpus)
+        model = model.to(device)
+            
         args = load_selected_run(run_record=run)
     
         # Export trained model weights/biases for persistence
