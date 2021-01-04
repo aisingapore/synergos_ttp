@@ -238,6 +238,46 @@ class RPCFormatter:
         Args:
             all_metadata (dict(str, tinydb.database.Document)): 
                 All retrieved metadata polled from registered participants
+        
+                eg.
+
+                {
+                    <participant_id_1>: {
+
+                        "headers": {
+                            "train": {
+                                "X": ["X1_1", "X1_2", "X2_1", "X2_2", "X3"],
+                                "y": ["target_1", "target_2"]
+                            },
+                            ...
+                        },
+
+                        "schemas": {
+                            "train": {
+                                "X1": "int32",
+                                "X2": "category", 
+                                "X3": "category", 
+                                "X4": "int32", 
+                                "X5": "int32", 
+                                "X6": "category", 
+                                "target": "category"
+                            },
+                            ...
+                        },
+                        
+                        "metadata":{
+                            "train":{
+                                'src_count': 1000,
+                                '_type': "<insert datatype>",
+                                <insert type-specific meta statistics>
+                                ...
+                            },
+                            ...
+                        }
+                    },
+                    ...
+                }
+        
         Returns:
             X_data_headers  (list(list(str)))
             y_data_headers  (list(list(str)))
@@ -248,6 +288,7 @@ class RPCFormatter:
         key_sequences = []
         X_data_headers = []
         y_data_headers = []
+        descriptors = {}
         for participant_id, metadata in all_metadata.items():
 
             headers = metadata['headers']
@@ -266,7 +307,16 @@ class RPCFormatter:
                     continue
                 super_schema.update(schema)
 
-        return X_data_headers, y_data_headers, key_sequences, super_schema
+            dataset_stats = metadata['metadata']
+            descriptors[participant_id] = dataset_stats
+
+        return (
+            X_data_headers,
+            y_data_headers, 
+            key_sequences, 
+            super_schema,
+            descriptors
+        )
 
     def alignment_to_spacer_idxs(self, X_mf_alignments, y_mf_alignments, key_sequences):
         """ Aggregates feature and target alignments and formats them w.r.t each
