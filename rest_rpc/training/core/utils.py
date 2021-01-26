@@ -10,6 +10,7 @@ import copy
 import importlib
 import json
 import logging
+import time
 import uuid
 from datetime import datetime
 from typing import Dict, List, Tuple, Callable
@@ -32,6 +33,7 @@ logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.DEBUG)
 schemas = app.config['SCHEMAS']
 db_path = app.config['DB_PATH']
 
+retry_interval = app.config['RETRY_INTERVAL']
 worker_poll_route = app.config['WORKER_ROUTES']['poll']
 worker_align_route = app.config['WORKER_ROUTES']['align']
 worker_initialise_route = app.config['WORKER_ROUTES']['initialise']
@@ -414,22 +416,50 @@ class Poller:
         
         payload = {'action': project_action, 'tags': stripped_tags}
 
-        # Poll for headers by posting tags to `Poll` route in worker
         timeout = aiohttp.ClientTimeout(
             total=None, 
             connect=None,
             sock_connect=None, 
             sock_read=None
         ) # `0` or None value to disable timeout
+
+        # Submit loading job by POSTING tags to `Poll` route in worker
         async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.post(
                 destination_url,
                 timeout=timeout,
                 json=payload
             ) as response:
-                resp_json = await response.json(content_type='application/json')
+                load_resp_json = await response.json(content_type='application/json')
+                jobs_in_queue = load_resp_json['data']['jobs']
+
+        # Check if archives are retrievable every X=1 second
+        archive_retrieved = False
+        metadata = None
+        while not archive_retrieved:
+
+            # Attempt archive retrieval via GET request to `Poll` route in worker
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.get(
+                    destination_url,
+                    timeout=timeout,
+                    json=payload
+                ) as response:
+
+                    retrieval_resp_json = await response.json(content_type='application/json')
+                       
+                    if response.status == 200:
+                        metadata = retrieval_resp_json['data']
+                        archive_retrieved = True
+
+                    elif response.status == 406:
+                        sleep_interval = jobs_in_queue * retry_interval
+                        logging.debug(f"Archives for participant '{participant_id}' are not yet loaded. Retrying after {sleep_interval} seconds...")
+                        time.sleep(sleep_interval)
+
+                    else:
+                        raise RuntimeError(f"Something went wrong when polling for metadata from participant '{participant_id}'")
         
-        metadata = resp_json['data']
         return {participant_id: metadata}
 
     async def _collect_all_metadata(self, reg_records):

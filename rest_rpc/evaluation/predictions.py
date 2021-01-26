@@ -256,7 +256,7 @@ class Predictions(Resource):
             project_registrations = registration_records.read_all(
                 filter={'project_id': registered_project_id}
             )
-            
+
             poller = Poller(project_id=registered_project_id)
             all_metadata = poller.poll(project_registrations)
 

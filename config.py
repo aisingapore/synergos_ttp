@@ -151,6 +151,9 @@ GPUS = [g_idx for g_idx in range(GPU_COUNT)]
 USE_GPU = GPU_COUNT > 0 and th.cuda.is_available()
 DEVICE = th.device('cuda' if USE_GPU else 'cpu')
 
+# Retry interval for contacting idle workers
+RETRY_INTERVAL = 5  # in seconds
+
 logging.debug(f"Is master node? {IS_MASTER}")
 logging.debug(f"Input directory detected: {IN_DIR}")
 logging.debug(f"Output directory detected: {OUT_DIR}")
@@ -162,6 +165,7 @@ logging.debug(f"No. of available CPU Cores: {CORES_USED}")
 logging.debug(f"No. of available GPUs: {GPU_COUNT}")
 logging.debug(f"Are GPUs active: {USE_GPU}")
 logging.debug(f"Final device used: {DEVICE}")
+logging.debug(f"Retry Interval: {RETRY_INTERVAL} seconds")
 
 ##########################################
 # PySyft Project Database Configurations #

@@ -1088,9 +1088,9 @@ class BaseAlgorithm(AbstractAlgorithm):
                 rounds=rounds,
                 epochs=self.arguments.epochs
             )
+            logging.debug(f"Current global model:\n {self.global_model.state_dict()}")
 
             # Retrieve all models from their respective workers
-            logging.debug(f"Current global model:\n {self.global_model.state_dict()}")
             aggregated_params = self.calculate_global_params(
                 self.global_model, 
                 retrieved_models, 
