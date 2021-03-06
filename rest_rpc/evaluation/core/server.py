@@ -211,10 +211,6 @@ def start_expt_run_inference(
     participants_inferences = infer_combination()
     logging.debug(f"Aggregated predictions: {participants_inferences}")
 
-    # Send terminate signal to all participants' worker nodes
-    # governor = Governor(dockerised=dockerised, **keys)
-    governor.terminate(reg_records=registrations)
-
     # Stats will only be computed for relevant participants
     # (i.e. contributed datasets used for inference)
     relevant_participants = list(participants_inferences.keys())
@@ -234,6 +230,9 @@ def start_expt_run_inference(
     polled_stats = analyser.infer(reg_records=relevant_registrations)
     logging.debug(f"Polled statistics: {polled_stats}")
 
+    # Send terminate signal to all participants' worker nodes
+    governor.terminate(reg_records=registrations)
+    
     return polled_stats
 
 

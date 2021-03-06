@@ -1,0 +1,59 @@
+###################
+# CUDA Base Image #
+###################
+
+FROM nvidia/cuda:11.1-cudnn8-devel-ubuntu18.04 as cuda
+CMD nvidia-smi
+
+RUN apt-get update
+RUN DEBIAN_FRONTEND=noninteractive apt-get install -y \
+    build-essential \
+    git\
+    pciutils
+
+# Python package management and basic dependencies
+RUN apt-get install -y curl python3.7 python3.7-dev python3.7-distutils
+
+# Register the version in alternatives
+RUN update-alternatives --install /usr/bin/python python /usr/bin/python3.7 1
+
+# Set python 3 as the default python
+RUN update-alternatives --set python /usr/bin/python3.7
+
+# Upgrade pip to latest version
+RUN curl -s https://bootstrap.pypa.io/get-pip.py -o get-pip.py \
+ && python get-pip.py --force-reinstall \
+ && rm get-pip.py
+
+COPY requirements.txt ./
+
+RUN pip install --upgrade pip setuptools wheel \
+ && pip install --no-cache-dir -r requirements.txt
+
+ADD . /ttp
+WORKDIR /ttp
+
+EXPOSE 5000
+EXPOSE 8020
+EXPOSE 8080
+
+########################
+# New Image - Debugger #
+########################
+
+FROM cuda as debug
+RUN pip install ptvsd
+
+WORKDIR /ttp
+EXPOSE 5678
+CMD python -m ptvsd --host 0.0.0.0 --port 5678 --wait main.py
+
+##########################
+# New Image - Production #
+##########################
+
+FROM cuda as prod
+
+WORKDIR /ttp
+ENTRYPOINT ["python", "./main.py"]
+CMD ["--help"]
