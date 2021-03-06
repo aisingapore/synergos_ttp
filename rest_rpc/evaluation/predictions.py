@@ -256,14 +256,14 @@ class Predictions(Resource):
             project_registrations = registration_records.read_all(
                 filter={'project_id': registered_project_id}
             )
-            
+
             poller = Poller(project_id=registered_project_id)
             all_metadata = poller.poll(project_registrations)
 
             logging.debug(f"All metadata polled: {all_metadata}")
 
-            (X_data_headers, y_data_headers,
-             key_sequences, _) = rpc_formatter.aggregate_metadata(all_metadata)
+            (X_data_headers, y_data_headers, key_sequences,
+             _, _) = rpc_formatter.aggregate_metadata(all_metadata)
 
             ###########################
             # Implementation Footnote #

@@ -211,6 +211,10 @@ def start_expt_run_inference(
     participants_inferences = infer_combination()
     logging.debug(f"Aggregated predictions: {participants_inferences}")
 
+    # Send terminate signal to all participants' worker nodes
+    # governor = Governor(dockerised=dockerised, **keys)
+    governor.terminate(reg_records=registrations)
+
     # Stats will only be computed for relevant participants
     # (i.e. contributed datasets used for inference)
     relevant_participants = list(participants_inferences.keys())
@@ -221,13 +225,14 @@ def start_expt_run_inference(
     ]
 
     # Convert collection of object IDs accumulated from minibatch 
-    analyser = Analyser(**keys, inferences=participants_inferences, metas=metas)
+    analyser = Analyser(
+        auto_align=auto_align, 
+        inferences=participants_inferences, 
+        metas=metas,
+        **keys
+    )
     polled_stats = analyser.infer(reg_records=relevant_registrations)
     logging.debug(f"Polled statistics: {polled_stats}")
-
-    # Send terminate signal to all participants' worker nodes
-    # governor = Governor(dockerised=dockerised, **keys)
-    governor.terminate(reg_records=registrations)
 
     return polled_stats
 

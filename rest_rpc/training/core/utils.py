@@ -10,6 +10,7 @@ import copy
 import importlib
 import json
 import logging
+import time
 import uuid
 from datetime import datetime
 from typing import Dict, List, Tuple, Callable
@@ -32,6 +33,7 @@ logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.DEBUG)
 schemas = app.config['SCHEMAS']
 db_path = app.config['DB_PATH']
 
+retry_interval = app.config['RETRY_INTERVAL']
 worker_poll_route = app.config['WORKER_ROUTES']['poll']
 worker_align_route = app.config['WORKER_ROUTES']['align']
 worker_initialise_route = app.config['WORKER_ROUTES']['initialise']
@@ -238,6 +240,46 @@ class RPCFormatter:
         Args:
             all_metadata (dict(str, tinydb.database.Document)): 
                 All retrieved metadata polled from registered participants
+        
+                eg.
+
+                {
+                    <participant_id_1>: {
+
+                        "headers": {
+                            "train": {
+                                "X": ["X1_1", "X1_2", "X2_1", "X2_2", "X3"],
+                                "y": ["target_1", "target_2"]
+                            },
+                            ...
+                        },
+
+                        "schemas": {
+                            "train": {
+                                "X1": "int32",
+                                "X2": "category", 
+                                "X3": "category", 
+                                "X4": "int32", 
+                                "X5": "int32", 
+                                "X6": "category", 
+                                "target": "category"
+                            },
+                            ...
+                        },
+                        
+                        "metadata":{
+                            "train":{
+                                'src_count': 1000,
+                                '_type': "<insert datatype>",
+                                <insert type-specific meta statistics>
+                                ...
+                            },
+                            ...
+                        }
+                    },
+                    ...
+                }
+        
         Returns:
             X_data_headers  (list(list(str)))
             y_data_headers  (list(list(str)))
@@ -248,6 +290,7 @@ class RPCFormatter:
         key_sequences = []
         X_data_headers = []
         y_data_headers = []
+        descriptors = {}
         for participant_id, metadata in all_metadata.items():
 
             headers = metadata['headers']
@@ -266,7 +309,16 @@ class RPCFormatter:
                     continue
                 super_schema.update(schema)
 
-        return X_data_headers, y_data_headers, key_sequences, super_schema
+            dataset_stats = metadata['metadata']
+            descriptors[participant_id] = dataset_stats
+
+        return (
+            X_data_headers,
+            y_data_headers, 
+            key_sequences, 
+            super_schema,
+            descriptors
+        )
 
     def alignment_to_spacer_idxs(self, X_mf_alignments, y_mf_alignments, key_sequences):
         """ Aggregates feature and target alignments and formats them w.r.t each
@@ -364,22 +416,50 @@ class Poller:
         
         payload = {'action': project_action, 'tags': stripped_tags}
 
-        # Poll for headers by posting tags to `Poll` route in worker
         timeout = aiohttp.ClientTimeout(
             total=None, 
             connect=None,
             sock_connect=None, 
             sock_read=None
         ) # `0` or None value to disable timeout
+
+        # Submit loading job by POSTING tags to `Poll` route in worker
         async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.post(
                 destination_url,
                 timeout=timeout,
                 json=payload
             ) as response:
-                resp_json = await response.json(content_type='application/json')
+                load_resp_json = await response.json(content_type='application/json')
+                jobs_in_queue = load_resp_json['data']['jobs']
+
+        # Check if archives are retrievable every X=1 second
+        archive_retrieved = False
+        metadata = None
+        while not archive_retrieved:
+
+            # Attempt archive retrieval via GET request to `Poll` route in worker
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.get(
+                    destination_url,
+                    timeout=timeout,
+                    json=payload
+                ) as response:
+
+                    retrieval_resp_json = await response.json(content_type='application/json')
+                       
+                    if response.status == 200:
+                        metadata = retrieval_resp_json['data']
+                        archive_retrieved = True
+
+                    elif response.status == 406:
+                        sleep_interval = jobs_in_queue * retry_interval
+                        logging.debug(f"Archives for participant '{participant_id}' are not yet loaded. Retrying after {sleep_interval} seconds...")
+                        time.sleep(sleep_interval)
+
+                    else:
+                        raise RuntimeError(f"Something went wrong when polling for metadata from participant '{participant_id}'")
         
-        metadata = resp_json['data']
         return {participant_id: metadata}
 
     async def _collect_all_metadata(self, reg_records):

@@ -262,7 +262,8 @@ class Analyser:
         expt_id: str, 
         run_id: str,
         inferences: dict,
-        metas: list = ['train', 'evaluate', 'predict']
+        metas: list = ['train', 'evaluate', 'predict'],
+        auto_align: bool = True
     ):
         self.__rpc_formatter = RPCFormatter()
         self.metas = metas
@@ -270,6 +271,7 @@ class Analyser:
         self.expt_id = expt_id
         self.run_id = run_id
         self.inferences = inferences
+        self.auto_align = auto_align
 
     ###########
     # Helpers #
@@ -294,6 +296,25 @@ class Analyser:
         participant_ip = participant_details['host']
         participant_f_port = participant_details.pop('f_port') # Flask port
 
+        # Search for tags using composite project + participant
+        relevant_tags = reg_record['relations']['Tag'][0]
+        stripped_tags = self.__rpc_formatter.strip_keys(relevant_tags)
+
+        if self.auto_align:
+            try:
+                relevant_alignments = reg_record['relations']['Alignment'][0]
+                stripped_alignments = self.__rpc_formatter.strip_keys(
+                    relevant_alignments
+                )
+            except (KeyError, AttributeError) as e:
+                logging.error(f"Analyser._poll_for_stats: Error - {e}")
+                raise RuntimeError("No prior alignments have been detected! Please run multiple feature alignment first and try again!")
+        else:
+            stripped_alignments = {
+                meta: {"X": [], "y": []} # do not apply any alignment indexes
+                for meta, _ in stripped_tags.items()
+            }
+
         if not inferences:
             return {participant_id: {meta:{} for meta in self.metas}}
 
@@ -308,7 +329,12 @@ class Analyser:
             run_id=self.run_id
         )
         
-        payload = {'action': project_action, 'inferences': inferences}
+        payload = {
+            'action': project_action, 
+            'tags': stripped_tags,
+            'alignments': stripped_alignments,
+            'inferences': inferences
+        }
 
         # Trigger remote inference by posting alignments & ID mappings to 
         # `Predict` route in worker
@@ -319,6 +345,8 @@ class Analyser:
             ) as response:
                 resp_json = await response.json(content_type='application/json')
         
+        logging.debug(f"Analyser json: {resp_json}")
+
         # Extract the relevant expt-run results
         expt_run_key = replicate_combination_key(self.expt_id, self.run_id)
         metadata = resp_json['data']['results'][expt_run_key]

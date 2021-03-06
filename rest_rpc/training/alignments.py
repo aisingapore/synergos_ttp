@@ -160,8 +160,8 @@ class Alignments(Resource):
             poller = Poller(project_id=project_id)
             all_metadata = poller.poll(all_relevant_registrations)
 
-            (X_data_headers, y_data_headers,
-             key_sequences, _) = rpc_formatter.aggregate_metadata(all_metadata)
+            (X_data_headers, y_data_headers, key_sequences, 
+            _, descriptors) = rpc_formatter.aggregate_metadata(all_metadata)
 
             logging.debug(f"X_data_headers: {X_data_headers}")
             logging.debug(f"y_data_headers: {y_data_headers}")
@@ -254,6 +254,10 @@ class Alignments(Resource):
                 )
 
                 logging.debug(f"Updated records: {expt_records.read(**curr_expt['key'])}")
+
+            ###############################
+            # Updating Neo4J for Amundsen #
+            ###############################
 
             success_payload = payload_formatter.construct_success_payload(
                 status=201, 

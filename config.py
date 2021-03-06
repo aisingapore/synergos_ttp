@@ -147,6 +147,12 @@ CORES_USED = psutil.cpu_count(logical=True) - 1
 
 # Detect no. of GPUs attached to server
 GPU_COUNT = count_available_gpus()
+GPUS = [g_idx for g_idx in range(GPU_COUNT)]
+USE_GPU = GPU_COUNT > 0 and th.cuda.is_available()
+DEVICE = th.device('cuda' if USE_GPU else 'cpu')
+
+# Retry interval for contacting idle workers
+RETRY_INTERVAL = 5  # in seconds
 
 logging.debug(f"Is master node? {IS_MASTER}")
 logging.debug(f"Input directory detected: {IN_DIR}")
@@ -157,6 +163,9 @@ logging.debug(f"MLFlow directory detected: {MLFLOW_DIR}")
 logging.debug(f"Cache initialised: {CACHE}")
 logging.debug(f"No. of available CPU Cores: {CORES_USED}")
 logging.debug(f"No. of available GPUs: {GPU_COUNT}")
+logging.debug(f"Are GPUs active: {USE_GPU}")
+logging.debug(f"Final device used: {DEVICE}")
+logging.debug(f"Retry Interval: {RETRY_INTERVAL} seconds")
 
 ##########################################
 # PySyft Project Database Configurations #
