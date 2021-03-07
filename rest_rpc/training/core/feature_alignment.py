@@ -7,6 +7,9 @@ from collections import Counter
 # Libs
 import itertools
 
+# Synergos logging
+from SynergosLogger.init_logging import logging
+
 ##################
 # Configurations #
 ##################
@@ -139,6 +142,7 @@ class PairwiseFeatureAligner:
         elif algo == 'local':
             optimal_score = max(0, adj_score, diag_score, top_score)
         else:
+            logging.error(f"NotImplementedError: Algorithm not supported!", Class=PairwiseFeatureAligner.__name__)
             raise NotImplementedError("Algorithm not supported!")
 
         # Update the current cell's score with max score
@@ -340,6 +344,7 @@ class PairwiseFeatureAligner:
             return self.perform_local_trackback()
         
         else:
+            logging.error(f"NotImplementedError: Algorithm not supported", Class=PairwiseFeatureAligner.__name__)
             raise NotImplementedError("Algorithm not supported!")        
     
 
@@ -505,7 +510,8 @@ class MultipleFeatureAligner:
             Handshake Alignments (list(tuple(list(str))))
         """
         handshake_alignments = []
-        for combination in itertools.combinations(self.headers, 2):
+
+        for idx,combination in enumerate(itertools.combinations(self.headers, 2)): #do a logging for the idx, i.e current combi is what?
 
             ###########################
             # Implementation Footnote #

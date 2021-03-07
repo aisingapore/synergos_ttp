@@ -39,11 +39,12 @@ from rest_rpc.evaluation.core.utils import (
     MLFlogger
 )
 
+# Synergos logging
+from SynergosLogger.init_logging import logging
+
 ##################
 # Configurations #
 ##################
-
-logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.DEBUG)
 
 ns_api = Namespace(
     "validations", 
@@ -191,9 +192,11 @@ class Validations(Resource):
                 params=request.view_args,
                 data=retrieved_validations
             )
+            logging.info("Success retrieved validations statistics", code=200, description=success_payload, Class=Validations.__name__)
             return success_payload, 200
 
         else:
+            logging.error("Error retrieving validations statistics", code=404, description=success_payload, Class=Validations.__name__)
             ns_api.abort(
                 code=404, 
                 message=f"Validations do not exist for specified keyword filters!"
@@ -285,7 +288,8 @@ class Validations(Resource):
 
             # Store output metadata into database
             for participant_id, inference_stats in validation_stats.items():
-
+                
+                #log the inference stats
                 worker_key = (participant_id,) + combination_key
 
                 new_validation = validation_records.create(
@@ -307,4 +311,5 @@ class Validations(Resource):
             params=request.view_args,
             data=retrieved_validations
         )
+        logging.info("Completed validations", code=200, description=success_payload, Class=Validations.__name__)
         return success_payload, 200

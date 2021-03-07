@@ -31,6 +31,11 @@ from rest_rpc.training.core.federated_learning import FederatedLearning
 from rest_rpc.training.core.utils import Poller, Governor, RPCFormatter
 from rest_rpc.training.core.custom import CustomClientWorker, CustomWSClient
 
+# Synergos & HardwareStats logging
+from SynergosLogger.init_logging import logging
+from SynergosLogger import syn_logger_config
+from HardwareStatsLogger import Sysmetrics
+
 ##################
 # Configurations #
 ##################

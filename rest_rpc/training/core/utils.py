@@ -24,6 +24,9 @@ from rest_rpc import app
 from rest_rpc.connection.core.utils import TopicalPayload, AssociationRecords
 from rest_rpc.connection.core.datetime_serialization import DateTimeSerializer
 
+# Synergos logging
+from SynergosLogger.init_logging import logging
+
 ##################
 # Configurations #
 ##################
@@ -618,7 +621,7 @@ class Governor:
                     relevant_alignments
                 )
             except (KeyError, AttributeError) as e:
-                logging.error(f"Governor._initialise_participant: Error - {e}")
+                logging.error(f"RuntimeError: Governor._initialise_participant: Error - {e}", Class=Governor.__name__)
                 raise RuntimeError("No prior alignments have been detected! Please run multiple feature alignment first and try again!")
         else:
             stripped_alignments = {
@@ -638,7 +641,7 @@ class Governor:
         if self.dockerised:
             payload.update(self.__DEFAULT_SERVER_CONFIG)
 
-        logging.info(f"rest_rpc.utils.Governor._initialise_participant - Payload: {payload}")
+        logging.info(f"rest_rpc.utils.Governor._initialise_participant - Payload: {payload}", Class=Governor.__name__)
         
         # Initialise WSSW object on participant's worker node by posting tags &
         # alignments to `initialise` route in worker's REST-RPC
@@ -719,6 +722,7 @@ class Governor:
         elif operation == "terminate":
             method = self._terminate_participant
         else:
+            logging.error("ValueError: Invalid operation specified", Class=Governor.__name__)
             raise ValueError("Invalid operation specified")
 
         all_states = {}
@@ -802,7 +806,7 @@ class Parser:
             return operation
 
         except AttributeError:
-            logging.error(f"Specified operation '{operation_str}' is not supported!")
+            logging.error(f"AttributeError: Specified operation '{operation_str}' is not supported!", Class=Parser.__name__)
 
 ############################################
 # Configuration Parser Class - TorchParser #

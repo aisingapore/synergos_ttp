@@ -27,11 +27,15 @@ from rest_rpc.training.models import model_output_model
 from rest_rpc.evaluation.validations import val_output_model
 from rest_rpc.evaluation.predictions import pred_output_model
 
+# Synergos logging
+from SynergosLogger.init_logging import logging
+
+
 ##################
 # Configurations #
 ##################
 
-logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.DEBUG)
+# logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.DEBUG)
 
 ns_api = Namespace(
     "experiments", 
@@ -261,6 +265,7 @@ class Experiments(Resource):
             params={'project_id': project_id},
             data=all_relevant_expts
         )
+        logging.info(f"Success retrieved experiments", code=200, description=success_payload, Class=Experiments.__name__)
         return success_payload, 200
 
     @ns_api.doc("register_experiment")
@@ -284,7 +289,8 @@ class Experiments(Resource):
             project_id=project_id, 
             expt_id=expt_id
         )
-        logging.debug(f"Retrieved experiment: {retrieved_expt}")
+        # logging.debug(f"Retrieved experiment: {retrieved_expt}")
+        logging.debug(f"Retrieved experiment: {expt_id}", description=retrieved_expt, Class=Experiments.__name__)
         assert new_expt.doc_id == retrieved_expt.doc_id
 
         success_payload = payload_formatter.construct_success_payload(
@@ -293,6 +299,7 @@ class Experiments(Resource):
             params={'project_id': project_id},
             data=retrieved_expt
         )
+        logging.info(f"Success retrieved experiment: {expt_id}", code=201, description=success_payload, Class=Experiments.__name__)
         return success_payload, 201
 
         # except jsonschema.exceptions.ValidationError:
@@ -329,9 +336,12 @@ class Experiment(Resource):
                 params={'project_id': project_id, 'expt_id': expt_id},
                 data=retrieved_expt
             )
+            # logging.info(f"Success retrieved experiment: {retrieved_expt}", code=200, description=success_payload, Class=Experiment.__name__)
+            logging.info(f"Success retrieved experiment: {expt_id}", code=200, description=success_payload, Class=Experiment.__name__)
             return success_payload, 200
 
         else:
+            logging.error(f"Error Retrieving experiment: {expt_id}", code=404, description=f"Experiment '{expt_id}' does not exist in Project '{project_id}'!", Class=Experiment.__name__)
             ns_api.abort(
                 code=404, 
                 message=f"Experiment '{expt_id}' does not exist in Project '{project_id}'!"
@@ -363,13 +373,16 @@ class Experiment(Resource):
                 params={'project_id': project_id, 'expt_id': expt_id},
                 data=retrieved_expt
             )
+            logging.info(f"Success update experiment: {expt_id}", code=200, description=success_payload, Class=Experiment.__name__)
             return success_payload, 200
 
         except jsonschema.exceptions.ValidationError:
+            logging.error(f"Error updating experiment: {expt_id}", code=417, description="Inappropriate experimental configurations passed!", Class=Experiment.__name__)
             ns_api.abort(                
                 code=417,
                 message="Inappropriate experimental configurations passed!"
             )
+ 
 
     @ns_api.doc("delete_experiment")
     @ns_api.marshal_with(payload_formatter.singular_model)
@@ -394,9 +407,11 @@ class Experiment(Resource):
                 params=request.view_args,
                 data=retrieved_expt
             )
+            logging.info(f"Success delete experiment: {expt_id}", code=200, description=success_payload, Class=Experiment.__name__)
             return success_payload
 
         else:
+            logging.info(f"Error deleting experiment: {expt_id}", code=404, description=f"Experiment '{expt_id}' does not exist in Project '{project_id}'!", Class=Experiment.__name__)
             ns_api.abort(
                 code=404, 
                 message=f"Experiment '{expt_id}' does not exist in Project '{project_id}'!"

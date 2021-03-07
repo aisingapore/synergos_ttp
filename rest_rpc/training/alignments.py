@@ -30,6 +30,9 @@ from rest_rpc.training.core.utils import (
 )
 from rest_rpc.training.core.feature_alignment import MultipleFeatureAligner
 
+# Synergos logging
+from SynergosLogger.init_logging import logging
+
 ##################
 # Configurations #
 ##################
@@ -136,9 +139,14 @@ class Alignments(Resource):
                 },
                 data=retrieved_alignments
             )
+            
+            logging.info("Success retrieved alignments", description=success_payload, code=200, Class=Alignments.__name__)
+
             return success_payload, 200
 
         else:
+            logging.error("Error retrieving alignments", description=f"MFA has not been performed for Project '{project_id}'!", code=404, Class=Alignments.__name__)
+
             ns_api.abort(
                 code=404, 
                 message=f"MFA has not been performed for Project '{project_id}'!"
@@ -196,11 +204,12 @@ class Alignments(Resource):
                 
                 retrieved_alignments.append(retrieved_alignment)
 
+            logging.debug(f"Alignment Superset: {X_mfa_aligner.superset} {len(X_mfa_aligner.superset)}", Class=Alignments.__name__)
+
             #############################################
             # Auto-alignment of global inputs & outputs #
             #############################################
 
-            logging.debug(f"Alignment Superset: {X_mfa_aligner.superset} {len(X_mfa_aligner.superset)}")
             layer_modules = importlib.import_module(MODULE_OF_LAYERS)
 
             all_expts = expt_records.read_all(filter={'project_id': project_id})
@@ -223,8 +232,8 @@ class Alignments(Resource):
 
                 expt_model.insert(0, input_config)
 
-                logging.debug(f"Modified input config: {input_config}")
-                logging.debug(f"Modified experiment: {expt_model}")
+                logging.debug(f"Modified input config for project_id: {project_id}", description=input_config, Class=Alignments.__name__)
+                logging.debug(f"Modified experiment for project_id: {project_id}", description=expt_model, Class=Alignments.__name__)
 
                 # Check if output layer needs alignment
                 output_config = expt_model.pop(-1)
@@ -245,15 +254,15 @@ class Alignments(Resource):
 
                 expt_model.append(output_config)
 
-                logging.debug(f"Modified output config: {output_config}")
-                logging.debug(f"Modified experiment: {expt_model}")
+                logging.debug(f"Modified output config for project_id: {project_id}", description=output_config, Class=Alignments.__name__)
+                logging.debug(f"Modified experiment for project_id: {project_id}", description=expt_model, Class=Alignments.__name__)
 
                 expt_records.update(
                     **curr_expt['key'], 
                     updates={'model': expt_model}
                 )
 
-                logging.debug(f"Updated records: {expt_records.read(**curr_expt['key'])}")
+                logging.debug("Updated records", description=expt_records.read(**curr_expt['key']), Class=Alignments.__name__)
 
             ###############################
             # Updating Neo4J for Amundsen #
@@ -268,9 +277,13 @@ class Alignments(Resource):
                 data=retrieved_alignments
             )
             
+            logging.info(f"Success create alignments for project_id: {project_id}", code=201, description=success_payload, Class=Alignments.__name__)
+
             return success_payload, 201
 
         except RuntimeError as e:
+            logging.error(f"Error creating alignments for project_id: {project_id}", code=417, description="Inappropriate conditions available for multiple feature alignment!", Class=Alignments.__name__)           
+
             ns_api.abort(
                 code=417,
                 message="Inappropriate conditions available for multiple feature alignment!"

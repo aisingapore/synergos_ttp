@@ -27,11 +27,14 @@ from rest_rpc.connection.core.datetime_serialization import (
     TimeDeltaSerializer
 )
 
+# Synergos logging
+from SynergosLogger.init_logging import logging
+
 ##################
 # Configurations #
 ##################
 
-logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.DEBUG)
+# logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.DEBUG)
 
 schemas = app.config['SCHEMAS']
 db_path = app.config['DB_PATH']
@@ -169,7 +172,7 @@ class TopicalPayload:
             encoded_document = encode_datetime_objects(document)
             annotated_document = annotate_document(encoded_document, kind)
             annotated_doc_and_relations = annotate_relations(annotated_document)
-            logging.debug(f"Annotated docs: {annotated_doc_and_relations}")
+            logging.debug(f"Annotated docs", description=annotated_doc_and_relations, Class=TopicalPayload.__name__)
             return annotated_doc_and_relations
 
         self.__template['success'] = 1

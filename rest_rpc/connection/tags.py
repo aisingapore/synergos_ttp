@@ -16,11 +16,12 @@ from flask_restx import Namespace, Resource, fields
 from rest_rpc import app
 from rest_rpc.connection.core.utils import TopicalPayload, TagRecords
 
+# Synergos logging
+from SynergosLogger.init_logging import logging
+
 ##################
 # Configurations #
 ##################
-
-logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.DEBUG)
 
 ns_api = Namespace(
     "tags", 
@@ -102,9 +103,11 @@ class Tag(Resource):
                 },
                 data=retrieved_tag
             )
+            logging.info(f"Success retrieved tag for project_id: {project_id}, participant_id: {participant_id}", code=200, description=success_payload, Class=Tag.__name__)
             return success_payload, 200
 
         else:
+            logging.error(f"Error retrieving tag for project_id: {project_id}, participant_id: {participant_id}", code=404, description=f"Tag does not exist for participant '{participant_id}'' under Project '{project_id}'!", Class=Tag.__name__)
             ns_api.abort(
                 code=404, 
                 message=f"Tag does not exist for participant '{participant_id}'' under Project '{project_id}'!"
@@ -142,9 +145,11 @@ class Tag(Resource):
                 },
                 data=retrieved_tag
             )
+            logging.info(f"Sucesss create tag for project_id: {project_id}, participant_id: {participant_id}", code=201, description=success_payload, Class=Tag.__name__)
             return success_payload, 201
 
         except jsonschema.exceptions.ValidationError:
+            logging.error(f"Error creating tag for project_id: {project_id}, participant_id: {participant_id}", code=417, description="Inappropriate run configurations passed!", Class=Tag.__name__)
             ns_api.abort(
                 code=417,
                 message="Inappropriate run configurations passed!"
@@ -180,9 +185,11 @@ class Tag(Resource):
                 },
                 data=retrieved_tag
             )
+            logging.info(f"Sucesss update tag for project_id: {project_id}, participant_id: {participant_id}", code=200, description=success_payload, Class=Tag.__name__)
             return success_payload, 200
 
         except jsonschema.exceptions.ValidationError:
+            logging.error(f"Error updating tag for project_id: {project_id}, participant_id: {participant_id}", code=417, description="Inappropriate tag configurations passed!", Class=Tag.__name__)
             ns_api.abort(                
                 code=417,
                 message="Inappropriate tag configurations passed!"
@@ -214,9 +221,11 @@ class Tag(Resource):
                 },
                 data=retrieved_tag
             )
+            logging.info(f"Sucesss delete tag for project_id: {project_id}, participant_id: {participant_id}", code=200, description=success_payload, Class=Tag.__name__)
             return success_payload
 
         else:
+            logging.error(f"Error deleting tag for project_id: {project_id}, participant_id: {participant_id}", code=404, description=f"Tag does not exist for participant '{participant_id}'' under Project '{project_id}'!", Class=Tag.__name__)
             ns_api.abort(
                 code=404, 
                 message=f"Tag does not exist for participant '{participant_id}'' under Project '{project_id}'!"

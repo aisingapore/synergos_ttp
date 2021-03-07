@@ -5,7 +5,7 @@
 ####################
 
 # Generic/Built-in
-import logging
+# import logging
 
 # Libs
 import jsonschema
@@ -27,11 +27,15 @@ from rest_rpc.training.models import model_output_model
 from rest_rpc.evaluation.validations import val_output_model
 from rest_rpc.evaluation.predictions import pred_output_model
 
+# Synergos logging
+from SynergosLogger.init_logging import logging
+logging.info("smoke test for ttp node", something="somethingx")
+
 ##################
 # Configurations #
 ##################
 
-logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.DEBUG)
+# logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.DEBUG)
 
 ns_api = Namespace(
     "projects", 
@@ -178,9 +182,11 @@ class Projects(Resource):
                 params={},
                 data=retrieved_project
             )
+            logging.info(f"Success create project: {project_id}", code=201, description=success_payload, Class=Projects.__name__)
             return success_payload, 201
 
         except jsonschema.exceptions.ValidationError:
+            logging.info(f"Error creating project: {project_id}", code=417, description="Inappropriate project configurations passed!", Class=Projects.__name__)
             ns_api.abort(
                 code=417,
                 message="Inappropriate project configurations passed!"
@@ -213,9 +219,11 @@ class Project(Resource):
                 params={'project_id': project_id},
                 data=retrieved_project
             )
+            logging.info(f"Success retrieve metadata for project: {project_id}", code=200, description=success_payload, Class=Projects.__name__)
             return success_payload, 200
 
         else:
+            logging.error(f"Error retrieving metadata for project: {project_id}", code=404, description=f"Project '{project_id}' does not exist!", Class=Projects.__name__)
             ns_api.abort(
                 code=404, 
                 message=f"Project '{project_id}' does not exist!"
@@ -244,9 +252,11 @@ class Project(Resource):
                 params={'project_id': project_id},
                 data=retrieved_project
             )
+            logging.info(f"Success update project: {project_id}", code=200, description=success_payload, Class=Projects.__name__)
             return success_payload, 200
 
         except jsonschema.exceptions.ValidationError:
+            logging.info(f"Error updating project: {project_id}", code=417, description="Inappropriate project configurations passed!", Class=Projects.__name__)
             ns_api.abort(                
                 code=417,
                 message="Inappropriate project configurations passed!"
@@ -270,9 +280,11 @@ class Project(Resource):
                 params={'project_id': project_id},
                 data=retrieved_project
             )
+            logging.info(f"Success delete project: {project_id}", code=200, description=success_payload, Class=Projects.__name__)
             return success_payload
 
         else:
+            logging.error(f"Error deleting project: {project_id}", code=404, description=f"Project '{project_id}' does not exist!", Class=Projects.__name__)
             ns_api.abort(
                 code=404, 
                 message=f"Project '{project_id}' does not exist!"

@@ -18,11 +18,12 @@ from torch import nn
 # Custom
 from rest_rpc.training.core.utils import TorchParser
 
+# Synergos logging
+from SynergosLogger.init_logging import logging
+
 ##################
 # Configurations #
 ##################
-
-logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.DEBUG)
 
 torch_parser = TorchParser()
 
@@ -55,7 +56,7 @@ class Model(nn.Module):
         self.layers = OrderedDict()
 
         for layer, params in enumerate(structure):
-            logging.debug(f'params: {params}')
+            logging.debug(f'params: {params}', Class=Model.__name__) # express as the logger
 
             # Detect if input layer
             is_input_layer = params['is_input']
@@ -83,6 +84,8 @@ class Model(nn.Module):
             self.layers[layer_name] = torch_parser.parse_activation(
                 layer_activation
             )
+
+        logging.debug(f"Layers: {self.layers}", CLass=Model.__name__)
 
     ###########
     # Helpers #
@@ -130,9 +133,9 @@ class Model(nn.Module):
 
             _, layer_type = self.__parse_layer_name(layer_name)
 
-            logging.debug(f"Layers: {self.layers}")
-            logging.debug(f"Before activation, Layer {layer_name} output: {curr_layer(x).shape}")
-            logging.debug(f"After activation,Layer {layer_name} output: {a_func(curr_layer(x)).shape}")
+             
+            #logging.debug(f"Before activation, Layer {layer_name} output: {curr_layer(x).shape}")
+            #logging.debug(f"After activation,Layer {layer_name} output: {a_func(curr_layer(x)).shape}")
 
             # Check if current layer is a recurrent layer
             if layer_type in self.__SPECIAL_CASES:
@@ -245,9 +248,9 @@ class ModelPlan(sy.Plan):
 
             _, layer_type = self.__parse_layer_name(layer_name)
 
-            logging.debug(f"Layers: {self.layers}")
-            logging.debug(f"Before activation, Layer {layer_name} output: {curr_layer(x).shape}")
-            logging.debug(f"After activation,Layer {layer_name} output: {a_func(curr_layer(x)).shape}")
+            logging.debug(f"Layers: {self.layers}", Class=ModelPlan.__name__)
+            logging.debug(f"Before activation, Layer {layer_name} output: {curr_layer(x).shape}", Class=ModelPlan.__name__)
+            logging.debug(f"After activation,Layer {layer_name} output: {a_func(curr_layer(x)).shape}", Class=ModelPlan.__name__)
 
             # Check if current layer is a recurrent layer
             if layer_type in self.__SPECIAL_CASES:
@@ -268,7 +271,7 @@ class ModelPlan(sy.Plan):
 
         """
         mock_data = th.rand(shape)
-        logging.debug(f"mock data: {mock_data} {mock_data.shape}")
+        logging.debug(f"mock data: {mock_data} {mock_data.shape}", Class=ModelPlan.__name__)
 
         return super().build(mock_data)
 

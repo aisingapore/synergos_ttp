@@ -30,6 +30,9 @@ from torch import nn
 from syft.workers.websocket_client import WebsocketClientWorker
 from syft.grid.clients.data_centric_fl_client import DataCentricFLClient
 
+# Synergos logging
+from SynergosLogger.init_logging import logging
+
 ###########################################
 # Custom Async Class - CustomClientWorker #
 ###########################################
@@ -72,7 +75,7 @@ class CustomWSClient(WebsocketClientWorker):
             args_["sslopt"] = {"cert_reqs": ssl.CERT_NONE}
 
         self.ws = websocket.create_connection(**args_)
-        logging.debug(f"Websocket: {self.ws}")
+        logging.debug(f"Websocket: {self.ws}", Class=CustomWSClient.__name__)
 
         self._log_msgs_remote(self.log_msgs)
 
@@ -198,7 +201,7 @@ class CustomClientWorker(CustomWSClient):
         Returns:
             node_response (dict) : response payload.
         """
-        logging.debug(f"Forwarded encoded message: {json.dumps(message)}")
+        logging.debug(f"Forwarded encoded message: {json.dumps(message)}", Class=CustomClientWorker.__name__)
         self.ws.send(json.dumps(message))
         return json.loads(self.ws.recv())
 

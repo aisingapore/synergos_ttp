@@ -37,6 +37,11 @@ from rest_rpc.training.core.server import (
 )
 from rest_rpc.evaluation.core.utils import Analyser
 
+# Synergos & HardwareStats logging
+from SynergosLogger.init_logging import logging
+from SynergosLogger import syn_logger_config
+from HardwareStatsLogger import Sysmetrics
+
 ##################
 # Configurations #
 ##################
@@ -202,7 +207,7 @@ def start_expt_run_inference(
 
         return participants_inferences
 
-    logging.info(f"Current combination: {keys}")
+    logging.info(f"Current combination", description=keys)
 
     # Send initialisation signal to all remote worker WSSW objects
     governor = Governor(auto_align=auto_align, dockerised=dockerised, **keys)
@@ -228,7 +233,7 @@ def start_expt_run_inference(
         **keys
     )
     polled_stats = analyser.infer(reg_records=relevant_registrations)
-    logging.debug(f"Polled statistics: {polled_stats}")
+    logging.debug(f"Polled statistics", description=polled_stats)
 
     # Send terminate signal to all participants' worker nodes
     governor.terminate(reg_records=registrations)

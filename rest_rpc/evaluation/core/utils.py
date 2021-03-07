@@ -32,6 +32,9 @@ from rest_rpc.training.core.utils import (
     ModelRecords
 )
 
+# Synergos logging
+from SynergosLogger.init_logging import logging
+
 ##################
 # Configurations #
 ##################
@@ -139,7 +142,7 @@ class ValidationRecords(AssociationRecords):
         }
 
     def create(self, participant_id, project_id, expt_id, run_id, details):
-        logging.debug(f"Details: {details}")
+        logging.debug(f"Validation statistics", description=details, Class=ValidationRecords.__name__)
 
         # Check that new details specified conforms to experiment schema
         jsonschema.validate(details, schemas["prediction_schema"])#schemas["validation_schema"])
@@ -650,6 +653,7 @@ class MLFlogger:
         )
 
         if not run_mlflow_details:
+            logging.error("RuntimeError: Run has not been initialised!", Class=MLFlogger.__name__)
             raise RuntimeError("Run has not been initialised!")
 
         # Retrieve all model metadata from storage
@@ -729,6 +733,7 @@ class MLFlogger:
         run_mlflow_id = run_mlflow_details['mlflow_id']
 
         if not run_mlflow_details:
+            logging.error("RuntimeError: Run has not been initialised!", Class=MLFlogger.__name__)
             raise RuntimeError("Run has not been initialised!")
 
         with mlflow.start_run(
