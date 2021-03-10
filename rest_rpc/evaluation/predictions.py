@@ -159,11 +159,9 @@ class Predictions(Resource):
             )
 
             logging.info(
-                f"Participant '{participant_id}' >|< Project '{project_id}' -> Experiment '{expt_id}' -> \
-                    Run '{run_id}' >|< Predictions: Bulk record retrieval successful!",
+                f"Participant '{participant_id}' >|< Project '{project_id}' -> Experiment '{expt_id}' -> Run '{run_id}' >|< Predictions: Bulk record retrieval successful!",
                 code=200, 
-                description=f"Predictions for participant '{participant_id}' under project '{self.project}' using \
-                    experiment '{self.expt_id}' and run '{self.run_id}' was successfully retrieved!",
+                description=f"Predictions for participant '{participant_id}' under project '{self.project}' using experiment '{self.expt_id}' and run '{self.run_id}' was successfully retrieved!",
                 ID_path=SOURCE_FILE,
                 ID_class=Predictions.__name__, 
                 ID_function=Predictions.get.__name__,
@@ -174,8 +172,7 @@ class Predictions(Resource):
 
         else:
             logging.error(
-                f"Participant '{participant_id}' >|< Project '{project_id}' -> Experiment '{expt_id}' -> \
-                    Run '{run_id}' >|< Predictions: Bulk record retrieval failed!",
+                f"Participant '{participant_id}' >|< Project '{project_id}' -> Experiment '{expt_id}' -> Run '{run_id}' >|< Predictions: Bulk record retrieval failed!",
                 code=404, 
                 description=f"Predictions do not exist for specified keyword filters!", 
                 ID_path=SOURCE_FILE,
@@ -222,8 +219,7 @@ class Predictions(Resource):
         new_pred_tags = request.json['tags']
 
         logging.debug(
-            f"Participant '{participant_id}' >|< Project '{project_id}' -> Experiment '{expt_id}' -> \
-                Run '{run_id}' >|< Predictions: Input keys tracked.", 
+            f"Participant '{participant_id}' >|< Project '{project_id}' -> Experiment '{expt_id}' -> Run '{run_id}' >|< Predictions: Input keys tracked.", 
             keys=request.view_args, 
             ID_path=SOURCE_FILE,
             ID_class=Predictions.__name__, 
@@ -248,8 +244,7 @@ class Predictions(Resource):
         key_filter = {k:v for k,v in key_filter.items() if v is not None}
 
         logging.debug(
-            f"Participant '{participant_id}' >|< Project '{project_id}' -> Experiment '{expt_id}' -> \
-                Run '{run_id}' >|< Predictions: key_filter tracked.", 
+            f"Participant '{participant_id}' >|< Project '{project_id}' -> Experiment '{expt_id}' -> Run '{run_id}' >|< Predictions: key_filter tracked.", 
             key_filter=key_filter, 
             ID_path=SOURCE_FILE,
             ID_class=Predictions.__name__, 
@@ -262,8 +257,7 @@ class Predictions(Resource):
         )
 
         logging.debug(
-            f"Participant '{participant_id}' >|< Project '{project_id}' -> Experiment '{expt_id}' -> \
-                Run '{run_id}' >|< Predictions: Participant registrations tracked.", 
+            f"Participant '{participant_id}' >|< Project '{project_id}' -> Experiment '{expt_id}' -> Run '{run_id}' >|< Predictions: Participant registrations tracked.", 
             registrations=participant_registrations, 
             ID_path=SOURCE_FILE,
             ID_class=Predictions.__name__, 
@@ -314,8 +308,7 @@ class Predictions(Resource):
             all_metadata = poller.poll(project_registrations)
 
             logging.debug(
-                f"Participant '{participant_id}' >|< Project '{project_id}' -> Experiment '{expt_id}' -> \
-                    Run '{run_id}' >|< Predictions: All polled metadata tracked.", 
+                f"Participant '{participant_id}' >|< Project '{project_id}' -> Experiment '{expt_id}' -> Run '{run_id}' >|< Predictions: All polled metadata tracked.", 
                 polled_metadata=all_metadata, 
                 ID_path=SOURCE_FILE,
                 ID_class=Predictions.__name__, 
@@ -364,8 +357,7 @@ class Predictions(Resource):
                 for p_id, spacer_idxs in spacer_collection.items():
 
                     logging.debug(
-                        f"Participant '{participant_id}' >|< Project '{project_id}' -> Experiment '{expt_id}' -> \
-                            Run '{run_id}' >|< Predictions: Spacer Indexes tracked.", 
+                        f"Participant '{p_id}' >|< Project '{project_id}' -> Experiment '{expt_id}' -> Run '{run_id}' >|< Predictions: Spacer Indexes tracked.", 
                         spacer_idxs=spacer_idxs,
                         ID_path=SOURCE_FILE,
                         ID_class=Predictions.__name__, 
@@ -380,8 +372,7 @@ class Predictions(Resource):
                     ) 
 
                 logging.debug(
-                    f"Participant '{participant_id}' >|< Project '{project_id}' -> Experiment '{expt_id}' -> \
-                        Run '{run_id}' >|< Predictions: Updated alignments tracked.", 
+                    f"Participant '{participant_id}' >|< Project '{project_id}' -> Experiment '{expt_id}' -> Run '{run_id}' >|< Predictions: Updated alignments tracked.", 
                     updated_alignments=alignment_records.read_all(
                         filter={
                             'project_id': registered_project_id, 
@@ -399,8 +390,7 @@ class Predictions(Resource):
             )
 
             logging.debug(
-                f"Participant '{participant_id}' >|< Project '{project_id}' -> Experiment '{expt_id}' -> \
-                    Run '{run_id}' >|< Predictions: Updated project registrations tracked.", 
+                f"Participant '{participant_id}' >|< Project '{project_id}' -> Experiment '{expt_id}' -> Run '{run_id}' >|< Predictions: Updated project registrations tracked.", 
                 updated_project_registrations=updated_project_registrations, 
                 ID_path=SOURCE_FILE,
                 ID_class=Predictions.__name__, 
@@ -423,8 +413,7 @@ class Predictions(Resource):
             project_combinations[registered_project_id] = kwargs
 
         logging.debug(
-            f"Participant '{participant_id}' >|< Project '{project_id}' -> Experiment '{expt_id}' -> \
-                Run '{run_id}' >|< Predictions: Project combinations tracked.", 
+            f"Participant '{participant_id}' >|< Project '{project_id}' -> Experiment '{expt_id}' -> Run '{run_id}' >|< Predictions: Project combinations tracked.", 
             project_combinations=project_combinations, 
             ID_path=SOURCE_FILE,
             ID_class=Predictions.__name__, 
@@ -436,8 +425,7 @@ class Predictions(Resource):
 
         logging.log(
             level=NOTSET,
-            event=f"Participant '{participant_id}' >|< Project '{project_id}' -> Experiment '{expt_id}' -> \
-                Run '{run_id}' >|< Predictions:- Completed Inferences tracked.",
+            event=f"Participant '{participant_id}' >|< Project '{project_id}' -> Experiment '{expt_id}' -> Run '{run_id}' >|< Predictions:- Completed Inferences tracked.",
             completed_inferences=completed_inferences,
             ID_path=SOURCE_FILE,
             ID_class=Predictions.__name__, 
@@ -450,8 +438,7 @@ class Predictions(Resource):
         for combination_key, inference_stats in completed_inferences.items():
 
             logging.debug(
-                f"Participant '{participant_id}' >|< Project '{project_id}' -> Experiment '{expt_id}' -> \
-                    Run '{run_id}' >|< Predictions: Inference stats tracked.", 
+                f"Participant '{participant_id}' >|< Project '{project_id}' -> Experiment '{expt_id}' -> Run '{run_id}' >|< Predictions: Inference stats tracked.", 
                 inference_stats=inference_stats, 
                 ID_path=SOURCE_FILE,
                 ID_class=Predictions.__name__, 
@@ -479,10 +466,8 @@ class Predictions(Resource):
         )
 
         logging.info(
-            f"Participant '{participant_id}' >|< Project '{project_id}' -> Experiment '{expt_id}' -> \
-                Run '{run_id}' >|< Predictions: Record creation successful!", 
-            description=f"Predictions for participant '{participant_id}' under project '{project_id}' \
-                using experiment '{expt_id}' and run '{run_id}' was successfully collected!",
+            f"Participant '{participant_id}' >|< Project '{project_id}' -> Experiment '{expt_id}' -> Run '{run_id}' >|< Predictions: Record creation successful!", 
+            description=f"Predictions for participant '{participant_id}' under project '{project_id}' using experiment '{expt_id}' and run '{run_id}' was successfully collected!",
             code=201, 
             ID_path=SOURCE_FILE,
             ID_class=Predictions.__name__, 

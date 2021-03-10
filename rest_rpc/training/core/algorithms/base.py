@@ -225,10 +225,25 @@ class BaseAlgorithm(AbstractAlgorithm):
                     "CosineEmbeddingLoss", "TripletMarginLoss", "CTCLoss"
                 ]
 
-                logging.debug(f"Action: {ACTION}, Output shape: {outputs.shape}, Target shape: {labels.shape}")
+                logging.debug(
+                    f"Action-related metadata tracked.",
+                    action=ACTION,
+                    output_shape=outputs.shape,
+                    label_shape=labels.shape,
+                    ID_path=SOURCE_FILE,
+                    ID_class=SurrogateCriterion.__name__,
+                    ID_function=SurrogateCriterion.format_params.__name__
+                )
+                
                 if CRITERION_NAME in MISC_FORMAT + N_D_N_FORMAT:
-                    logging.error("ValueError: Specified criterion is currently not supported!", Class=BaseAlgorithm.__name__)
+                    logging.error(
+                        "ValueError: Specified criterion is currently not supported!", 
+                        ID_path=SOURCE_FILE,
+                        ID_class=SurrogateCriterion.__name__,
+                        ID_function=SurrogateCriterion.format_params.__name__
+                    )
                     raise ValueError("Specified criterion is currently not supported!")
+                
                 elif (
                     (ACTION == "classify" and outputs.shape[-1] > 1) and
                     (CRITERION_NAME not in N_C_N_FORMAT)
@@ -255,11 +270,33 @@ class BaseAlgorithm(AbstractAlgorithm):
                     labels=labels
                 )
     
+                logging.debug(
+                    f"Label metadata tracked.",
+                    label_shape=labels.shape,
+                    label_type=labels.type(), 
+                    ID_path=SOURCE_FILE,
+                    ID_class=SurrogateCriterion.__name__,
+                    ID_function=SurrogateCriterion.forward.__name__
+                )
+                logging.debug(
+                    f"Formatted label metadata tracked.", 
+                    formatted_label_shape=formatted_labels.shape,
+                    formatted_label_type=formatted_labels.type(), 
+                    ID_path=SOURCE_FILE,
+                    ID_class=SurrogateCriterion.__name__,
+                    ID_function=SurrogateCriterion.forward.__name__
+                )
+                
                 # Calculate normal criterion loss
-                logging.debug(f"Labels type: {labels.shape} {labels.type()}", Class=BaseAlgorithm.__name__)
-                logging.debug(f"Formatted labels type: {formatted_labels.shape} {formatted_labels.type()}", Class=BaseAlgorithm.__name__)
                 loss = super().forward(formatted_outputs, formatted_labels)
-                logging.debug(f"Criterion Loss: {loss.location}", Class=BaseAlgorithm.__name__)
+                
+                logging.debug(
+                    f"Location of criterion Loss tracked.",
+                    loss_location=loss.location, 
+                    ID_path=SOURCE_FILE,
+                    ID_class=SurrogateCriterion.__name__,
+                    ID_function=SurrogateCriterion.forward.__name__
+                )
 
                 # Calculate regularisation terms
                 # Note: All regularisation terms have to be collected in some 
@@ -405,11 +442,23 @@ class BaseAlgorithm(AbstractAlgorithm):
             """ 
             worker, (data, labels) = packet
 
-            logging.debug(f"Data: {data}, {type(data)}, {data.shape}", Class=BaseAlgorithm.__name__)
-            logging.debug(f"Labels: {labels}, {type(labels)}, {labels.shape}", Class=BaseAlgorithm.__name__)
-
-            #for i in list(self.global_model.parameters()):
-                #logging.debug(f"Model parameters: {i}, {type(i)}, {i.shape}")
+            logging.log(
+                level=NOTSET,
+                event="Data & labels tracked.",
+                data=data,
+                labels=labels,
+                ID_path=SOURCE_FILE,
+                ID_function=train_worker.__name__
+            )
+            logging.debug(
+                "Data & label metadata tracked.",
+                data_type=type(data),
+                data_shape=data.shape,
+                label_type=type(labels),
+                label_shape=labels.shape,
+                ID_path=SOURCE_FILE,
+                ID_function=train_worker.__name__
+            )
 
             # Extract essentials for training
             curr_global_model = cache[worker]
@@ -420,15 +469,26 @@ class BaseAlgorithm(AbstractAlgorithm):
             # Check if worker has been stopped
             if worker.id not in WORKERS_STOPPED:
 
-                #logging.debug(f"Before training - Local Gradients for {worker}:\n {list(curr_local_model.parameters())[0].grad}")
                 # curr_global_model = self.secret_share(curr_global_model)
                 # curr_local_model = self.secret_share(curr_local_model)
                 curr_global_model = curr_global_model.send(worker)
                 curr_local_model = curr_local_model.send(worker)
 
-                logging.debug(f"Location of global model: {curr_global_model.location}", Class=BaseAlgorithm.__name__)
-                logging.debug(f"Location of local model: {curr_local_model.location}", Class=BaseAlgorithm.__name__)
-                logging.debug(f"Location of X & y: {data.location} {labels.location}", Class=BaseAlgorithm.__name__)
+                logging.debug(
+                    f"Location of global model: {curr_global_model.location}", 
+                    ID_path=SOURCE_FILE,
+                    ID_function=train_worker.__name__
+                )
+                logging.debug(
+                    f"Location of local model: {curr_local_model.location}", 
+                    ID_path=SOURCE_FILE,
+                    ID_function=train_worker.__name__
+                )
+                logging.debug(
+                    f"Location of X & y: {data.location} {labels.location}", 
+                    ID_path=SOURCE_FILE,
+                    ID_function=train_worker.__name__
+                )
 
                 # Zero gradients to prevent accumulation  
                 curr_local_model.train()
@@ -436,9 +496,22 @@ class BaseAlgorithm(AbstractAlgorithm):
 
                 # Forward Propagation
                 outputs = curr_local_model(data)
-                logging.debug(f"Data shape: {data.shape}", Class=BaseAlgorithm.__name__)
-                logging.debug(f"Output size: {outputs.shape}", Class=BaseAlgorithm.__name__)
-                logging.debug(f"Augmented labels size: {labels.shape}", Class=BaseAlgorithm.__name__)
+
+                logging.debug(
+                    f"Data shape: {data.shape}", 
+                    ID_path=SOURCE_FILE,
+                    ID_function=train_worker.__name__
+                )
+                logging.debug(
+                    f"Output size: {outputs.shape}", 
+                    ID_path=SOURCE_FILE,
+                    ID_function=train_worker.__name__
+                )
+                logging.debug(
+                    f"Augmented labels size: {labels.shape}", 
+                    ID_path=SOURCE_FILE,
+                    ID_function=train_worker.__name__
+                )
 
                 loss = curr_criterion(
                     outputs=outputs, 
@@ -453,7 +526,6 @@ class BaseAlgorithm(AbstractAlgorithm):
 
                 curr_global_model = curr_global_model.get()
                 curr_local_model = curr_local_model.get()
-                # logging.debug(f"After training - Local Gradients for {worker}:\n {list(curr_local_model.parameters())[0].grad}")
 
             # Update all involved objects
             assert models[worker] is curr_local_model
@@ -514,13 +586,25 @@ class BaseAlgorithm(AbstractAlgorithm):
             for batch in datasets:
                 await train_batch(batch)
             
-            logging.debug(f"Before stagnation evaluation: Workers stopped: {WORKERS_STOPPED}", Class=BaseAlgorithm.__name__)
+            logging.debug(
+                f"Before stagnation evaluation - Workers stopped tracked.",
+                workers_stopped=WORKERS_STOPPED,
+                ID_path=SOURCE_FILE,
+                ID_function=train_datasets.__name__
+            )
+
             stagnation_futures = [
                 check_for_stagnation(worker) 
                 for worker in self.workers
             ]
             await asyncio.gather(*stagnation_futures)
-            logging.debug(f"After stagnation evaluation: Workers stopped: {WORKERS_STOPPED}", Class=BaseAlgorithm.__name__)
+
+            logging.debug(
+                f"After stagnation evaluation - Workers stopped tracked.",
+                workers_stopped=WORKERS_STOPPED,
+                ID_path=SOURCE_FILE,
+                ID_function=train_datasets.__name__
+            )
 
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
@@ -640,15 +724,40 @@ class BaseAlgorithm(AbstractAlgorithm):
                     A single packet of data containing the worker and its
                     data to be evaluated upon
             """ 
-            logging.debug(f"packet: {packet}")
+            logging.log(
+                level=NOTSET,
+                event="Packet tracked.",
+                packet=packet,
+                ID_path=SOURCE_FILE,
+                ID_function=evaluate_worker.__name__
+            )
 
             worker, (data, labels) = packet
-            logging.debug(f"Data: {data}, {type(data)}, {data.shape}", Class=BaseAlgorithm.__name__)
-            logging.debug(f"Labels: {labels}, {type(labels)}, {labels.shape}", Class=BaseAlgorithm.__name__)
-            logging.debug(f"Worker: {worker}, {type(worker)}", Class=BaseAlgorithm.__name__)
 
-            #for i in list(self.global_model.parameters()):
-                #logging.debug(f"Model parameters: {i}, {type(i)}, {i.shape}")
+            logging.log(
+                level=NOTSET,
+                event="Data & labels tracked.",
+                data=data,
+                labels=labels,
+                ID_path=SOURCE_FILE,
+                ID_function=evaluate_worker.__name__
+            )
+            logging.debug(
+                "Data & label metadata tracked.",
+                data_type=type(data),
+                data_shape=data.shape,
+                label_type=type(labels),
+                label_shape=labels.shape,
+                ID_path=SOURCE_FILE,
+                ID_function=evaluate_worker.__name__
+            )
+            logging.debug(
+                f"Current worker evaluated tracked.",
+                worker=worker, 
+                type=type(worker), 
+                ID_path=SOURCE_FILE,
+                ID_function=evaluate_worker.__name__
+            )
 
             # Skip predictions if filter was specified, and current worker was
             # not part of the selected workers
@@ -679,7 +788,11 @@ class BaseAlgorithm(AbstractAlgorithm):
                         predictions = (outputs > 0.5).float()
 
                 else:
-                    logging.error(f"ValueError: ML action {self.action} is not supported!", Class=BaseAlgorithm.__name__)
+                    logging.error(
+                        f"ValueError: ML action {self.action} is not supported!", 
+                        ID_path=SOURCE_FILE,
+                        ID_function=evaluate_worker.__name__
+                    )
                     raise ValueError(f"ML action {self.action} is not supported!")
 
                 # Compute loss
@@ -850,7 +963,13 @@ class BaseAlgorithm(AbstractAlgorithm):
                     tuple pairing of the worker and its data slice
                     i.e. (worker, (data, labels))
             """
-            logging.debug(f"Batch: {batch}, {type(batch)}", Class=BaseAlgorithm.__name__)
+            logging.debug(
+                "Batch detected.",
+                batch=f"{batch}", 
+                batch_type=type(batch), 
+                ID_path=SOURCE_FILE,
+                ID_function=evaluate_batch.__name__
+            )
 
             batch_evaluations = {}
             batch_losses = []
@@ -872,7 +991,11 @@ class BaseAlgorithm(AbstractAlgorithm):
                 data, labels = batch
 
                 if data.location != labels.location:
-                    logging.error(f"RuntimeError: Feature data and label data are not in the same location!", Class=BaseAlgorithm.__name__)
+                    logging.error(
+                        f"RuntimeError: Feature data and label data are not in the same location!", 
+                        ID_path=SOURCE_FILE,
+                        ID_function=evaluate_batch.__name__
+                    )
                     raise RuntimeError("Feature data and label data are not in the same location!")
                 
                 packet = (data.location, batch)
@@ -1074,9 +1197,6 @@ class BaseAlgorithm(AbstractAlgorithm):
         pbar = tqdm(total=self.arguments.rounds, desc='Rounds', leave=True)
         while rounds < self.arguments.rounds:
 
-            # logging.debug(f"Current global model:\n {self.global_model.state_dict()}")
-            # logging.debug(f"Global Gradients:\n {list(self.global_model.parameters())[0].grad}")
-
             (
                 local_models,
                 prev_models, 
@@ -1097,7 +1217,14 @@ class BaseAlgorithm(AbstractAlgorithm):
                 rounds=rounds,
                 epochs=self.arguments.epochs
             )
-            logging.debug(f"Current global model:\n {self.global_model.state_dict()}")
+
+            logging.debug(
+                f"Round {rounds} - Current global model tracked.", 
+                global_model=self.global_model.state_dict(),
+                ID_path=SOURCE_FILE,
+                ID_class=BaseAlgorithm.__name__,
+                ID_function=BaseAlgorithm.fit.__name__
+            )
 
             # Retrieve all models from their respective workers
             aggregated_params = self.calculate_global_params(
@@ -1108,7 +1235,14 @@ class BaseAlgorithm(AbstractAlgorithm):
 
             # Update weights with aggregated parameters 
             self.global_model.load_state_dict(aggregated_params)
-            logging.debug(f"New global model:\n {self.global_model.state_dict()}")
+            
+            logging.debug(
+                f"Round {rounds} - Updated global model tracked.", 
+                updated_global_model=self.global_model.state_dict(),
+                ID_path=SOURCE_FILE,
+                ID_class=BaseAlgorithm.__name__,
+                ID_function=BaseAlgorithm.fit.__name__
+            )
 
             final_local_losses = {
                 w.id: c._cache[-1].get()
@@ -1144,7 +1278,12 @@ class BaseAlgorithm(AbstractAlgorithm):
             # If global model is deemed to have stagnated, stop training
             global_val_stopper(global_val_loss, self.global_model)
             if global_val_stopper.early_stop:
-                logging.info("Global model has stagnated. Training round terminated!\n")
+                logging.info(
+                    "Global model has stagnated. Training round terminated!",
+                    ID_path=SOURCE_FILE,
+                    ID_class=BaseAlgorithm.__name__,
+                    ID_function=BaseAlgorithm.fit.__name__
+                )
                 break
 
             rounds += 1
@@ -1152,8 +1291,22 @@ class BaseAlgorithm(AbstractAlgorithm):
         
         pbar.close()
 
-        logging.debug(f"Objects in TTP: {self.crypto_provider}, {len(self.crypto_provider._objects)}", Class=BaseAlgorithm.__name__)
-        logging.debug(f"Objects in sy.local_worker: {sy.local_worker}, {len(sy.local_worker._objects)}", Class=BaseAlgorithm.__name__)
+        logging.debug(
+            f"Objects in TTP tracked.",
+            ttp=self.crypto_provider, 
+            object_count=len(self.crypto_provider._objects), 
+            ID_path=SOURCE_FILE,
+            ID_class=BaseAlgorithm.__name__,
+            ID_function=BaseAlgorithm.fit.__name__
+        )
+        logging.debug(
+            f"Objects in sy.local_worker tracked.",
+            local_worker=sy.local_worker, 
+            object_count=len(sy.local_worker._objects), 
+            ID_path=SOURCE_FILE,
+            ID_class=BaseAlgorithm.__name__,
+            ID_function=BaseAlgorithm.fit.__name__
+        )
 
         return self.global_model, self.local_models
 
@@ -1332,7 +1485,13 @@ class BaseAlgorithm(AbstractAlgorithm):
                 "global_loss_history.json"
             )
             with open(global_loss_out_path, 'w') as glp:
-                print("Global Loss History:", self.loss_history['global'])
+                logging.debug(
+                    "Global Loss History tracked.", 
+                    global_loss_history=self.loss_history['global'],
+                    ID_path=SOURCE_FILE,
+                    ID_class=BaseAlgorithm.__name__,
+                    ID_function=BaseAlgorithm.export.__name__
+                )
                 json.dump(self.loss_history['global'], glp)
             return global_loss_out_path
 
@@ -1483,9 +1642,16 @@ class BaseAlgorithm(AbstractAlgorithm):
                 round index and the second the epoch index 
                 (i.e. (round_<r_idx>, epoch_<e_idx>))
         """
-        for _, logs in archive.items():
+        for _type, logs in archive.items():
 
-            logging.debug(f"Logs: {logs}")
+            logging.debug(
+                f"Model archival logs for {_type} tracked.",
+                logs=logs,
+                ID_path=SOURCE_FILE,
+                ID_class=BaseAlgorithm.__name__,
+                ID_function=BaseAlgorithm.restore.__name__
+            )
+
             archived_origin = logs['origin']
 
             # Check if exact version of the federated grid was specified

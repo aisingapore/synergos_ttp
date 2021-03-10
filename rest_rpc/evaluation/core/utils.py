@@ -317,14 +317,12 @@ class Analyser:
             except (KeyError, AttributeError) as e:
                 logging.error(
                     f"Analyser._poll_for_stats: Error - {e}",
-                    description="No prior alignments have been detected! \
-                        Please run multiple feature alignment first and try again!",
+                    description="No prior alignments have been detected! Please run multiple feature alignment first and try again!",
                     ID_path=SOURCE_FILE,
                     ID_class=Analyser.__name__,
                     ID_function=Analyser._poll_for_stats.__name__
                 )
-                raise RuntimeError("No prior alignments have been detected! \
-                    Please run multiple feature alignment first and try again!")
+                raise RuntimeError("No prior alignments have been detected! Please run multiple feature alignment first and try again!")
         else:
             stripped_alignments = {
                 meta: {"X": [], "y": []} # do not apply any alignment indexes
@@ -362,10 +360,8 @@ class Analyser:
                 resp_json = await response.json(content_type='application/json')
         
         logging.debug(
-            f"Participant '{participant_id}' >|< Project '{self.project_id}' -> Experiment '{self.expt_id}' -> \
-                Run '{self.run_id}': Polled statistics tracked.",
-            description=f"Polled statistics for participant '{participant_id}' under project '{self.project_id}' using \
-                experiment '{self.expt_id}' and run '{self.run_id}' tracked.",
+            f"Participant '{participant_id}' >|< Project '{self.project_id}' -> Experiment '{self.expt_id}' -> Run '{self.run_id}': Polled statistics tracked.",
+            description=f"Polled statistics for participant '{participant_id}' under project '{self.project_id}' using experiment '{self.expt_id}' and run '{self.run_id}' tracked.",
             resp_json=resp_json,
             ID_path=SOURCE_FILE,
             ID_class=Analyser.__name__,

@@ -201,7 +201,7 @@ def connect_to_workers(keys, reg_records, dockerised=True, log_msgs=False, verbo
         workers.append(curr_worker)
 
         logging.debug(
-            f"Participant's known workers tracked.",
+            f"Participant {curr_worker} - known workers tracked.",
             known_workers=curr_worker._known_workers,
             ID_path=SOURCE_FILE,
             ID_function=connect_to_workers.__name__
@@ -277,7 +277,7 @@ def terminate_connections(ttp, workers):
 
         try:
             logging.error(
-                f"Worker_{w_idx} has not been deleted!",
+                f"{worker} has not been deleted!",
                 ID_path=SOURCE_FILE,
                 ID_function=connect_to_workers.__name__
             )

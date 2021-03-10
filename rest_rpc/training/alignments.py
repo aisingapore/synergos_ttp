@@ -315,8 +315,7 @@ class Alignments(Resource):
                     **request.view_args
                 )
                 logging.info(
-                    f"Self-correction with MFA successfully applied on experiment '{curr_expt['key']['expt_id']}' \
-                        under project {project_id}!",
+                    f"Self-correction with MFA successfully applied on experiment '{curr_expt['key']['expt_id']}' under project {project_id}!",
                     modified_expt_model=expt_model, 
                     ID_path=SOURCE_FILE,
                     ID_class=Alignments.__name__, 

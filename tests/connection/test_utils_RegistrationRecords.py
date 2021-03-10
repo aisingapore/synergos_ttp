@@ -123,7 +123,6 @@ def check_detail_equivalence(details):
     expanded_registration_details = registration_details.copy()
     if 'project' in details.keys():
         details['project'].pop('created_at')
-        pprint(details['project'])
         expanded_registration_details.update({'project': project_details})
         expanded_registration_details['project']['key'] = {'project_id': project_id}
     if 'participant' in details.keys():

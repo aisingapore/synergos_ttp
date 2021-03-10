@@ -206,11 +206,9 @@ class Registration(Resource):
             )
 
             logging.info(
-                f"Participant '{participant_id}' >|< Project '{project_id}' -> Registration: \
-                    Single record retrieval successful!", 
+                f"Participant '{participant_id}' >|< Project '{project_id}' -> Registration: Single record retrieval successful!", 
                 code=200, 
-                description=f"Registration of '{participant_id}' under project '{project_id}' \
-                    was successfully retrieved!",
+                description=f"Registration of '{participant_id}' under project '{project_id}' was successfully retrieved!",
                 ID_path=SOURCE_FILE,
                 ID_class=Registration.__name__, 
                 ID_function=Registration.get.__name__,
@@ -221,8 +219,7 @@ class Registration(Resource):
 
         else:
             logging.error(
-                f"Participant '{participant_id}' >|< Project '{project_id}' -> Registration: \
-                    Single record retrieval failed!",
+                f"Participant '{participant_id}' >|< Project '{project_id}' -> Registration: Single record retrieval failed!",
                 code=404, 
                 description=f"Participant '{participant_id}' has not registered for Project '{project_id}'!",
                 ID_path=SOURCE_FILE,

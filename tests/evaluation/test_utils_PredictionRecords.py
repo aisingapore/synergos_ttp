@@ -94,7 +94,6 @@ def test_AlignmentRecords_read_all():
     all_alignments = alignment_records.read_all()
     assert len(all_alignments) == 1
     retrieved_alignment = all_alignments[0]
-    print(retrieved_alignment)
     trimmed_details = check_equivalence_and_format(retrieved_alignment)
     raw_details = check_relation_equivalence_and_format(trimmed_details)
     check_detail_equivalence(raw_details)

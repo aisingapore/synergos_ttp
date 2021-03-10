@@ -194,11 +194,9 @@ class Validations(Resource):
             )
 
             logging.info(
-                f"Participant '{participant_id}' >|< Project '{project_id}' -> Experiment '{expt_id}' -> \
-                    Run '{run_id}' >|< Validations: Bulk record retrieval successful!",
+                f"Participant '{participant_id}' >|< Project '{project_id}' -> Experiment '{expt_id}' -> Run '{run_id}' >|< Validations: Bulk record retrieval successful!",
                 code=200, 
-                description=f"Validations for participant '{participant_id}' under project '{self.project}' using \
-                    experiment '{self.expt_id}' and run '{self.run_id}' was successfully retrieved!",
+                description=f"Validations for participant '{participant_id}' under project '{self.project}' using experiment '{self.expt_id}' and run '{self.run_id}' was successfully retrieved!",
                 ID_path=SOURCE_FILE,
                 ID_class=Validations.__name__, 
                 ID_function=Validations.get.__name__,
@@ -209,8 +207,7 @@ class Validations(Resource):
 
         else:
             logging.error(
-                f"Participant '{participant_id}' >|< Project '{project_id}' -> Experiment '{expt_id}' -> \
-                    Run '{run_id}' >|< Validations: Bulk record retrieval failed!",
+                f"Participant '{participant_id}' >|< Project '{project_id}' -> Experiment '{expt_id}' -> Run '{run_id}' >|< Validations: Bulk record retrieval failed!",
                 code=404, 
                 description=f"Predictions do not exist for specified keyword filters!", 
                 ID_path=SOURCE_FILE,
@@ -334,10 +331,8 @@ class Validations(Resource):
         )
 
         logging.info(
-            f"Participant '{participant_id}' >|< Project '{project_id}' -> Experiment '{expt_id}' -> \
-                Run '{run_id}' >|< Validations: Record creation successful!", 
-            description=f"Validations for participant '{participant_id}' under project '{project_id}' \
-                using experiment '{expt_id}' and run '{run_id}' was successfully collected!",
+            f"Participant '{participant_id}' >|< Project '{project_id}' -> Experiment '{expt_id}' -> Run '{run_id}' >|< Validations: Record creation successful!", 
+            description=f"Validations for participant '{participant_id}' under project '{project_id}' using experiment '{expt_id}' and run '{run_id}' was successfully collected!",
             code=201, 
             ID_path=SOURCE_FILE,
             ID_class=Validations.__name__, 

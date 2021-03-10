@@ -107,11 +107,9 @@ class Tag(Resource):
             )
 
             logging.info(
-                f"Participant '{participant_id}' >|< Project '{project_id}' -> Tag: \
-                    Single record retrieval successful!", 
+                f"Participant '{participant_id}' >|< Project '{project_id}' -> Tag: Single record retrieval successful!", 
                 code=200, 
-                description=f"Data tagging of '{participant_id}' under project '{project_id}' \
-                    was successfully retrieved!",
+                description=f"Data tagging of '{participant_id}' under project '{project_id}' was successfully retrieved!",
                 ID_path=SOURCE_FILE,
                 ID_class=Tag.__name__, 
                 ID_function=Tag.get.__name__,
@@ -122,8 +120,7 @@ class Tag(Resource):
 
         else:
             logging.error(
-                f"Participant '{participant_id}' >|< Project '{project_id}' -> Tag: \
-                    Single record retrieval failed!",
+                f"Participant '{participant_id}' >|< Project '{project_id}' -> Tag: Single record retrieval failed!",
                 code=404, 
                 description=f"Data tags do not exist for participant '{participant_id}'' under Project '{project_id}'!", 
                 ID_path=SOURCE_FILE,

@@ -176,8 +176,7 @@ class Optimizations(Resource):
             )
 
             logging.info(
-                f"Project '{project_id}' -> Experiment '{expt_id}' -> Optimizations: \
-                    Record(s) retrieval successful!",
+                f"Project '{project_id}' -> Experiment '{expt_id}' -> Optimizations: Record(s) retrieval successful!",
                 code=200, 
                 description="Optimization(s) specified federated conditions were successfully retrieved!",
                 ID_path=SOURCE_FILE,
@@ -190,8 +189,7 @@ class Optimizations(Resource):
 
         else:
             logging.error(
-                f"Project '{project_id}' -> Experiment '{expt_id}' -> Optimizations:  \
-                    Record(s) retrieval failed.",
+                f"Project '{project_id}' -> Experiment '{expt_id}' -> Optimizations:  Record(s) retrieval failed.",
                 code=404,
                 description="Optimizations do not exist for specified keyword filters!",
                 ID_path=SOURCE_FILE,
@@ -295,8 +293,7 @@ class Optimizations(Resource):
             )
 
             logging.info(
-                f"Project '{project_id}' -> Experiment '{expt_id}' -> Optimizations: \
-                    Record(s) creation successful!",
+                f"Project '{project_id}' -> Experiment '{expt_id}' -> Optimizations: Record(s) creation successful!",
                 code=200, 
                 description="Optimization(s) specified federated conditions were successfully retrieved!",
                 ID_path=SOURCE_FILE,
@@ -309,8 +306,7 @@ class Optimizations(Resource):
 
         else:
             logging.error(
-                f"Project '{project_id}' -> Experiment '{expt_id}' -> Optimizations:  \
-                    Record(s) creation failed.",
+                f"Project '{project_id}' -> Experiment '{expt_id}' -> Optimizations: Record(s) creation failed.",
                 code=404,
                 description="Optimizations do not exist for specified keyword filters!",
                 ID_path=SOURCE_FILE,

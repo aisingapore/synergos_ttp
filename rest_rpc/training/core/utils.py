@@ -472,8 +472,7 @@ class Poller:
                         sleep_interval = jobs_in_queue * retry_interval
 
                         logging.info(
-                            f"Archives for participant '{participant_id}' are not yet loaded. \
-                                Retrying after {sleep_interval} seconds...",
+                            f"Archives for participant '{participant_id}' are not yet loaded. Retrying after {sleep_interval} seconds...",
                             ID_path=SOURCE_FILE,
                             ID_class=Poller.__name__,
                             ID_function=Poller._poll_metadata.__name__
@@ -682,7 +681,7 @@ class Governor:
             payload.update(self.__DEFAULT_SERVER_CONFIG)
 
         logging.debug(
-            "Initialisation payload used for governing server workers tracked!",
+            f"Initialisation payload used for governing server worker {participant_id} tracked!",
             payload=payload, 
             ID_path=SOURCE_FILE,
             ID_class=Governor.__name__,

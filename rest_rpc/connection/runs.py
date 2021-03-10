@@ -199,8 +199,7 @@ class Runs(Resource):
 
             logging.info(
                 f"Project '{project_id}' -> Experiment '{expt_id}' -> Run '{run_id}': Record creation successful!", 
-                description=f"Run '{run_id}' under experiment '{expt_id}' of project '{project_id}' \
-                    was successfully created!", 
+                description=f"Run '{run_id}' under experiment '{expt_id}' of project '{project_id}' was successfully created!", 
                 code=201, 
                 ID_path=SOURCE_FILE,
                 ID_class=Runs.__name__, 
@@ -257,8 +256,7 @@ class Run(Resource):
             logging.info(
                 f"Project '{project_id}' -> Experiment '{expt_id}' -> Run '{run_id}': Single record retrieval successful!", 
                 code=200, 
-                description=f"Run '{run_id}' under experiment '{expt_id}' of project '{project_id}' \
-                    was successfully retrieved!", 
+                description=f"Run '{run_id}' under experiment '{expt_id}' of project '{project_id}' was successfully retrieved!", 
                 ID_path=SOURCE_FILE,
                 ID_class=Run.__name__, 
                 ID_function=Run.get.__name__,
@@ -319,8 +317,7 @@ class Run(Resource):
             logging.info(
                 f"Project '{project_id}' -> Experiment '{expt_id}' -> Run '{run_id}': Record update successful!",
                 code=200,
-                description=f"Run '{run_id}' under experiment '{expt_id}' of project '{project_id}' \
-                    was successfully updated!", 
+                description=f"Run '{run_id}' under experiment '{expt_id}' of project '{project_id}' was successfully updated!", 
                 ID_path=SOURCE_FILE,
                 ID_class=Run.__name__, 
                 ID_function=Run.put.__name__,
@@ -364,8 +361,7 @@ class Run(Resource):
             logging.info(
                 f"Project '{project_id}' -> Experiment '{expt_id}' -> Run '{run_id}': Record deletion successful!",
                 code=200, 
-                description=f"Run '{run_id}' under experiment '{expt_id}' of project '{project_id}' \
-                    was successfully deleted!", 
+                description=f"Run '{run_id}' under experiment '{expt_id}' of project '{project_id}' was successfully deleted!", 
                 ID_path=SOURCE_FILE,
                 ID_class=Run.__name__, 
                 ID_function=Run.delete.__name__,

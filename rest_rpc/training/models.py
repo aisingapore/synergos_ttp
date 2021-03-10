@@ -172,8 +172,7 @@ class Models(Resource):
             )
 
             logging.info(
-                f"Project '{project_id}' -> Experiment '{expt_id}' -> Run '{run_id}' -> Models: \
-                    Record(s) retrieval successful!",
+                f"Project '{project_id}' -> Experiment '{expt_id}' -> Run '{run_id}' -> Models: Record(s) retrieval successful!",
                 code=200, 
                 description="Model(s) for specified federated conditions were successfully retrieved!",
                 ID_path=SOURCE_FILE,
@@ -186,8 +185,7 @@ class Models(Resource):
 
         else:
             logging.error(
-                f"Project '{project_id}' -> Experiment '{expt_id}' -> Run '{run_id}' -> Models:  \
-                    Record(s) retrieval failed.",
+                f"Project '{project_id}' -> Experiment '{expt_id}' -> Run '{run_id}' -> Models: Record(s) retrieval failed.",
                 code=404,
                 description="Model(s) does not exist for specified keyword filters!",
                 ID_path=SOURCE_FILE,
@@ -304,9 +302,8 @@ class Models(Resource):
             data=retrieved_models
         )
         logging.info(
-            f"Project '{project_id}' -> Experiment '{expt_id}' -> Run '{run_id}' -> Models: \
-                Record(s) creation successful!", 
-                description="Model(s) for specified federated conditions were successfully created!",
+            f"Project '{project_id}' -> Experiment '{expt_id}' -> Run '{run_id}' -> Models: Record(s) creation successful!", 
+            description="Model(s) for specified federated conditions were successfully created!",
             code=201, 
             ID_path=SOURCE_FILE,
             ID_class=Models.__name__, 
