@@ -40,7 +40,7 @@ db_path = app.config['DB_PATH']
 run_records = RunRecords(db_path=db_path)
 
 logging = app.config['NODE_LOGGER'].synlog
-logging.debug("connection/experiments.py logged", Description="No Changes")
+logging.debug("connection/runs.py logged", Description="No Changes")
 
 ###########################################################
 # Models - Used for marshalling (i.e. moulding responses) #

@@ -18,7 +18,7 @@ SOURCE_FILE = os.path.abspath(__file__)
 
 logging = app.config['NODE_LOGGER'].synlog
 logging.debug(
-    "connection/core/feature_alignment.py logged", 
+    "training/core/feature_alignment.py logged", 
     Description="No Changes"
 )
 

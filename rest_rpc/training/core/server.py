@@ -76,7 +76,7 @@ use_gpu = app.config['USE_GPU']
 device = app.config['DEVICE']
 
 logging = app.config['NODE_LOGGER'].synlog
-logging.debug("connection/core/server.py logged", Description="No Changes")
+logging.debug("training/core/server.py logged", Description="No Changes")
 
 #############
 # Functions #

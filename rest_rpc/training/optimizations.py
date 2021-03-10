@@ -41,7 +41,7 @@ run_records = RunRecords(db_path=db_path)
 validation_records = ValidationRecords(db_path=db_path)
 
 logging = app.config['NODE_LOGGER'].synlog
-logging.debug("connection/models.py logged", Description="No Changes")
+logging.debug("training/optimizations.py logged", Description="No Changes")
 
 ###########################################################
 # Models - Used for marshalling (i.e. moulding responses) #

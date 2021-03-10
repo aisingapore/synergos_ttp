@@ -1,3 +1,6 @@
 [submodule "synergos_logger"]
 	path = synergos_logger
 	url = https://gitlab.int.aisingapore.org/aims/federatedlearning/synergos_logger.git
+[submodule "synergos_manager"]
+	path = synergos_manager
+	url = https://gitlab.int.aisingapore.org/aims/federatedlearning/synergos_manager.git

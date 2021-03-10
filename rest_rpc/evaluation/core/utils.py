@@ -61,7 +61,7 @@ Prediction:
 """
 
 logging = app.config['NODE_LOGGER'].synlog
-logging.debug("connection/core/utils.py logged", Description="No Changes")
+logging.debug("evaluation/core/utils.py logged", Description="No Changes")
 
 ####################
 # Helper Functions #

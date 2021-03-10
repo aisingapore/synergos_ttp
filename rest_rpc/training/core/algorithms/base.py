@@ -51,7 +51,7 @@ from rest_rpc.training.core.algorithms.abstract import AbstractAlgorithm
 SOURCE_FILE = os.path.abspath(__file__)
 
 logging = app.config['NODE_LOGGER'].synlog
-logging.debug("connection/algorithms/base.py logged", Description="No Changes")
+logging.debug("training/core/algorithms/base.py logged", Description="No Changes")
 
 ##################################################
 # Federated Algorithm Base Class - BaseAlgorithm #

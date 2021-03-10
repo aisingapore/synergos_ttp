@@ -28,7 +28,7 @@ SOURCE_FILE = os.path.abspath(__file__)
 torch_parser = TorchParser()
 
 logging = app.config['NODE_LOGGER'].synlog
-logging.debug("connection/core/model.py logged", Description="No Changes")
+logging.debug("training/core/model.py logged", Description="No Changes")
 
 ###################################
 # Model Abstraction Class - Model #

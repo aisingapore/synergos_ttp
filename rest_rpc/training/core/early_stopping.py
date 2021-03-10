@@ -23,7 +23,7 @@ from rest_rpc import app
 SOURCE_FILE = os.path.abspath(__file__)
 
 logging = app.config['NODE_LOGGER'].synlog
-logging.debug("connection/core/utils.py logged", Description="No Changes")
+logging.debug("training/core/early_stopping.py logged", Description="No Changes")
 
 ############################################
 # Model optimisation Class - EarlyStopping #

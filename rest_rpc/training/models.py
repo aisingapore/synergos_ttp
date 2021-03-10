@@ -57,7 +57,7 @@ model_records = ModelRecords(db_path=db_path)
 rpc_formatter = RPCFormatter()
 
 logging = app.config['NODE_LOGGER'].synlog
-logging.debug("connection/models.py logged", Description="No Changes")
+logging.debug("training/models.py logged", Description="No Changes")
 
 ###########################################################
 # Models - Used for marshalling (i.e. moulding responses) #

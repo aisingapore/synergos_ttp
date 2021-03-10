@@ -44,7 +44,7 @@ schemas = app.config['SCHEMAS']
 db_path = app.config['DB_PATH']
 
 logging = app.config['NODE_LOGGER'].synlog
-logging.debug("connection/experiments.py logged", Description="No Changes")
+logging.debug("connection/projects.py logged", Description="No Changes")
 
 ###########################################################
 # Models - Used for marshalling (i.e. moulding responses) #

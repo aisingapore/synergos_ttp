@@ -66,7 +66,7 @@ mlflow_dir = app.config['MLFLOW_DIR']
 mlf_logger = MLFlogger()
 
 logging = app.config['NODE_LOGGER'].synlog
-logging.debug("evaluation/predictions.py logged", Description="No Changes")
+logging.debug("evaluation/validations.py logged", Description="No Changes")
 
 ################################################################
 # Validations - Used for marshalling (i.e. moulding responses) #

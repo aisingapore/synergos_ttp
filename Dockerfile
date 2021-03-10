@@ -75,6 +75,7 @@ ADD . /ttp
 WORKDIR /ttp
 
 RUN pip install ./synergos_logger
+RUN pip install ./synergos_manager
 
 EXPOSE 5000
 EXPOSE 8020

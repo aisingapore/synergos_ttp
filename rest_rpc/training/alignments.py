@@ -58,7 +58,7 @@ rpc_formatter = RPCFormatter()
 activation_modules = importlib.import_module(MODULE_OF_ACTIVATIONS)
 
 logging = app.config['NODE_LOGGER'].synlog
-logging.debug("connection/alignments.py logged", Description="No Changes")
+logging.debug("training/alignments.py logged", Description="No Changes")
 
 ###########################################################
 # Models - Used for marshalling (i.e. moulding responses) #

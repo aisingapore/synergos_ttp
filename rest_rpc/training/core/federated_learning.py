@@ -34,7 +34,7 @@ infinite_nested_dict = lambda: defaultdict(infinite_nested_dict)
 
 logging = app.config['NODE_LOGGER'].synlog
 logging.debug(
-    "connection/core/federated_learning.py logged",
+    "training/core/federated_learning.py logged",
     description="No Changes"
 )
 

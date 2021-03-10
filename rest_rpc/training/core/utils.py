@@ -56,7 +56,7 @@ Training:
 """
 
 logging = app.config['NODE_LOGGER'].synlog
-logging.debug("connection/core/utils.py logged", Description="No Changes")
+logging.debug("training/core/utils.py logged", Description="No Changes")
 
 #################################
 # Helper Class - UrlConstructor #
