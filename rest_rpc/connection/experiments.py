@@ -5,14 +5,10 @@
 ####################
 
 # Generic/Built-in
-import logging
 import os
-import shutil
-from pathlib import Path
 
 # Libs
 import jsonschema
-import mlflow
 from flask import request
 from flask_restx import Namespace, Resource, fields
 
@@ -27,27 +23,26 @@ from rest_rpc.training.models import model_output_model
 from rest_rpc.evaluation.validations import val_output_model
 from rest_rpc.evaluation.predictions import pred_output_model
 
-# Synergos logging
-from SynergosLogger.init_logging import logging
-
-
 ##################
 # Configurations #
 ##################
 
-# logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.DEBUG)
+SOURCE_FILE = os.path.abspath(__file__)
+
+SUBJECT = "Experiment" # table name
 
 ns_api = Namespace(
     "experiments", 
     description='API to faciliate experiment management in a PySyft Grid.'
 )
 
-SUBJECT = "Experiment" # table name
-
 db_path = app.config['DB_PATH']
 expt_records = ExperimentRecords(db_path=db_path)
 
 expt_schema = app.config['SCHEMAS']['experiment_schema']
+
+logging = app.config['NODE_LOGGER'].synlog
+logging.debug("connection/experiments.py logged", Description="No Changes")
 
 ###########################################################
 # Models - Used for marshalling (i.e. moulding responses) #
@@ -259,14 +254,26 @@ class Experiments(Resource):
         all_relevant_expts = expt_records.read_all(
             filter={'project_id': project_id}
         )
+
         success_payload = payload_formatter.construct_success_payload(
             status=200,
             method="experiments.get",
             params={'project_id': project_id},
             data=all_relevant_expts
         )
-        logging.info(f"Success retrieved experiments", code=200, description=success_payload, Class=Experiments.__name__)
+
+        logging.info(
+            f"Project '{project_id}' -> Experiments: Bulk record retrieval successful!",
+            code=200, 
+            description=f"Experiments under project '{project_id}' were successfully retrieved!", 
+            ID_path=SOURCE_FILE,
+            ID_class=Experiments.__name__, 
+            ID_function=Experiments.get.__name__,
+            **request.view_args
+        )
+
         return success_payload, 200
+
 
     @ns_api.doc("register_experiment")
     @ns_api.expect(expt_input_model)
@@ -289,8 +296,15 @@ class Experiments(Resource):
             project_id=project_id, 
             expt_id=expt_id
         )
-        # logging.debug(f"Retrieved experiment: {retrieved_expt}")
-        logging.debug(f"Retrieved experiment: {expt_id}", description=retrieved_expt, Class=Experiments.__name__)
+
+        logging.debug(
+            f"Created experiment tracked. Expt_ID: '{expt_id}'", 
+            experiment=retrieved_expt, 
+            ID_path=SOURCE_FILE,
+            ID_class=Experiments.__name__, 
+            ID_function=Experiments.post.__name__,
+            **request.view_args
+        )
         assert new_expt.doc_id == retrieved_expt.doc_id
 
         success_payload = payload_formatter.construct_success_payload(
@@ -299,7 +313,17 @@ class Experiments(Resource):
             params={'project_id': project_id},
             data=retrieved_expt
         )
-        logging.info(f"Success retrieved experiment: {expt_id}", code=201, description=success_payload, Class=Experiments.__name__)
+        
+        logging.info(
+            f"Project '{project_id}' -> Experiment '{expt_id}': Record creation successful!", 
+            description=f"Experiment '{expt_id}' was successfully submitted under project '{project_id}'!",
+            code=201, 
+            ID_path=SOURCE_FILE,
+            ID_class=Experiments.__name__, 
+            ID_function=Experiments.post.__name__,
+            **request.view_args
+        )
+
         return success_payload, 201
 
         # except jsonschema.exceptions.ValidationError:
@@ -336,17 +360,35 @@ class Experiment(Resource):
                 params={'project_id': project_id, 'expt_id': expt_id},
                 data=retrieved_expt
             )
-            # logging.info(f"Success retrieved experiment: {retrieved_expt}", code=200, description=success_payload, Class=Experiment.__name__)
-            logging.info(f"Success retrieved experiment: {expt_id}", code=200, description=success_payload, Class=Experiment.__name__)
+
+            logging.info(
+                f"Project '{project_id}' -> Experiment '{expt_id}': Single record retrieval successful!", 
+                code=200, 
+                description=f"Experiment '{expt_id}' under project '{project_id}' was successfully retrieved!",
+                ID_path=SOURCE_FILE,
+                ID_class=Experiment.__name__, 
+                ID_function=Experiment.get.__name__,
+                **request.view_args
+            )
+            
             return success_payload, 200
 
         else:
-            logging.error(f"Error Retrieving experiment: {expt_id}", code=404, description=f"Experiment '{expt_id}' does not exist in Project '{project_id}'!", Class=Experiment.__name__)
+            logging.error(
+                f"Project '{project_id}' -> Experiment '{expt_id}': Single record retrieval failed!",
+                code=404, 
+                description=f"Experiment '{expt_id}' does not exist in Project '{project_id}'!", 
+                ID_path=SOURCE_FILE,
+                ID_class=Experiment.__name__, 
+                ID_function=Experiment.get.__name__,
+                **request.view_args
+            )
             ns_api.abort(
                 code=404, 
                 message=f"Experiment '{expt_id}' does not exist in Project '{project_id}'!"
             )
             
+
     @ns_api.doc("update_experiment")
     @ns_api.expect(expt_model)
     @ns_api.marshal_with(payload_formatter.singular_model)
@@ -367,17 +409,36 @@ class Experiment(Resource):
                 expt_id=expt_id
             )
             assert updated_expt.doc_id == retrieved_expt.doc_id
+
             success_payload = payload_formatter.construct_success_payload(
                 status=200,
                 method="experiment.put",
                 params={'project_id': project_id, 'expt_id': expt_id},
                 data=retrieved_expt
             )
-            logging.info(f"Success update experiment: {expt_id}", code=200, description=success_payload, Class=Experiment.__name__)
+
+            logging.info(
+                f"Project '{project_id}' -> Experiment '{expt_id}': Record update successful!",
+                code=200,
+                description=f"Experiment '{expt_id}' under project '{project_id}' was successfully updated!", 
+                ID_path=SOURCE_FILE,
+                ID_class=Experiment.__name__, 
+                ID_function=Experiment.put.__name__,
+                **request.view_args
+            )
+            
             return success_payload, 200
 
         except jsonschema.exceptions.ValidationError:
-            logging.error(f"Error updating experiment: {expt_id}", code=417, description="Inappropriate experimental configurations passed!", Class=Experiment.__name__)
+            logging.error(
+                f"Project '{project_id}' -> Experiment '{expt_id}': Record update failed.",
+                code=417, 
+                description="Inappropriate experimental configurations passed!", 
+                ID_path=SOURCE_FILE,
+                ID_class=Experiment.__name__, 
+                ID_function=Experiment.put.__name__,
+                **request.view_args
+            )
             ns_api.abort(                
                 code=417,
                 message="Inappropriate experimental configurations passed!"
@@ -407,11 +468,27 @@ class Experiment(Resource):
                 params=request.view_args,
                 data=retrieved_expt
             )
-            logging.info(f"Success delete experiment: {expt_id}", code=200, description=success_payload, Class=Experiment.__name__)
+            logging.info(
+                f"Project '{project_id}' -> Experiment '{expt_id}': Record deletion successful!",
+                code=200, 
+                description=f"Experiment '{expt_id}' under project '{project_id}' was successfully deleted!",
+                ID_path=SOURCE_FILE,
+                ID_class=Experiment.__name__, 
+                ID_function=Experiment.delete.__name__,
+                **request.view_args
+            )
             return success_payload
 
         else:
-            logging.info(f"Error deleting experiment: {expt_id}", code=404, description=f"Experiment '{expt_id}' does not exist in Project '{project_id}'!", Class=Experiment.__name__)
+            logging.error(
+                f"Project '{project_id}' -> Experiment '{expt_id}': Record deletion failed.", 
+                code=404, 
+                description=f"Experiment '{expt_id}' does not exist in Project '{project_id}'!", 
+                ID_path=SOURCE_FILE,
+                ID_class=Experiment.__name__, 
+                ID_function=Experiment.delete.__name__,
+                **request.view_args
+            )
             ns_api.abort(
                 code=404, 
                 message=f"Experiment '{expt_id}' does not exist in Project '{project_id}'!"

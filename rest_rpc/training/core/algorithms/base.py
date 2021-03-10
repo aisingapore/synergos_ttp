@@ -8,9 +8,9 @@
 import asyncio
 import copy
 import json
-import logging
 import os
 from collections import OrderedDict
+from logging import NOTSET
 from multiprocessing import Manager
 from pathlib import Path
 from typing import Tuple, List, Dict, Union
@@ -38,18 +38,20 @@ from tqdm import tqdm
 
 # Custom
 from config import seed_everything
+from rest_rpc import app
 from rest_rpc.training.core.arguments import Arguments
 from rest_rpc.training.core.early_stopping import EarlyStopping
 from rest_rpc.training.core.model import Model
 from rest_rpc.training.core.algorithms.abstract import AbstractAlgorithm
 
-# Synergos logging
-from SynergosLogger.init_logging import logging
-
 ##################
 # Configurations #
 ##################
 
+SOURCE_FILE = os.path.abspath(__file__)
+
+logging = app.config['NODE_LOGGER'].synlog
+logging.debug("connection/algorithms/base.py logged", Description="No Changes")
 
 ##################################################
 # Federated Algorithm Base Class - BaseAlgorithm #

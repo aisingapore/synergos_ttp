@@ -5,7 +5,7 @@
 ####################
 
 # Generics
-import logging
+import os
 
 # Libs
 import numpy as np
@@ -13,12 +13,17 @@ import torch as th
 #from ignite.engine import Engine, Events
 #from ignite.handlers import EarlyStopping
 
-# Synergos logging
-from SynergosLogger.init_logging import logging
+# Custom
+from rest_rpc import app
 
 ##################
 # Configurations #
 ##################
+
+SOURCE_FILE = os.path.abspath(__file__)
+
+logging = app.config['NODE_LOGGER'].synlog
+logging.debug("connection/core/utils.py logged", Description="No Changes")
 
 ############################################
 # Model optimisation Class - EarlyStopping #
@@ -71,9 +76,14 @@ class EarlyStopping:
 
         elif score < self.best_score + self.delta:
             self.counter += 1
-            logging.info(
-                f'EarlyStopping counter: {self.counter} out of {self.patience}', Class=EarlyStopping.__name__
+
+            logging.debug(
+                f'EarlyStopping counter: {self.counter} out of {self.patience}', 
+                ID_path=SOURCE_FILE,
+                ID_class=EarlyStopping.__name__,
+                ID_function=EarlyStopping.__call__.__name__
             )
+
             if self.counter >= self.patience:
                 self.early_stop = True
 
@@ -90,7 +100,12 @@ class EarlyStopping:
         """ Saves model when validation loss decrease
         """
         if self.verbose:
-            logging.info(f'Validation loss decreased ({self.val_loss_min:.6f} --> {val_loss:.6f}).  Saving model ...', Class=EarlyStopping.__name__)
+            logging.debug(
+                f'Validation loss decreased ({self.val_loss_min:.6f} --> {val_loss:.6f}).  Saving model ...',
+                ID_path=SOURCE_FILE,
+                ID_class=EarlyStopping.__name__,
+                ID_function=EarlyStopping.save_checkpoint.__name__
+            )
 
         # th.save(model.state_dict(), 'checkpoint.pt')
         self.val_loss_min = val_loss

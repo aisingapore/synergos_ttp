@@ -7,7 +7,6 @@
 # Generic/Built-in
 import asyncio
 import json
-import logging
 import os
 import shutil
 from pathlib import Path
@@ -32,14 +31,11 @@ from rest_rpc.training.core.utils import (
     ModelRecords
 )
 
-# Synergos logging
-from SynergosLogger.init_logging import logging
-
 ##################
 # Configurations #
 ##################
 
-logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.DEBUG)
+SOURCE_FILE = os.path.abspath(__file__)
 
 schemas = app.config['SCHEMAS']
 db_path = app.config['DB_PATH']
@@ -63,6 +59,9 @@ Prediction:
     }
 }
 """
+
+logging = app.config['NODE_LOGGER'].synlog
+logging.debug("connection/core/utils.py logged", Description="No Changes")
 
 ####################
 # Helper Functions #
@@ -142,10 +141,16 @@ class ValidationRecords(AssociationRecords):
         }
 
     def create(self, participant_id, project_id, expt_id, run_id, details):
-        logging.debug(f"Validation statistics", description=details, Class=ValidationRecords.__name__)
+        logging.debug(
+            f"Validation statistics tracked.", 
+            details=details, 
+            ID_path=SOURCE_FILE,
+            ID_class=ValidationRecords.__name__,
+            ID_function=ValidationRecords.create.__name__
+        )
 
         # Check that new details specified conforms to experiment schema
-        jsonschema.validate(details, schemas["prediction_schema"])#schemas["validation_schema"])
+        jsonschema.validate(details, schemas["prediction_schema"])
         validation_key = self.__generate_key(
             participant_id, 
             project_id, 
@@ -310,8 +315,16 @@ class Analyser:
                     relevant_alignments
                 )
             except (KeyError, AttributeError) as e:
-                logging.error(f"Analyser._poll_for_stats: Error - {e}")
-                raise RuntimeError("No prior alignments have been detected! Please run multiple feature alignment first and try again!")
+                logging.error(
+                    f"Analyser._poll_for_stats: Error - {e}",
+                    description="No prior alignments have been detected! \
+                        Please run multiple feature alignment first and try again!",
+                    ID_path=SOURCE_FILE,
+                    ID_class=Analyser.__name__,
+                    ID_function=Analyser._poll_for_stats.__name__
+                )
+                raise RuntimeError("No prior alignments have been detected! \
+                    Please run multiple feature alignment first and try again!")
         else:
             stripped_alignments = {
                 meta: {"X": [], "y": []} # do not apply any alignment indexes
@@ -348,7 +361,16 @@ class Analyser:
             ) as response:
                 resp_json = await response.json(content_type='application/json')
         
-        logging.debug(f"Analyser json: {resp_json}")
+        logging.debug(
+            f"Participant '{participant_id}' >|< Project '{self.project_id}' -> Experiment '{self.expt_id}' -> \
+                Run '{self.run_id}': Polled statistics tracked.",
+            description=f"Polled statistics for participant '{participant_id}' under project '{self.project_id}' using \
+                experiment '{self.expt_id}' and run '{self.run_id}' tracked.",
+            resp_json=resp_json,
+            ID_path=SOURCE_FILE,
+            ID_class=Analyser.__name__,
+            ID_function=Analyser._poll_for_stats.__name__
+        )
 
         # Extract the relevant expt-run results
         expt_run_key = replicate_combination_key(self.expt_id, self.run_id)
@@ -362,6 +384,7 @@ class Analyser:
         }
 
         return {participant_id: filtered_statistics}
+
 
     async def _collect_all_stats(self, reg_records):
         """ Asynchronous function to submit inference data to registered
@@ -381,7 +404,13 @@ class Analyser:
             key=lambda x: x[0]
         )
 
-        logging.debug(f"Sorted inferences: {sorted_inferences}")
+        logging.debug(
+            "Sorted inferences tracked.",
+            sorted_inferences=sorted_inferences,
+            ID_path=SOURCE_FILE,
+            ID_class=Analyser.__name__,
+            ID_function=Analyser._collect_all_stats.__name__
+        )
 
         mapped_pairs = [
             (record, inferences) 
@@ -653,7 +682,12 @@ class MLFlogger:
         )
 
         if not run_mlflow_details:
-            logging.error("RuntimeError: Run has not been initialised!", Class=MLFlogger.__name__)
+            logging.error(
+                "Run has not been initialised!",
+                ID_path=SOURCE_FILE,
+                ID_class=MLFlogger.__name__,
+                ID_function=MLFlogger.log_losses.__name__
+            )
             raise RuntimeError("Run has not been initialised!")
 
         # Retrieve all model metadata from storage
@@ -733,7 +767,12 @@ class MLFlogger:
         run_mlflow_id = run_mlflow_details['mlflow_id']
 
         if not run_mlflow_details:
-            logging.error("RuntimeError: Run has not been initialised!", Class=MLFlogger.__name__)
+            logging.error(
+                "Run has not been initialised!",
+                ID_path=SOURCE_FILE,
+                ID_class=MLFlogger.__name__,
+                ID_function=MLFlogger.log_losses.__name__
+            )
             raise RuntimeError("Run has not been initialised!")
 
         with mlflow.start_run(

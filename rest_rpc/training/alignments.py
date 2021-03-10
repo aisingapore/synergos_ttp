@@ -5,14 +5,13 @@
 ####################
 
 # Generic/Built-in
-import asyncio
 import importlib
 import inspect
-import logging
+import os
+from logging import NOTSET
 
 # Libs
-import aiohttp
-import jsonschema
+from flask import request
 from flask_restx import Namespace, Resource, fields
 
 # Custom
@@ -30,21 +29,21 @@ from rest_rpc.training.core.utils import (
 )
 from rest_rpc.training.core.feature_alignment import MultipleFeatureAligner
 
-# Synergos logging
-from SynergosLogger.init_logging import logging
-
 ##################
 # Configurations #
 ##################
 
-logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.DEBUG)
+SOURCE_FILE = os.path.abspath(__file__)
+
+SUBJECT = "Alignment" # table name
+
+MODULE_OF_LAYERS = "torch.nn"
+MODULE_OF_ACTIVATIONS = "torch.nn.functional"
 
 ns_api = Namespace(
     "alignments", 
     description='API to faciliate multiple feature alignment tracking in in a PySyft Grid.'
 )
-
-SUBJECT = "Alignment" # table name
 
 db_path = app.config['DB_PATH']
 expt_records = ExperimentRecords(db_path=db_path)
@@ -56,10 +55,10 @@ worker_align_route = app.config['WORKER_ROUTES']['align']
 
 rpc_formatter = RPCFormatter()
 
-MODULE_OF_LAYERS = "torch.nn"
-MODULE_OF_ACTIVATIONS = "torch.nn.functional"
-
 activation_modules = importlib.import_module(MODULE_OF_ACTIVATIONS)
+
+logging = app.config['NODE_LOGGER'].synlog
+logging.debug("connection/alignments.py logged", Description="No Changes")
 
 ###########################################################
 # Models - Used for marshalling (i.e. moulding responses) #
@@ -140,13 +139,28 @@ class Alignments(Resource):
                 data=retrieved_alignments
             )
             
-            logging.info("Success retrieved alignments", description=success_payload, code=200, Class=Alignments.__name__)
+            logging.info(
+                f"Project '{project_id}' -> Alignments: Bulk record retrieval successful!",
+                code=200, 
+                description=f"Alignments under project '{project_id}' were successfully retrieved!", 
+                ID_path=SOURCE_FILE,
+                ID_class=Alignments.__name__, 
+                ID_function=Alignments.get.__name__,
+                **request.view_args
+            )
 
             return success_payload, 200
 
         else:
-            logging.error("Error retrieving alignments", description=f"MFA has not been performed for Project '{project_id}'!", code=404, Class=Alignments.__name__)
-
+            logging.error(
+                f"Project '{project_id}' -> Alignments: Bulk record retrieval failed!",
+                code=404, 
+                description=f"MFA has not been performed for Project '{project_id}'!",
+                ID_path=SOURCE_FILE,
+                ID_class=Alignments.__name__, 
+                ID_function=Alignments.get.__name__,
+                **request.view_args
+            )
             ns_api.abort(
                 code=404, 
                 message=f"MFA has not been performed for Project '{project_id}'!"
@@ -171,8 +185,22 @@ class Alignments(Resource):
             (X_data_headers, y_data_headers, key_sequences, 
             _, descriptors) = rpc_formatter.aggregate_metadata(all_metadata)
 
-            logging.debug(f"X_data_headers: {X_data_headers}")
-            logging.debug(f"y_data_headers: {y_data_headers}")
+            logging.debug(
+                "X data headers to be used for MFA tracked.",
+                X_data_headers=X_data_headers,
+                ID_path=SOURCE_FILE,
+                ID_class=Alignments.__name__, 
+                ID_function=Alignments.post.__name__,
+                **request.view_args
+            )
+            logging.debug(
+                "y data headers to be used for MFA tracked.",
+                y_data_headers=y_data_headers,
+                ID_path=SOURCE_FILE,
+                ID_class=Alignments.__name__, 
+                ID_function=Alignments.post.__name__,
+                **request.view_args
+            )
 
             X_mfa_aligner = MultipleFeatureAligner(headers=X_data_headers)
             X_mf_alignments = X_mfa_aligner.align()
@@ -204,7 +232,24 @@ class Alignments(Resource):
                 
                 retrieved_alignments.append(retrieved_alignment)
 
-            logging.debug(f"Alignment Superset: {X_mfa_aligner.superset} {len(X_mfa_aligner.superset)}", Class=Alignments.__name__)
+            logging.debug(
+                f"Alignment X Superset generated tracked.",
+                feature_superset=X_mfa_aligner.superset,
+                length=len(X_mfa_aligner.superset), 
+                ID_path=SOURCE_FILE,
+                ID_class=Alignments.__name__, 
+                ID_function=Alignments.post.__name__,
+                **request.view_args
+            )
+            logging.debug(
+                f"Alignment y Superset generated tracked.",
+                feature_superset=y_mfa_aligner.superset,
+                length=len(y_mfa_aligner.superset), 
+                ID_path=SOURCE_FILE,
+                ID_class=Alignments.__name__, 
+                ID_function=Alignments.post.__name__,
+                **request.view_args
+            )
 
             #############################################
             # Auto-alignment of global inputs & outputs #
@@ -232,8 +277,15 @@ class Alignments(Resource):
 
                 expt_model.insert(0, input_config)
 
-                logging.debug(f"Modified input config for project_id: {project_id}", description=input_config, Class=Alignments.__name__)
-                logging.debug(f"Modified experiment for project_id: {project_id}", description=expt_model, Class=Alignments.__name__)
+                logging.debug(
+                    f"Modified input structure for project_id: {project_id}",
+                    modified_input_structure=input_config, 
+                    ID_path=SOURCE_FILE,
+                    ID_class=Alignments.__name__, 
+                    ID_function=Alignments.post.__name__,
+                    **request.view_args
+                )
+
 
                 # Check if output layer needs alignment
                 output_config = expt_model.pop(-1)
@@ -254,15 +306,37 @@ class Alignments(Resource):
 
                 expt_model.append(output_config)
 
-                logging.debug(f"Modified output config for project_id: {project_id}", description=output_config, Class=Alignments.__name__)
-                logging.debug(f"Modified experiment for project_id: {project_id}", description=expt_model, Class=Alignments.__name__)
+                logging.debug(
+                    f"Modified output config for project_id: {project_id}", 
+                    description=output_config, 
+                    ID_path=SOURCE_FILE,
+                    ID_class=Alignments.__name__, 
+                    ID_function=Alignments.post.__name__,
+                    **request.view_args
+                )
+                logging.info(
+                    f"Self-correction with MFA successfully applied on experiment '{curr_expt['key']['expt_id']}' \
+                        under project {project_id}!",
+                    modified_expt_model=expt_model, 
+                    ID_path=SOURCE_FILE,
+                    ID_class=Alignments.__name__, 
+                    ID_function=Alignments.post.__name__,
+                    **request.view_args
+                )
 
                 expt_records.update(
                     **curr_expt['key'], 
                     updates={'model': expt_model}
                 )
 
-                logging.debug("Updated records", description=expt_records.read(**curr_expt['key']), Class=Alignments.__name__)
+                logging.debug(
+                    "Updated experiment records tracked.", 
+                    description=expt_records.read(**curr_expt['key']), 
+                    ID_path=SOURCE_FILE,
+                    ID_class=Alignments.__name__, 
+                    ID_function=Alignments.post.__name__,
+                    **request.view_args
+                )
 
             ###############################
             # Updating Neo4J for Amundsen #
@@ -277,13 +351,28 @@ class Alignments(Resource):
                 data=retrieved_alignments
             )
             
-            logging.info(f"Success create alignments for project_id: {project_id}", code=201, description=success_payload, Class=Alignments.__name__)
+            logging.info(
+                f"Project '{project_id}' -> Alignments: Record creation successful!", 
+                description=f"Alignment procedure for project '{project_id}' was completed successfully!",
+                code=201, 
+                ID_path=SOURCE_FILE,
+                ID_class=Alignments.__name__, 
+                ID_function=Alignments.post.__name__,
+                **request.view_args
+            )
 
             return success_payload, 201
 
         except RuntimeError as e:
-            logging.error(f"Error creating alignments for project_id: {project_id}", code=417, description="Inappropriate conditions available for multiple feature alignment!", Class=Alignments.__name__)           
-
+            logging.error(
+                f"Error creating alignments for project_id: {project_id}",
+                code=417,
+                description="Inappropriate conditions available for multiple feature alignment!",
+                ID_path=SOURCE_FILE,
+                ID_class=Alignments.__name__, 
+                ID_function=Alignments.post.__name__,
+                **request.view_args
+            )  
             ns_api.abort(
                 code=417,
                 message="Inappropriate conditions available for multiple feature alignment!"

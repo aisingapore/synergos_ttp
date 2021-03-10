@@ -5,11 +5,9 @@
 ####################
 
 # Generic/Built-in
-import logging
+import os
 
 # Libs
-import jsonschema
-import mlflow
 from flask import request
 from flask_restx import Namespace, Resource, fields
 
@@ -33,21 +31,18 @@ from rest_rpc.training.core.utils import (
 from rest_rpc.training.core.server import start_proc
 from rest_rpc.training.alignments import alignment_model
 
-# Synergos logging
-from SynergosLogger.init_logging import logging
-
 ##################
 # Configurations #
 ##################
 
-# logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.DEBUG)
+SOURCE_FILE = os.path.abspath(__file__)
+
+SUBJECT = "Model"
 
 ns_api = Namespace(
     "models", 
     description='API to faciliate model training in a PySyft Grid.'
 )
-
-SUBJECT = "Model"
 
 db_path = app.config['DB_PATH']
 project_records = ProjectRecords(db_path=db_path)
@@ -60,6 +55,9 @@ alignment_records = AlignmentRecords(db_path=db_path)
 model_records = ModelRecords(db_path=db_path)
 
 rpc_formatter = RPCFormatter()
+
+logging = app.config['NODE_LOGGER'].synlog
+logging.debug("connection/models.py logged", Description="No Changes")
 
 ###########################################################
 # Models - Used for marshalling (i.e. moulding responses) #
@@ -172,11 +170,31 @@ class Models(Resource):
                 },
                 data=retrieved_models
             )
-            logging.info("Success retrieving models", code=200, description=success_payload, Class=Models.__name__)
+
+            logging.info(
+                f"Project '{project_id}' -> Experiment '{expt_id}' -> Run '{run_id}' -> Models: \
+                    Record(s) retrieval successful!",
+                code=200, 
+                description="Model(s) for specified federated conditions were successfully retrieved!",
+                ID_path=SOURCE_FILE,
+                ID_class=Models.__name__, 
+                ID_function=Models.get.__name__,
+                **request.view_args
+            )
+
             return success_payload, 200
 
         else:
-            logging.error("Error retrieving models", code=404, description=f"Models does not exist for specified keyword filters!", Class=Models.__name__)
+            logging.error(
+                f"Project '{project_id}' -> Experiment '{expt_id}' -> Run '{run_id}' -> Models:  \
+                    Record(s) retrieval failed.",
+                code=404,
+                description="Model(s) does not exist for specified keyword filters!",
+                ID_path=SOURCE_FILE,
+                ID_class=Models.__name__, 
+                ID_function=Models.get.__name__,
+                **request.view_args
+            )
             ns_api.abort(
                 code=404, 
                 message=f"Models does not exist for specified keyword filters!"
@@ -285,5 +303,15 @@ class Models(Resource):
             params=request.view_args,
             data=retrieved_models
         )
-        logging.info("Completed model training", code=200, description=success_payload, Class=Models.__name__)
+        logging.info(
+            f"Project '{project_id}' -> Experiment '{expt_id}' -> Run '{run_id}' -> Models: \
+                Record(s) creation successful!", 
+                description="Model(s) for specified federated conditions were successfully created!",
+            code=201, 
+            ID_path=SOURCE_FILE,
+            ID_class=Models.__name__, 
+            ID_function=Models.post.__name__,
+            **request.view_args
+        )
+            
         return success_payload, 200

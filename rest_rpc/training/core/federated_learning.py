@@ -5,11 +5,6 @@
 ####################
 
 # Generic
-import aiohttp
-import asyncio
-import copy
-import importlib
-import json
 import logging
 import os
 from collections import OrderedDict, defaultdict
@@ -20,38 +15,28 @@ from typing import Tuple, List, Dict, Union
 # Libs
 import syft as sy
 import torch as th
-import tensorflow as tft
-from sklearn.metrics import (
-    accuracy_score, 
-    roc_curve,
-    roc_auc_score, 
-    auc, 
-    precision_recall_curve, 
-    precision_score,
-    recall_score,
-    f1_score, 
-    confusion_matrix
-)
-from sklearn.metrics.cluster import contingency_matrix
-from syft.messaging.message import ObjectMessage
-from torch.optim.lr_scheduler import LambdaLR, CyclicLR
-from tqdm import tqdm
 
 # Custom
 from config import seed_everything
+from rest_rpc import app
 from rest_rpc.training.core.arguments import Arguments
 from rest_rpc.training.core.early_stopping import EarlyStopping
 from rest_rpc.training.core.model import Model
 from rest_rpc.training.core import algorithms
 
-# Synergos logging
-from SynergosLogger.init_logging import logging
-
 ##################
 # Configurations #
 ##################
 
+SOURCE_FILE = os.path.abspath(__file__)
+
 infinite_nested_dict = lambda: defaultdict(infinite_nested_dict)
+
+logging = app.config['NODE_LOGGER'].synlog
+logging.debug(
+    "connection/core/federated_learning.py logged",
+    description="No Changes"
+)
 
 ###############################################
 # Abstract Training Class - FederatedLearning #
@@ -95,8 +80,6 @@ class FederatedLearning:
         # Network attributes
         self.crypto_provider = crypto_provider
         self.workers = workers
-        logging.debug(f"crypto_provider: {self.crypto_provider}", Class=FederatedLearning.__name__)
-        logging.debug(f"workers: {self.workers}", Class=FederatedLearning.__name__)
         self.grid = sy.PrivateGridNetwork(self.crypto_provider, *self.workers)
         self._aliases = {w.id: w for w in self.grid.workers}
         
@@ -110,6 +93,20 @@ class FederatedLearning:
 
         # Lock random states within server
         seed_everything(seed=self.arguments.seed)
+        logging.debug(
+            "TTP client as crypto_provider tracked.",
+            crypto_provider=self.crypto_provider, 
+            ID_path=SOURCE_FILE,
+            ID_class=FederatedLearning.__name__,
+            ID_function=FederatedLearning.__init__.__name__
+        )
+        logging.debug(
+            "Worker clients in the grid tracked.",
+            workers=self.workers, 
+            ID_path=SOURCE_FILE,
+            ID_class=FederatedLearning.__name__,
+            ID_function=FederatedLearning.__init__.__name__
+        )
 
     ############
     # Checkers #
@@ -329,7 +326,12 @@ class FederatedLearning:
 
         algorithm = getattr(algorithms, self.arguments.algorithm)
         if not algorithm:
-            logging.error(f"AttributeError: Specified algorithm '{self.arguments.algorithm}' is not supported!", Class=FederatedLearning.__name__)
+            logging.error(
+                f"AttributeError: Specified algorithm '{self.arguments.algorithm}' is not supported!", 
+                ID_path=SOURCE_FILE,
+                ID_class=FederatedLearning.__name__,
+                ID_function=FederatedLearning.load_algorithm.__name__
+            )
             raise AttributeError(f"Specified algorithm '{self.arguments.algorithm}' is not supported!")
 
         return algorithm(
@@ -420,7 +422,12 @@ class FederatedLearning:
             Cached local models  (dict(Model))
         """
         if not self.is_loaded():
-            logging.error(f"RuntimeError: Grid data has not been aggregated! Call '.load()' first & try again.", Class=FederatedLearning.__name__)
+            logging.error(
+                f"RuntimeError: Grid data has not been aggregated! Call '.load()' first & try again.", 
+                ID_path=SOURCE_FILE,
+                ID_class=FederatedLearning.__name__,
+                ID_function=FederatedLearning.fit.__name__
+            )
             raise RuntimeError("Grid data has not been aggregated! Call '.load()' first & try again.")
             
         # Run training using specified algorithm
@@ -448,7 +455,12 @@ class FederatedLearning:
             Inferences (dict(worker_id, dict(result_type, th.tensor)))
         """
         if not self.is_loaded():
-            logging.error("RuntimeError: Grid data has not been aggregated! Call '.load()' first & try again.", Class=FederatedLearning.__name__)
+            logging.error(
+                f"RuntimeError: Grid data has not been aggregated! Call '.load()' first & try again.", 
+                ID_path=SOURCE_FILE,
+                ID_class=FederatedLearning.__name__,
+                ID_function=FederatedLearning.fit.__name__
+            )
             raise RuntimeError("Grid data has not been aggregated! Call '.load()' first & try again.")
 
         # Run algorithm for evaluation

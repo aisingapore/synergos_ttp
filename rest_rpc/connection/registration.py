@@ -5,11 +5,11 @@
 ####################
 
 # Generic/Built-in
-import logging
+import os
 
 # Libs
 import jsonschema
-from flask import request, redirect, url_for
+from flask import request
 from flask_restx import Namespace, Resource, fields
 
 # Custom
@@ -17,24 +17,24 @@ from rest_rpc import app
 from rest_rpc.connection.core.utils import TopicalPayload, RegistrationRecords
 from rest_rpc.connection.tags import tag_output_model
 
-# Synergos logging
-from SynergosLogger.init_logging import logging
-
 ##################
 # Configurations #
 ##################
 
-# logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.DEBUG)
+SOURCE_FILE = os.path.abspath(__file__)
+
+SUBJECT = "Registration" # table name
 
 ns_api = Namespace(
     "registration", 
     description='API to faciliate registation management in a PySyft Grid.'
 )
 
-SUBJECT = "Registration" # table name
-
 schemas = app.config['SCHEMAS']
 db_path = app.config['DB_PATH']
+
+logging = app.config['NODE_LOGGER'].synlog
+logging.debug("connection/registration.py logged", Description="No Changes")
 
 ###########################################################
 # Models - Used for marshalling (i.e. moulding responses) #
@@ -156,13 +156,24 @@ class Registrations(Resource):
         """ Retrieve all metadata for each set of registrations """
         registration_records = RegistrationRecords(db_path=db_path)
         all_relevant_registration = registration_records.read_all(filter=kwargs)
+
         success_payload = payload_formatter.construct_success_payload(
             status=200,
             method="registrations.get",
             params={},
             data=all_relevant_registration
         )
-        logging.info("Success retrieved registrations", code=200, description=success_payload, Class=Registrations.__name__)      
+
+        logging.info(
+            f"Registrations: Bulk record retrieval successful!",
+            code=200, 
+            description=f"All existing registrations were successfully retrieved!", 
+            ID_path=SOURCE_FILE,
+            ID_class=Registrations.__name__, 
+            ID_function=Registrations.get.__name__,
+            **kwargs
+        )
+
         return success_payload, 200
 
 
@@ -193,11 +204,32 @@ class Registration(Resource):
                 },
                 data=retrieved_registration
             )
-            logging.info(f"Success retrieved registration for project_id: {project_id}, participant_id: {participant_id}", code=200, description=success_payload, Class=Registration.__name__)
+
+            logging.info(
+                f"Participant '{participant_id}' >|< Project '{project_id}' -> Registration: \
+                    Single record retrieval successful!", 
+                code=200, 
+                description=f"Registration of '{participant_id}' under project '{project_id}' \
+                    was successfully retrieved!",
+                ID_path=SOURCE_FILE,
+                ID_class=Registration.__name__, 
+                ID_function=Registration.get.__name__,
+                **request.view_args
+            )
+
             return success_payload, 200
 
         else:
-            logging.error(f"Error retrieving registration for project_id: {project_id}, participant_id: {participant_id}", code=404, description=f"Participant '{participant_id}' has not registered for Project '{project_id}'!", Class=Registration.__name__)
+            logging.error(
+                f"Participant '{participant_id}' >|< Project '{project_id}' -> Registration: \
+                    Single record retrieval failed!",
+                code=404, 
+                description=f"Participant '{participant_id}' has not registered for Project '{project_id}'!",
+                ID_path=SOURCE_FILE,
+                ID_class=Registration.__name__, 
+                ID_function=Registration.get.__name__,
+                **request.view_args
+            )
             ns_api.abort(
                 code=404, 
                 message=f"Participant '{participant_id}' has not registered for Project '{project_id}'!"
@@ -227,17 +259,36 @@ class Registration(Resource):
                 participant_id=participant_id
             )
             assert new_registration.doc_id == retrieved_registration.doc_id
+
             success_payload = payload_formatter.construct_success_payload(
                 status=201, 
                 method="registration.post",
                 params={},
                 data=retrieved_registration
             )
-            logging.info(f"Success create registration for project_id: {project_id}, participant_id: {participant_id}", code=201, description=success_payload, Class=Registration.__name__)
+
+            logging.info(
+                f"Participant '{participant_id}' >|< Project '{project_id}' -> Registration: Record creation successful!", 
+                description=f"Registration of '{participant_id}' under project '{project_id}' was successfully submitted!",
+                code=201, 
+                ID_path=SOURCE_FILE,
+                ID_class=Registration.__name__, 
+                ID_function=Registration.post.__name__,
+                **request.view_args
+            )
+            
             return success_payload, 201
 
         except jsonschema.exceptions.ValidationError:
-            logging.info(f"Error creating registration for project_id: {project_id}, participant_id: {participant_id}", code=417, description="Inappropriate registration configurations passed!", Class=Registration.__name__)
+            logging.error(
+                f"Participant '{participant_id}' >|< Project '{project_id}' -> Registration: Record creation failed.",
+                code=417,
+                description="Inappropriate registration configurations passed!", 
+                ID_path=SOURCE_FILE,
+                ID_class=Registration.__name__, 
+                ID_function=Registration.post.__name__,
+                **request.view_args
+            )
             ns_api.abort(
                 code=417,
                 message="Inappropriate registration configurations passed!"
@@ -264,6 +315,7 @@ class Registration(Resource):
                 participant_id=participant_id
             )
             assert updated_registration.doc_id == retrieved_registration.doc_id
+
             success_payload = payload_formatter.construct_success_payload(
                 status=200,
                 method="registration.put",
@@ -273,11 +325,29 @@ class Registration(Resource):
                 },
                 data=retrieved_registration
             )
-            logging.info(f"Success update registration for project_id: {project_id}, participant_id: {participant_id}", code=200, description=success_payload, Class=Registration.__name__)
+
+            logging.info(
+                f"Participant '{participant_id}' >|< Project '{project_id}' -> Registration: Record update successful!",
+                code=200,
+                description=f"Registration of '{participant_id}' under project '{project_id}' was successfully updated!", 
+                ID_path=SOURCE_FILE,
+                ID_class=Registration.__name__, 
+                ID_function=Registration.put.__name__,
+                **request.view_args
+            )
+            
             return success_payload, 200
 
         except jsonschema.exceptions.ValidationError:
-            logging.error(f"Error updating registration for project_id: {project_id}, participant_id: {participant_id}", code=417, description="Inappropriate registration configurations passed!", Class=Registration.__name__)
+            logging.error(
+                f"Participant '{participant_id}' >|< Project '{project_id}' -> Registration: Record update failed.",
+                code=417, 
+                description="Inappropriate registration configurations passed!", 
+                ID_path=SOURCE_FILE,
+                ID_class=Registration.__name__, 
+                ID_function=Registration.put.__name__,
+                **request.view_args
+            )
             ns_api.abort(                
                 code=417,
                 message="Inappropriate registration configurations passed!"
@@ -306,11 +376,29 @@ class Registration(Resource):
                 params={'project_id': project_id},
                 data=retrieved_registration
             )
-            logging.info(f"Success delete registration for project_id: {project_id}, participant_id: {participant_id}", code=200, description=success_payload, Class=Registration.__name__)
+
+            logging.info(
+                f"Participant '{participant_id}' >|< Project '{project_id}' -> Registration: Record deletion successful!",
+                code=200, 
+                description=f"Registration of '{participant_id}' under project '{project_id}' was successfully deleted!", 
+                ID_path=SOURCE_FILE,
+                ID_class=Registration.__name__, 
+                ID_function=Registration.delete.__name__,
+                **request.view_args
+            )
+
             return success_payload
 
         else:
-            logging.error(f"Error deleting registration for project_id: {project_id}, participant_id: {participant_id}", code=404, description=f"Participant '{participant_id}' has not registered for Project '{project_id}'!", Class=Registration.__name__)
+            logging.error(
+                f"Participant '{participant_id}' >|< Project '{project_id}' -> Registration: Record deletion failed.", 
+                code=404, 
+                description=f"Participant '{participant_id}' has not registered for Project '{project_id}'!",  
+                ID_path=SOURCE_FILE,
+                ID_class=Registration.__name__, 
+                ID_function=Registration.delete.__name__,
+                **request.view_args
+            )
             ns_api.abort(
                 code=404, 
                 message=f"Participant '{participant_id}' has not registered for Project '{project_id}'!"

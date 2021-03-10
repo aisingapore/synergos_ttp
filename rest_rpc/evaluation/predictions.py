@@ -5,11 +5,10 @@
 ####################
 
 # Generic/Built-in
-import logging
+import os
+from logging import NOTSET
 
 # Libs
-import jsonschema
-import mlflow
 from flask import request
 from flask_restx import Namespace, Resource, fields
 
@@ -35,21 +34,18 @@ from rest_rpc.evaluation.core.server import start_proc
 from rest_rpc.evaluation.core.utils import PredictionRecords
 from rest_rpc.evaluation.validations import meta_stats_model
 
-# Synergos logging
-from SynergosLogger.init_logging import logging
-
 ##################
 # Configurations #
 ##################
 
-logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.DEBUG)
+SOURCE_FILE = os.path.abspath(__file__)
+
+SUBJECT = "Prediction"
 
 ns_api = Namespace(
     "predictions", 
     description='API to faciliate model inference in a REST-RPC Grid.'
 )
-
-SUBJECT = "Prediction"
 
 db_path = app.config['DB_PATH']
 project_records = ProjectRecords(db_path=db_path)
@@ -63,6 +59,9 @@ model_records = ModelRecords(db_path=db_path)
 prediction_records = PredictionRecords(db_path=db_path)
 
 rpc_formatter = RPCFormatter()
+
+logging = app.config['NODE_LOGGER'].synlog
+logging.debug("evaluation/predictions.py logged", Description="No Changes")
 
 ################################################################
 # Predictions - Used for marshalling (i.e. moulding responses) #
@@ -159,13 +158,31 @@ class Predictions(Resource):
                 data=retrieved_predictions
             )
 
-            logging.info("Success retrieved predictions", code=200, description=success_payload, Class=Predictions.__name__)
+            logging.info(
+                f"Participant '{participant_id}' >|< Project '{project_id}' -> Experiment '{expt_id}' -> \
+                    Run '{run_id}' >|< Predictions: Bulk record retrieval successful!",
+                code=200, 
+                description=f"Predictions for participant '{participant_id}' under project '{self.project}' using \
+                    experiment '{self.expt_id}' and run '{self.run_id}' was successfully retrieved!",
+                ID_path=SOURCE_FILE,
+                ID_class=Predictions.__name__, 
+                ID_function=Predictions.get.__name__,
+                **request.view_args
+            )
             
             return success_payload, 200
 
         else:
-            logging.error("Error retrieving predictions", code=404, description=f"Predictions do not exist for specified keyword filters!", Class=Predictions.__name__)
-
+            logging.error(
+                f"Participant '{participant_id}' >|< Project '{project_id}' -> Experiment '{expt_id}' -> \
+                    Run '{run_id}' >|< Predictions: Bulk record retrieval failed!",
+                code=404, 
+                description=f"Predictions do not exist for specified keyword filters!", 
+                ID_path=SOURCE_FILE,
+                ID_class=Predictions.__name__, 
+                ID_function=Predictions.get.__name__,
+                **request.view_args
+            )
             ns_api.abort(
                 code=404, 
                 message=f"Predictions do not exist for specified keyword filters!"
@@ -203,7 +220,16 @@ class Predictions(Resource):
         auto_align = request.json['auto_align']
         is_dockerised = request.json['dockerised']
         new_pred_tags = request.json['tags']
-        logging.debug("Keys", description=request.view_args, Class=Predictions.__name__)
+
+        logging.debug(
+            f"Participant '{participant_id}' >|< Project '{project_id}' -> Experiment '{expt_id}' -> \
+                Run '{run_id}' >|< Predictions: Input keys tracked.", 
+            keys=request.view_args, 
+            ID_path=SOURCE_FILE,
+            ID_class=Predictions.__name__, 
+            ID_function=Predictions.post.__name__,
+            **request.view_args
+        )
 
         # Update prediction tags for all queried projects
         for queried_project_id, tags in new_pred_tags.items():
@@ -220,12 +246,30 @@ class Predictions(Resource):
             'project_id': project_id
         }
         key_filter = {k:v for k,v in key_filter.items() if v is not None}
-        logging.debug("key_filter", description=f"{key_filter}", Class=Predictions.__name__)
+
+        logging.debug(
+            f"Participant '{participant_id}' >|< Project '{project_id}' -> Experiment '{expt_id}' -> \
+                Run '{run_id}' >|< Predictions: key_filter tracked.", 
+            key_filter=key_filter, 
+            ID_path=SOURCE_FILE,
+            ID_class=Predictions.__name__, 
+            ID_function=Predictions.post.__name__,
+            **request.view_args
+        )
 
         participant_registrations = registration_records.read_all(
             filter=key_filter
         )
-        logging.debug(f"participant registrations", description=participant_registrations, Class=Predictions.__name__)
+
+        logging.debug(
+            f"Participant '{participant_id}' >|< Project '{project_id}' -> Experiment '{expt_id}' -> \
+                Run '{run_id}' >|< Predictions: Participant registrations tracked.", 
+            registrations=participant_registrations, 
+            ID_path=SOURCE_FILE,
+            ID_class=Predictions.__name__, 
+            ID_function=Predictions.post.__name__,
+            **request.view_args
+        )
 
         project_combinations = {}
         for registration in participant_registrations:
@@ -269,7 +313,15 @@ class Predictions(Resource):
             poller = Poller(project_id=registered_project_id)
             all_metadata = poller.poll(project_registrations)
 
-            logging.debug("All metadata polled", description=all_metadata, Class=Predictions.__name__)
+            logging.debug(
+                f"Participant '{participant_id}' >|< Project '{project_id}' -> Experiment '{expt_id}' -> \
+                    Run '{run_id}' >|< Predictions: All polled metadata tracked.", 
+                polled_metadata=all_metadata, 
+                ID_path=SOURCE_FILE,
+                ID_class=Predictions.__name__, 
+                ID_function=Predictions.post.__name__,
+                **request.view_args
+            )
 
             (X_data_headers, y_data_headers, key_sequences,
              _, _) = rpc_formatter.aggregate_metadata(all_metadata)
@@ -311,7 +363,15 @@ class Predictions(Resource):
 
                 for p_id, spacer_idxs in spacer_collection.items():
 
-                    logging.debug(f"Spacer Indexes: {spacer_idxs}", Class=Predictions.__name__)
+                    logging.debug(
+                        f"Participant '{participant_id}' >|< Project '{project_id}' -> Experiment '{expt_id}' -> \
+                            Run '{run_id}' >|< Predictions: Spacer Indexes tracked.", 
+                        spacer_idxs=spacer_idxs,
+                        ID_path=SOURCE_FILE,
+                        ID_class=Predictions.__name__, 
+                        ID_function=Predictions.post.__name__,
+                        **request.view_args
+                    )
 
                     alignment_records.update(
                         project_id=registered_project_id,
@@ -319,13 +379,34 @@ class Predictions(Resource):
                         updates=spacer_idxs
                     ) 
 
-                logging.debug("Alignments", description=alignment_records.read_all(filter={'project_id': registered_project_id, 'participant_id': participant_id}), Class=Predictions.__name__)
+                logging.debug(
+                    f"Participant '{participant_id}' >|< Project '{project_id}' -> Experiment '{expt_id}' -> \
+                        Run '{run_id}' >|< Predictions: Updated alignments tracked.", 
+                    updated_alignments=alignment_records.read_all(
+                        filter={
+                            'project_id': registered_project_id, 
+                            'participant_id': participant_id
+                        }
+                    ),
+                    ID_path=SOURCE_FILE,
+                    ID_class=Predictions.__name__, 
+                    ID_function=Predictions.post.__name__,
+                    **request.view_args
+                )
 
             updated_project_registrations = registration_records.read_all(
                 filter={'project_id': registered_project_id}
             )
 
-            logging.debug("Project registrations", description=updated_project_registrations, Class=Predictions.__name__)
+            logging.debug(
+                f"Participant '{participant_id}' >|< Project '{project_id}' -> Experiment '{expt_id}' -> \
+                    Run '{run_id}' >|< Predictions: Updated project registrations tracked.", 
+                updated_project_registrations=updated_project_registrations, 
+                ID_path=SOURCE_FILE,
+                ID_class=Predictions.__name__, 
+                ID_function=Predictions.post.__name__,
+                **request.view_args
+            )
 
             # Template for initialising FL grid
             kwargs = {
@@ -341,16 +422,42 @@ class Predictions(Resource):
             }
             project_combinations[registered_project_id] = kwargs
 
-        logging.debug("Project combinations", description=project_combinations, Class=Predictions.__name__)
+        logging.debug(
+            f"Participant '{participant_id}' >|< Project '{project_id}' -> Experiment '{expt_id}' -> \
+                Run '{run_id}' >|< Predictions: Project combinations tracked.", 
+            project_combinations=project_combinations, 
+            ID_path=SOURCE_FILE,
+            ID_class=Predictions.__name__, 
+            ID_function=Predictions.post.__name__,
+            **request.view_args
+        )
 
         completed_inferences = start_proc(project_combinations)
-        logging.debug(f"Completed Inferences: {completed_inferences}")
+
+        logging.log(
+            level=NOTSET,
+            event=f"Participant '{participant_id}' >|< Project '{project_id}' -> Experiment '{expt_id}' -> \
+                Run '{run_id}' >|< Predictions:- Completed Inferences tracked.",
+            completed_inferences=completed_inferences,
+            ID_path=SOURCE_FILE,
+            ID_class=Predictions.__name__, 
+            ID_function=Predictions.post.__name__,
+            **request.view_args
+        )
         
         # Store output metadata into database
         retrieved_predictions = []
         for combination_key, inference_stats in completed_inferences.items():
 
-            logging.debug(f"Inference stats", description=inference_stats, Class=Predictions.__name__)
+            logging.debug(
+                f"Participant '{participant_id}' >|< Project '{project_id}' -> Experiment '{expt_id}' -> \
+                    Run '{run_id}' >|< Predictions: Inference stats tracked.", 
+                inference_stats=inference_stats, 
+                ID_path=SOURCE_FILE,
+                ID_class=Predictions.__name__, 
+                ID_function=Predictions.post.__name__,
+                **request.view_args
+            )
 
             combination_key = (participant_id,) + combination_key
 
@@ -371,6 +478,16 @@ class Predictions(Resource):
             data=retrieved_predictions
         )
 
-        logging.info("Completed inferences", description=success_payload, Class=Predictions.__name__)
+        logging.info(
+            f"Participant '{participant_id}' >|< Project '{project_id}' -> Experiment '{expt_id}' -> \
+                Run '{run_id}' >|< Predictions: Record creation successful!", 
+            description=f"Predictions for participant '{participant_id}' under project '{project_id}' \
+                using experiment '{expt_id}' and run '{run_id}' was successfully collected!",
+            code=201, 
+            ID_path=SOURCE_FILE,
+            ID_class=Predictions.__name__, 
+            ID_function=Predictions.post.__name__,
+            **request.view_args
+        )
 
         return success_payload, 200

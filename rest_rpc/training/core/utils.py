@@ -9,7 +9,7 @@ import asyncio
 import copy
 import importlib
 import json
-import logging
+import os
 import time
 import uuid
 from datetime import datetime
@@ -24,14 +24,11 @@ from rest_rpc import app
 from rest_rpc.connection.core.utils import TopicalPayload, AssociationRecords
 from rest_rpc.connection.core.datetime_serialization import DateTimeSerializer
 
-# Synergos logging
-from SynergosLogger.init_logging import logging
-
 ##################
 # Configurations #
 ##################
 
-logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.DEBUG)
+SOURCE_FILE = os.path.abspath(__file__)
 
 schemas = app.config['SCHEMAS']
 db_path = app.config['DB_PATH']
@@ -57,6 +54,9 @@ Training:
     }
 }
 """
+
+logging = app.config['NODE_LOGGER'].synlog
+logging.debug("connection/core/utils.py logged", Description="No Changes")
 
 #################################
 # Helper Class - UrlConstructor #
@@ -323,7 +323,12 @@ class RPCFormatter:
             descriptors
         )
 
-    def alignment_to_spacer_idxs(self, X_mf_alignments, y_mf_alignments, key_sequences):
+    def alignment_to_spacer_idxs(
+        self, 
+        X_mf_alignments: Tuple[List[str]], 
+        y_mf_alignments: Tuple[List[str]], 
+        key_sequences: List[Tuple[str]]
+    ) -> dict:
         """ Aggregates feature and target alignments and formats them w.r.t each
             corresponding participant
 
@@ -350,7 +355,15 @@ class RPCFormatter:
             """
             return [idx for idx, e in enumerate(alignment) if e == None]
 
-        logging.debug(f"X_mf_alignments: {X_mf_alignments}, y_mf_alignments: {y_mf_alignments}")
+        logging.debug(
+            f"Alignments to convert tracked.",
+            X_mf_alignments=X_mf_alignments,
+            y_mf_alignments=y_mf_alignments,
+            ID_path=SOURCE_FILE,
+            ID_class=RPCFormatter.__name__,
+            ID_function=RPCFormatter.alignment_to_spacer_idxs.__name__
+        )
+
         spacer_collection = {}
         for X_alignment, y_alignment, (participant, meta) in zip(
                 X_mf_alignments, 
@@ -457,13 +470,31 @@ class Poller:
 
                     elif response.status == 406:
                         sleep_interval = jobs_in_queue * retry_interval
-                        logging.debug(f"Archives for participant '{participant_id}' are not yet loaded. Retrying after {sleep_interval} seconds...")
+
+                        logging.info(
+                            f"Archives for participant '{participant_id}' are not yet loaded. \
+                                Retrying after {sleep_interval} seconds...",
+                            ID_path=SOURCE_FILE,
+                            ID_class=Poller.__name__,
+                            ID_function=Poller._poll_metadata.__name__
+                        )
+
                         time.sleep(sleep_interval)
 
                     else:
-                        raise RuntimeError(f"Something went wrong when polling for metadata from participant '{participant_id}'")
+                        logging.error(
+                            f"Something went wrong when polling for metadata from participant '{participant_id}'!",
+                            description=f"Unexpected response status received: {response.status}",
+                            ID_path=SOURCE_FILE,
+                            ID_class=Poller.__name__,
+                            ID_function=Poller._poll_metadata.__name__
+                        )
+                        raise RuntimeError(
+                            f"Something went wrong when polling for metadata from participant '{participant_id}'"
+                        )
         
         return {participant_id: metadata}
+
 
     async def _collect_all_metadata(self, reg_records):
         """ Asynchroneous function to poll metadata from registered participant
@@ -621,8 +652,17 @@ class Governor:
                     relevant_alignments
                 )
             except (KeyError, AttributeError) as e:
-                logging.error(f"RuntimeError: Governor._initialise_participant: Error - {e}", Class=Governor.__name__)
-                raise RuntimeError("No prior alignments have been detected! Please run multiple feature alignment first and try again!")
+                logging.error(
+                    "No prior alignments have been detected! Please run multiple feature alignment first and try again!", 
+                    description=f"{e}",
+                    ID_path=SOURCE_FILE,
+                    ID_class=Governor.__name__,
+                    ID_function=Governor._initialise_participant.__name__
+                )
+                raise RuntimeError(
+                    "No prior alignments have been detected! Please run multiple feature alignment first and try again!"
+                )
+
         else:
             stripped_alignments = {
                 meta: {"X": [], "y": []} # do not apply any alignment indexes
@@ -641,7 +681,13 @@ class Governor:
         if self.dockerised:
             payload.update(self.__DEFAULT_SERVER_CONFIG)
 
-        logging.info(f"rest_rpc.utils.Governor._initialise_participant - Payload: {payload}", Class=Governor.__name__)
+        logging.debug(
+            "Initialisation payload used for governing server workers tracked!",
+            payload=payload, 
+            ID_path=SOURCE_FILE,
+            ID_class=Governor.__name__,
+            ID_function=Governor._initialise_participant.__name__
+        )
         
         # Initialise WSSW object on participant's worker node by posting tags &
         # alignments to `initialise` route in worker's REST-RPC
@@ -722,7 +768,12 @@ class Governor:
         elif operation == "terminate":
             method = self._terminate_participant
         else:
-            logging.error("ValueError: Invalid operation specified", Class=Governor.__name__)
+            logging.error(
+                "ValueError: Invalid operation specified", 
+                ID_path=SOURCE_FILE,
+                ID_class=Governor.__name__,
+                ID_function=Governor._operate_on_participants.__name__
+            )
             raise ValueError("Invalid operation specified")
 
         all_states = {}
@@ -806,7 +857,12 @@ class Parser:
             return operation
 
         except AttributeError:
-            logging.error(f"AttributeError: Specified operation '{operation_str}' is not supported!", Class=Parser.__name__)
+            logging.error(
+                f"AttributeError: Specified operation '{operation_str}' is not supported!", 
+                ID_path=SOURCE_FILE,
+                ID_class=Parser.__name__,
+                ID_function=Parser.parse_operation.__name__
+            )
 
 ############################################
 # Configuration Parser Class - TorchParser #

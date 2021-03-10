@@ -5,13 +5,11 @@
 ####################
 
 # Generic/Built-in
-import logging
 import os
+from logging import NOTSET
 from pathlib import Path
 
 # Libs
-import jsonschema
-import mlflow
 from flask import request
 from flask_restx import Namespace, Resource, fields
 
@@ -39,19 +37,18 @@ from rest_rpc.evaluation.core.utils import (
     MLFlogger
 )
 
-# Synergos logging
-from SynergosLogger.init_logging import logging
-
 ##################
 # Configurations #
 ##################
+
+SOURCE_FILE = os.path.abspath(__file__)
+
+SUBJECT = "Validation"
 
 ns_api = Namespace(
     "validations", 
     description='API to faciliate model validation in a REST-RPC Grid.'
 )
-
-SUBJECT = "Validation"
 
 db_path = app.config['DB_PATH']
 project_records = ProjectRecords(db_path=db_path)
@@ -67,6 +64,9 @@ validation_records = ValidationRecords(db_path=db_path)
 
 mlflow_dir = app.config['MLFLOW_DIR']
 mlf_logger = MLFlogger()
+
+logging = app.config['NODE_LOGGER'].synlog
+logging.debug("evaluation/predictions.py logged", Description="No Changes")
 
 ################################################################
 # Validations - Used for marshalling (i.e. moulding responses) #
@@ -192,11 +192,32 @@ class Validations(Resource):
                 params=request.view_args,
                 data=retrieved_validations
             )
-            logging.info("Success retrieved validations statistics", code=200, description=success_payload, Class=Validations.__name__)
+
+            logging.info(
+                f"Participant '{participant_id}' >|< Project '{project_id}' -> Experiment '{expt_id}' -> \
+                    Run '{run_id}' >|< Validations: Bulk record retrieval successful!",
+                code=200, 
+                description=f"Validations for participant '{participant_id}' under project '{self.project}' using \
+                    experiment '{self.expt_id}' and run '{self.run_id}' was successfully retrieved!",
+                ID_path=SOURCE_FILE,
+                ID_class=Validations.__name__, 
+                ID_function=Validations.get.__name__,
+                **request.view_args
+            )
+
             return success_payload, 200
 
         else:
-            logging.error("Error retrieving validations statistics", code=404, description=success_payload, Class=Validations.__name__)
+            logging.error(
+                f"Participant '{participant_id}' >|< Project '{project_id}' -> Experiment '{expt_id}' -> \
+                    Run '{run_id}' >|< Validations: Bulk record retrieval failed!",
+                code=404, 
+                description=f"Predictions do not exist for specified keyword filters!", 
+                ID_path=SOURCE_FILE,
+                ID_class=Validations.__name__, 
+                ID_function=Validations.get.__name__,
+                **request.view_args
+            )
             ns_api.abort(
                 code=404, 
                 message=f"Validations do not exist for specified keyword filters!"
@@ -311,5 +332,17 @@ class Validations(Resource):
             params=request.view_args,
             data=retrieved_validations
         )
-        logging.info("Completed validations", code=200, description=success_payload, Class=Validations.__name__)
+
+        logging.info(
+            f"Participant '{participant_id}' >|< Project '{project_id}' -> Experiment '{expt_id}' -> \
+                Run '{run_id}' >|< Validations: Record creation successful!", 
+            description=f"Validations for participant '{participant_id}' under project '{project_id}' \
+                using experiment '{expt_id}' and run '{run_id}' was successfully collected!",
+            code=201, 
+            ID_path=SOURCE_FILE,
+            ID_class=Validations.__name__, 
+            ID_function=Validations.post.__name__,
+            **request.view_args
+        )
+
         return success_payload, 200

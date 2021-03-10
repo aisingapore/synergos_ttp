@@ -8,10 +8,11 @@
 import argparse
 import asyncio
 import concurrent.futures
-import logging
+import inspect
 import multiprocessing as mp
 import os
 import time
+from logging import NOTSET
 from glob import glob
 from pathlib import Path
 
@@ -20,8 +21,9 @@ import dill
 import syft as sy
 import torch as th
 from pathos.multiprocessing import ProcessingPool
-from syft.workers.websocket_client import WebsocketClientWorker
+from syft.generic.pointers.object_pointer import ObjectPointer
 from syft.grid.clients.data_centric_fl_client import DataCentricFLClient
+from syft.workers.websocket_client import WebsocketClientWorker
 
 # Custom
 from rest_rpc import app
@@ -31,16 +33,11 @@ from rest_rpc.training.core.federated_learning import FederatedLearning
 from rest_rpc.training.core.utils import Poller, Governor, RPCFormatter
 from rest_rpc.training.core.custom import CustomClientWorker, CustomWSClient
 
-# Synergos & HardwareStats logging
-from SynergosLogger.init_logging import logging
-from SynergosLogger import syn_logger_config
-from HardwareStatsLogger import Sysmetrics
-
 ##################
 # Configurations #
 ##################
 
-logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.DEBUG)
+SOURCE_FILE = os.path.abspath(__file__)
 
 out_dir = app.config['OUT_DIR']
 
@@ -49,11 +46,17 @@ cache = mp.Queue()#app.config['CACHE']
 rpc_formatter = RPCFormatter()
 
 # Instantiate a local hook for coordinating clients
-# Note: `is_client=True` ensures that all objects are deleted once WS connection
-#       is closed. That way, there is no need to explicitly clear objects in all
-#       workers, which may prematurely break PointerTensors
+# Note: `is_client=True` ensures that all objects are deleted once WS 
+# connection is closed. That way, there is no need to explicitly clear objects
+# in all workers, which may prematurely break PointerTensors.
 grid_hook = sy.TorchHook(th)
 grid_hook.local_worker.is_client_worker = False
+
+# Configure timeout settings for WebsocketClientWorker
+sy.workers.websocket_client.TIMEOUT_INTERVAL = 3600
+
+#sy.workers.websocket_client.websocket.enableTrace(True)
+REF_WORKER = sy.local_worker
 
 """
 [Redacted - Multiprocessing]
@@ -65,19 +68,15 @@ dill.settings['recurse'] = True
 
 [Redacted - Asynchronised FL Grid Training]
 """
-# Configure timeout settings for WebsocketClientWorker
-sy.workers.websocket_client.TIMEOUT_INTERVAL = 3600
-
-#sy.workers.websocket_client.websocket.enableTrace(True)
-REF_WORKER = sy.local_worker
-
-# Patching WebsocketClientWorker
 
 # GPU customisations
 gpu_count = app.config['GPU_COUNT']
 gpus = app.config['GPUS']
 use_gpu = app.config['USE_GPU']
 device = app.config['DEVICE']
+
+logging = app.config['NODE_LOGGER'].synlog
+logging.debug("connection/core/server.py logged", Description="No Changes")
 
 #############
 # Functions #
@@ -113,9 +112,24 @@ def connect_to_ttp(log_msgs=False, verbose=False):
     sy.local_worker = ttp
     grid_hook.local_worker = ttp
 
-    logging.debug(f"Local worker w.r.t grid hook: {grid_hook.local_worker}")
-    logging.debug(f"Local worker w.r.t env      : {sy.local_worker}")
-    logging.debug(f"Local worker's known workers: {grid_hook.local_worker._known_workers}")
+    logging.debug(
+        "Local worker w.r.t grid hook tracked.",
+        local_worker=grid_hook.local_worker,
+        ID_path=SOURCE_FILE,
+        ID_function=connect_to_ttp.__name__
+    )
+    logging.debug(
+        "Local worker w.r.t env tracked.",
+        local_worker=sy.local_worker,
+        ID_path=SOURCE_FILE,
+        ID_function=connect_to_ttp.__name__
+    )
+    logging.debug(
+        f"Local worker's known workers tracked.",
+        known_workers=grid_hook.local_worker._known_workers,
+        ID_path=SOURCE_FILE,
+        ID_function=connect_to_ttp.__name__
+    )
 
     return grid_hook.local_worker
 
@@ -185,10 +199,26 @@ def connect_to_workers(keys, reg_records, dockerised=True, log_msgs=False, verbo
         # )
 
         workers.append(curr_worker)
-        logging.debug(f"Participant's known workers: {curr_worker._known_workers}")
+
+        logging.debug(
+            f"Participant's known workers tracked.",
+            known_workers=curr_worker._known_workers,
+            ID_path=SOURCE_FILE,
+            ID_function=connect_to_workers.__name__
+        )
     
-    logging.debug(f"Participants: {[w.id for w in workers]}")
-    logging.debug(f"Local worker's known workers: {grid_hook.local_worker._known_workers}")
+    logging.debug(
+        f"Participants connected tracked.",
+        participants=[w.id for w in workers],
+        ID_path=SOURCE_FILE,
+        ID_function=connect_to_workers.__name__
+    )
+    logging.debug(
+        f"Local worker's known workers tracked.", 
+        known_workers=grid_hook.local_worker._known_workers,
+        ID_path=SOURCE_FILE,
+        ID_function=connect_to_workers.__name__
+    )
     
     return workers
 
@@ -216,9 +246,18 @@ def terminate_connections(ttp, workers):
     del ttp
 
     try:
-        logging.error(f"{ttp} has not been deleted!")
+        logging.error(
+            f"{ttp} has not been deleted!",
+            ttp=ttp,
+            ID_path=SOURCE_FILE,
+            ID_function=connect_to_workers.__name__
+        )
     except NameError:
-        logging.info(f"TTP has been successfully deleted!")
+        logging.info(
+            "TTP has been successfully deleted!",
+            ID_path=SOURCE_FILE,
+            ID_function=connect_to_workers.__name__
+        )
 
     for w_idx, worker in enumerate(workers):
 
@@ -237,9 +276,17 @@ def terminate_connections(ttp, workers):
         del worker
 
         try:
-            logging.error(f"{worker} has not been deleted!")
+            logging.error(
+                f"Worker_{w_idx} has not been deleted!",
+                ID_path=SOURCE_FILE,
+                ID_function=connect_to_workers.__name__
+            )
         except NameError:
-            logging.info(f"Worker_{w_idx} has been successfully deleted")
+            logging.info(
+                f"Worker_{w_idx} has been successfully deleted",
+                ID_path=SOURCE_FILE,
+                ID_function=connect_to_workers.__name__
+            )
 
 
 def load_selected_run(run_record):
@@ -306,16 +353,46 @@ def start_expt_run_training(
 
     def train_combination():
 
-        logging.debug(f"Before Initialisation - Reference Worker            : {REF_WORKER}")
-        logging.debug(f"Before Initialisation - Local worker w.r.t grid hook: {grid_hook.local_worker}")
-        logging.debug(f"Before Initialisation - Local worker w.r.t env      : {sy.local_worker}")
+        logging.debug(
+            f"Before Initialisation - Reference Worker tracked,",
+            ref_worker=REF_WORKER,
+            ID_path=SOURCE_FILE,
+            ID_function=train_combination.__name__
+        )
+        logging.debug(
+            f"Before Initialisation - Local worker w.r.t grid hook tracked.",
+            local_worker=grid_hook.local_worker,
+            ID_path=SOURCE_FILE,
+            ID_function=train_combination.__name__
+        )
+        logging.debug(
+            f"Before Initialisation - Local worker w.r.t env tracked.",
+            local_worker=sy.local_worker,
+            ID_path=SOURCE_FILE,
+            ID_function=train_combination.__name__
+        )
 
         # Create worker representation for local machine as TTP
         ttp = connect_to_ttp(log_msgs=log_msgs, verbose=verbose)
 
-        logging.debug(f"After Initialisation - Reference Worker            : {REF_WORKER}")
-        logging.debug(f"After Initialisation - Local worker w.r.t grid hook: {grid_hook.local_worker}")
-        logging.debug(f"After Initialisation - Local worker w.r.t env      : {sy.local_worker}")
+        logging.debug(
+            f"After Initialisation - Reference Worker tracked,",
+            ref_worker=REF_WORKER,
+            ID_path=SOURCE_FILE,
+            ID_function=train_combination.__name__
+        )
+        logging.debug(
+            f"After Initialisation - Local worker w.r.t grid hook tracked.",
+            local_worker=grid_hook.local_worker,
+            ID_path=SOURCE_FILE,
+            ID_function=train_combination.__name__
+        )
+        logging.debug(
+            f"After Initialisation - Local worker w.r.t env tracked.",
+            local_worker=sy.local_worker,
+            ID_path=SOURCE_FILE,
+            ID_function=train_combination.__name__
+        )
 
         # Complete WS handshake with participants
         workers = connect_to_workers(
@@ -326,9 +403,24 @@ def start_expt_run_training(
             verbose=verbose
         )
 
-        logging.debug(f"Before training - Reference worker: {REF_WORKER}")
-        logging.debug(f"Before training - Registered workers in grid: {grid_hook.local_worker._known_workers}")
-        logging.debug(f"Before training - Registered workers in env : {sy.local_worker._known_workers}")
+        logging.debug(
+            f"Before training - Reference Worker tracked,",
+            ref_worker=REF_WORKER,
+            ID_path=SOURCE_FILE,
+            ID_function=train_combination.__name__
+        )
+        logging.debug(
+            f"Before training - Registered workers in grid tracked.",
+            known_workers=grid_hook.local_worker._known_workers,
+            ID_path=SOURCE_FILE,
+            ID_function=train_combination.__name__
+        )
+        logging.debug(
+            f"Before training - Registered workers in env tracked.",
+            known_workers=sy.local_worker._known_workers,
+            ID_path=SOURCE_FILE,
+            ID_function=train_combination.__name__
+        )
 
         ###########################
         # Implementation FootNote #
@@ -369,26 +461,89 @@ def start_expt_run_training(
 
         out_paths = fl_expt.export()
 
-        logging.info(f"Final model: {fl_expt.algorithm.global_model.state_dict()}")
-        logging.info(f"Final model stored at {out_paths}")
-        logging.info(f"Loss history: {fl_expt.algorithm.loss_history}")
+        logging.log(
+            level=NOTSET,
+            event="Final trained model tracked.",
+            weights=fl_expt.algorithm.global_model.state_dict(),
+            ID_path=SOURCE_FILE,
+            ID_function=train_combination.__name__
+        )
+        logging.debug(
+            f"Location of trained model(s) tracked.",
+            out_paths=out_paths,
+            ID_path=SOURCE_FILE,
+            ID_function=train_combination.__name__
+        )
+        logging.debug(
+            f"Loss history tracked.",
+            loss_history=fl_expt.algorithm.loss_history,
+            ID_path=SOURCE_FILE,
+            ID_function=train_combination.__name__    
+        )
 
-        logging.debug(f"After training - Reference worker: {REF_WORKER}")
-        logging.debug(f"After training - Registered workers in grid: {grid_hook.local_worker._known_workers}")
-        logging.debug(f"After training - Registered workers in env : {sy.local_worker._known_workers}")
+        logging.debug(
+            f"After training - Reference Worker tracked,",
+            ref_worker=REF_WORKER,
+            ID_path=SOURCE_FILE,
+            ID_function=train_combination.__name__
+        )
+        logging.debug(
+            f"After training - Registered workers in grid tracked.",
+            known_workers=grid_hook.local_worker._known_workers,
+            ID_path=SOURCE_FILE,
+            ID_function=train_combination.__name__
+        )
+        logging.debug(
+            f"After training - Registered workers in env tracked.",
+            known_workers=sy.local_worker._known_workers,
+            ID_path=SOURCE_FILE,
+            ID_function=train_combination.__name__
+        )
+
+        logging.info(
+            f"Model(s) for current federated combination successfully trained and archived!",
+            **keys,
+            ID_path=SOURCE_FILE,
+            ID_function=train_combination.__name__
+        )
 
         # Close WSCW local objects once training process is completed (if possible)
         # (i.e. graceful termination)
         terminate_connections(ttp=ttp, workers=workers)
-
-        logging.debug(f"After termination - Reference worker: {REF_WORKER}")
-        logging.debug(f"After termination - Reference worker's known workers: {REF_WORKER._known_workers}")
-        logging.debug(f"After termination - Registered workers in grid: {grid_hook.local_worker._known_workers}")
-        logging.debug(f"After termination - Registered workers in env : {sy.local_worker._known_workers}")
         
+        logging.debug(
+            f"After termination - Reference Worker tracked,",
+            ref_worker=REF_WORKER,
+            ID_path=SOURCE_FILE,
+            ID_function=train_combination.__name__
+        )
+        logging.debug(
+            f"After termination - Reference worker's known workers tracked,",
+            ref_worker=REF_WORKER._known_workers,
+            ID_path=SOURCE_FILE,
+            ID_function=train_combination.__name__
+        )
+        logging.debug(
+            f"After termination - Registered workers in grid tracked.",
+            known_workers=grid_hook.local_worker._known_workers,
+            ID_path=SOURCE_FILE,
+            ID_function=train_combination.__name__
+        )
+        logging.debug(
+            f"After termination - Registered workers in env tracked.",
+            known_workers=sy.local_worker._known_workers,
+            ID_path=SOURCE_FILE,
+            ID_function=train_combination.__name__
+        )
+
         return out_paths
 
-    logging.info(f"Current combination: {keys}")
+    logging.info(
+        f"Current training combination: {keys}",
+        keys=keys,
+        ID_path=SOURCE_FILE,
+        ID_function=start_expt_run_training.__name__
+    )
 
     # Send initialisation signal to all remote worker WSSW objects
     governor = Governor(auto_align=auto_align, dockerised=dockerised, **keys)
@@ -397,24 +552,44 @@ def start_expt_run_training(
     try:
         results = train_combination()
 
-        def magic_method(obj):
-            import inspect
+        def track_object_references(obj):
+            """ Tracks the number of references pointing to an object """
             frame = inspect.currentframe()
             try:
-                names = [name for name, val in frame.f_back.f_locals.items() if val is obj]
-                names += [name for name, val in frame.f_back.f_globals.items()
-                        if val is obj and name not in names]
+                names = [
+                    name 
+                    for name, val in frame.f_back.f_locals.items() 
+                    if val is obj
+                ]
+                names += [
+                    name 
+                    for name, val in frame.f_back.f_globals.items()
+                    if val is obj and name not in names
+                ]
                 return names
             finally:
                 del frame
 
-        from syft.generic.pointers.object_pointer import ObjectPointer
-        logging.debug(f"All remaining ObjectPointers un-collected: {magic_method(ObjectPointer)}")
+        logging.debug(
+            "All remaining ObjectPointers un-collected tracked.",
+            uncollected_pointers=track_object_references(ObjectPointer),
+            ID_path=SOURCE_FILE,
+            ID_function=start_expt_run_training.__name__
+        )
 
-        logging.info(f"Objects left in env: {sy.local_worker._objects}, {sy.local_worker._known_workers}")
+        logging.info(
+            f"Objects left in env: {sy.local_worker._objects}, {sy.local_worker._known_workers}",
+            ID_path=SOURCE_FILE,
+            ID_function=start_expt_run_training.__name__       
+        )
+    
     except OSError as o:
-        logging.debug(f"{o}")
-        print("Caught this OS problem...")
+        logging.error(
+            "Caught an OS problem...",
+            description=f"{o}",
+            ID_path=SOURCE_FILE,
+            ID_function=start_expt_run_training.__name__
+        )
 
     # Send terminate signal to all participants' worker nodes
     # governor = Governor(dockerised=dockerised, **keys)
@@ -487,7 +662,12 @@ def start_proc(kwargs):
                 }
                 training_combinations[combination_key] = project_expt_run_params
 
-    logging.info(f"Training combinations: {training_combinations}")
+    logging.info(
+        "Training combinations loaded!",
+        training_combinations=f"{training_combinations}",
+        ID_path=SOURCE_FILE,
+        ID_function=start_proc.__name__
+    )
 
     # """
     # ##########################################################

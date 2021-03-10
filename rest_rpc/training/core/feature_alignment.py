@@ -1,19 +1,26 @@
 #!/usr/bin/env python
 
 # Generic
-import logging
+import os
 from collections import Counter
 
 # Libs
 import itertools
 
-# Synergos logging
-from SynergosLogger.init_logging import logging
+# Custom
+from rest_rpc import app
 
 ##################
 # Configurations #
 ##################
 
+SOURCE_FILE = os.path.abspath(__file__)
+
+logging = app.config['NODE_LOGGER'].synlog
+logging.debug(
+    "connection/core/feature_alignment.py logged", 
+    Description="No Changes"
+)
 
 #################################
 # Alignment Helper Class - Cell #
@@ -142,7 +149,13 @@ class PairwiseFeatureAligner:
         elif algo == 'local':
             optimal_score = max(0, adj_score, diag_score, top_score)
         else:
-            logging.error(f"NotImplementedError: Algorithm not supported!", Class=PairwiseFeatureAligner.__name__)
+            logging.error(
+                f"NotImplementedError: Algorithm not supported!",
+                algorithim=algo,
+                ID_path=SOURCE_FILE,
+                ID_class=PairwiseFeatureAligner.__name__,
+                ID_function=PairwiseFeatureAligner.resolve_optimal_path.__name__
+            )
             raise NotImplementedError("Algorithm not supported!")
 
         # Update the current cell's score with max score
@@ -344,7 +357,13 @@ class PairwiseFeatureAligner:
             return self.perform_local_trackback()
         
         else:
-            logging.error(f"NotImplementedError: Algorithm not supported", Class=PairwiseFeatureAligner.__name__)
+            logging.error(
+                f"NotImplementedError: Algorithm not supported!",
+                algorithim=algo,
+                ID_path=SOURCE_FILE,
+                ID_class=PairwiseFeatureAligner.__name__,
+                ID_function=PairwiseFeatureAligner.align.__name__
+            )
             raise NotImplementedError("Algorithm not supported!")        
     
 
@@ -511,7 +530,8 @@ class MultipleFeatureAligner:
         """
         handshake_alignments = []
 
-        for idx,combination in enumerate(itertools.combinations(self.headers, 2)): #do a logging for the idx, i.e current combi is what?
+        pairwise_combinations = itertools.combinations(self.headers, 2)
+        for idx, combination in enumerate(pairwise_combinations):
 
             ###########################
             # Implementation Footnote #

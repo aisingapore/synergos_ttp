@@ -5,7 +5,7 @@
 ####################
 
 # Generic/Built-in
-import logging
+import os
 import uuid
 from datetime import datetime
 
@@ -27,14 +27,11 @@ from rest_rpc.connection.core.datetime_serialization import (
     TimeDeltaSerializer
 )
 
-# Synergos logging
-from SynergosLogger.init_logging import logging
-
 ##################
 # Configurations #
 ##################
 
-# logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.DEBUG)
+SOURCE_FILE = os.path.abspath(__file__)
 
 schemas = app.config['SCHEMAS']
 db_path = app.config['DB_PATH']
@@ -69,6 +66,9 @@ These are the subject-id-class mappings for the main utility records:
     }
 }
 """
+
+logging = app.config['NODE_LOGGER'].synlog
+logging.debug("connection/core/utils.py logged", Description="No Changes")
 
 ###################################################
 # REST Response Formatting Class - TopicalPayload #
@@ -172,7 +172,15 @@ class TopicalPayload:
             encoded_document = encode_datetime_objects(document)
             annotated_document = annotate_document(encoded_document, kind)
             annotated_doc_and_relations = annotate_relations(annotated_document)
-            logging.debug(f"Annotated docs", description=annotated_doc_and_relations, Class=TopicalPayload.__name__)
+            
+            logging.debug(
+                "Annotated docs while constructing success payload tracked.", 
+                annotated_docs=annotated_doc_and_relations, 
+                ID_path=SOURCE_FILE,
+                ID_class=TopicalPayload.__name__,
+                ID_function=TopicalPayload.construct_success_payload.__name__
+            )
+
             return annotated_doc_and_relations
 
         self.__template['success'] = 1

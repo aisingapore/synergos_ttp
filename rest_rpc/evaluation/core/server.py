@@ -8,11 +8,11 @@
 import argparse
 import asyncio
 import concurrent.futures
-import logging
 import multiprocessing as mp
 import os
 import time
 from glob import glob
+from logging import NOTSET
 from pathlib import Path
 from typing import Tuple, Dict
 
@@ -37,16 +37,11 @@ from rest_rpc.training.core.server import (
 )
 from rest_rpc.evaluation.core.utils import Analyser
 
-# Synergos & HardwareStats logging
-from SynergosLogger.init_logging import logging
-from SynergosLogger import syn_logger_config
-from HardwareStatsLogger import Sysmetrics
-
 ##################
 # Configurations #
 ##################
 
-logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.DEBUG)
+SOURCE_FILE = os.path.abspath(__file__)
 
 out_dir = app.config['OUT_DIR']
 
@@ -54,6 +49,9 @@ db_path = app.config['DB_PATH']
 model_records = ModelRecords(db_path=db_path)
 
 rpc_formatter = RPCFormatter()
+
+logging = app.config['NODE_LOGGER'].synlog
+logging.debug("evaluation/core/server.py logged", Description="No Changes")
 
 #############
 # Functions #
@@ -207,14 +205,26 @@ def start_expt_run_inference(
 
         return participants_inferences
 
-    logging.info(f"Current combination", description=keys)
+    logging.info(
+        f"Evaluation - Federated combination tracked.",
+        keys=keys,
+        ID_path=SOURCE_FILE,
+        ID_function=start_expt_run_inference.__name__
+    )
 
     # Send initialisation signal to all remote worker WSSW objects
     governor = Governor(auto_align=auto_align, dockerised=dockerised, **keys)
     governor.initialise(reg_records=registrations)
 
     participants_inferences = infer_combination()
-    logging.debug(f"Aggregated predictions: {participants_inferences}")
+
+    logging.log(
+        level=NOTSET,
+        event=f"Evaluation - Aggregated predictions tracked.",
+        participants_inferences=participants_inferences,
+        ID_path=SOURCE_FILE,
+        ID_function=start_expt_run_inference.__name__
+    )
 
     # Stats will only be computed for relevant participants
     # (i.e. contributed datasets used for inference)
@@ -233,7 +243,13 @@ def start_expt_run_inference(
         **keys
     )
     polled_stats = analyser.infer(reg_records=relevant_registrations)
-    logging.debug(f"Polled statistics", description=polled_stats)
+
+    logging.debug(
+        f"Evaluation - Polled statistics tracked.", 
+        polled_stats=polled_stats,
+        ID_path=SOURCE_FILE,
+        ID_function=start_expt_run_inference.__name__
+    )
 
     # Send terminate signal to all participants' worker nodes
     governor.terminate(reg_records=registrations)

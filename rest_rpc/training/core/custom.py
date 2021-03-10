@@ -6,38 +6,49 @@
 
 # Generic
 import json
+import os
 import requests
-import logging
 import ssl
 import websocket
 import websockets
 from requests_toolbelt import MultipartEncoder, MultipartEncoderMonitor
 from typing import Dict, List, Tuple, Union
-
 from urllib.parse import urlparse
-
-# Syft imports
-from syft.serde import serialize
-from syft.version import __version__
-from syft.execution.plan import Plan
-from syft.codes import REQUEST_MSG, RESPONSE_MSG
-from syft.generic.abstract.tensor import AbstractTensor
 
 # Libs
 import syft as sy
 import torch as th
-from torch import nn
-from syft.workers.websocket_client import WebsocketClientWorker
+from syft.codes import REQUEST_MSG, RESPONSE_MSG
+from syft.execution.plan import Plan
+from syft.generic.abstract.tensor import AbstractTensor
 from syft.grid.clients.data_centric_fl_client import DataCentricFLClient
+from syft.serde import serialize
+from syft.version import __version__
+from syft.workers.websocket_client import WebsocketClientWorker
+from torch import nn
 
-# Synergos logging
-from SynergosLogger.init_logging import logging
+# Custom
+from rest_rpc import app
+
+##################
+# Configurations #
+##################
+
+SOURCE_FILE = os.path.abspath(__file__)
+
+logging = app.config['NODE_LOGGER'].synlog
+logging.debug("training/core/custom.py logged", Description="No Changes")
 
 ###########################################
 # Custom Async Class - CustomClientWorker #
 ###########################################
 
 class CustomWSClient(WebsocketClientWorker):
+    """
+    A client which will forward all messages to a remote worker running a
+    WebsocketServerWorker and receive all responses back from the server.
+    """
+
     def __init__(
         self,
         hook,
@@ -51,9 +62,7 @@ class CustomWSClient(WebsocketClientWorker):
         data: List[Union[th.Tensor, AbstractTensor]] = None,
         timeout: int = None,
     ):
-        """A client which will forward all messages to a remote worker running a
-        WebsocketServerWorker and receive all responses back from the server.
-        """
+
         super().__init__(
             hook=hook,
             host=host,
@@ -75,7 +84,7 @@ class CustomWSClient(WebsocketClientWorker):
             args_["sslopt"] = {"cert_reqs": ssl.CERT_NONE}
 
         self.ws = websocket.create_connection(**args_)
-        logging.debug(f"Websocket: {self.ws}", Class=CustomWSClient.__name__)
+        # logging.debug(f"Websocket: {self.ws}", Class=CustomWSClient.__name__)
 
         self._log_msgs_remote(self.log_msgs)
 
@@ -148,6 +157,7 @@ class CustomClientWorker(CustomWSClient):
         else:
             return self.address
 
+
     # @property
     # def models(self) -> list:
     #     """ Get models stored at remote node.
@@ -158,6 +168,7 @@ class CustomClientWorker(CustomWSClient):
     #     response = self._forward_json_to_websocket_server_worker(message)
     #     return self._return_bool_result(response, RESPONSE_MSG.MODELS)
 
+
     def _update_node_reference(self, new_id: str):
         """ Update worker references changing node id references at hook structure.
         Args:
@@ -167,6 +178,7 @@ class CustomClientWorker(CustomWSClient):
         self.id = new_id
         self.hook.local_worker._known_workers[new_id] = self
 
+
     def _parse_address(self, address: str) -> tuple:
         """ Parse Address string to define secure flag and split into host and port.
         Args:
@@ -175,6 +187,7 @@ class CustomClientWorker(CustomWSClient):
         url = urlparse(address)
         secure = True if url.scheme == "wss" else False
         return (secure, url.hostname, url.port)
+
 
     def _get_node_infos(self) -> str:
         """ Get Node ID from remote node worker
@@ -194,6 +207,7 @@ class CustomClientWorker(CustomWSClient):
 
         return response.get(RESPONSE_MSG.NODE_ID, None)
 
+
     def _forward_json_to_websocket_server_worker(self, message: dict) -> dict:
         """ Prepare/send a JSON message to a remote node and receive the response.
         Args:
@@ -201,9 +215,13 @@ class CustomClientWorker(CustomWSClient):
         Returns:
             node_response (dict) : response payload.
         """
-        logging.debug(f"Forwarded encoded message: {json.dumps(message)}", Class=CustomClientWorker.__name__)
+        # logging.debug(
+        #     f"Forwarded encoded message: {json.dumps(message)}", 
+        #     Class=CustomClientWorker.__name__
+        # )
         self.ws.send(json.dumps(message))
         return json.loads(self.ws.recv())
+
 
     # def _forward_to_websocket_server_worker(self, message: bin) -> bin:
     #     """ Send a bin message to a remote node and receive the response.
@@ -216,6 +234,7 @@ class CustomClientWorker(CustomWSClient):
     #     response = self.ws.recv()
     #     return response
 
+
     # def _return_bool_result(self, result, return_key=None):
     #     if result.get(RESPONSE_MSG.SUCCESS):
     #         return result[return_key] if return_key is not None else True
@@ -223,6 +242,7 @@ class CustomClientWorker(CustomWSClient):
     #         raise RuntimeError(result[RESPONSE_MSG.ERROR])
     #     else:
     #         raise RuntimeError("Something went wrong.")
+
 
     # def connect_nodes(self, node) -> dict:
     #     """ Connect two remote workers between each other.
@@ -237,6 +257,7 @@ class CustomClientWorker(CustomWSClient):
     #         "id": node.id,
     #     }
     #     return self._forward_json_to_websocket_server_worker(message)
+
 
     # def serve_model(
     #     self,
@@ -307,6 +328,7 @@ class CustomClientWorker(CustomWSClient):
     #     session.close()
     #     return self._return_bool_result(json.loads(response))
 
+
     # def run_remote_inference(self, model_id, data):
     #     """ Run a dataset inference using a remote model.
     #     Args:
@@ -326,6 +348,7 @@ class CustomClientWorker(CustomWSClient):
     #     }
     #     response = self._forward_json_to_websocket_server_worker(message)
     #     return self._return_bool_result(response, RESPONSE_MSG.INFERENCE_RESULT)
+
 
     # def delete_model(self, model_id: str) -> bool:
     #     """ Delete a model previously registered.

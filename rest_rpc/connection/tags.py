@@ -5,7 +5,7 @@
 ####################
 
 # Generic/Built-in
-import logging
+import os
 
 # Libs
 import jsonschema
@@ -16,22 +16,24 @@ from flask_restx import Namespace, Resource, fields
 from rest_rpc import app
 from rest_rpc.connection.core.utils import TopicalPayload, TagRecords
 
-# Synergos logging
-from SynergosLogger.init_logging import logging
-
 ##################
 # Configurations #
 ##################
+
+SOURCE_FILE = os.path.abspath(__file__)
+
+SUBJECT = "Tag" # table name
 
 ns_api = Namespace(
     "tags", 
     description='API to faciliate tag registration in in a PySyft Grid.'
 )
 
-SUBJECT = "Tag" # table name
-
 schemas = app.config['SCHEMAS']
 db_path = app.config['DB_PATH']
+
+logging = app.config['NODE_LOGGER'].synlog
+logging.debug("connection/tags.py logged", Description="No Changes")
 
 ###########################################################
 # Models - Used for marshalling (i.e. moulding responses) #
@@ -103,14 +105,35 @@ class Tag(Resource):
                 },
                 data=retrieved_tag
             )
-            logging.info(f"Success retrieved tag for project_id: {project_id}, participant_id: {participant_id}", code=200, description=success_payload, Class=Tag.__name__)
+
+            logging.info(
+                f"Participant '{participant_id}' >|< Project '{project_id}' -> Tag: \
+                    Single record retrieval successful!", 
+                code=200, 
+                description=f"Data tagging of '{participant_id}' under project '{project_id}' \
+                    was successfully retrieved!",
+                ID_path=SOURCE_FILE,
+                ID_class=Tag.__name__, 
+                ID_function=Tag.get.__name__,
+                **request.view_args
+            )
+
             return success_payload, 200
 
         else:
-            logging.error(f"Error retrieving tag for project_id: {project_id}, participant_id: {participant_id}", code=404, description=f"Tag does not exist for participant '{participant_id}'' under Project '{project_id}'!", Class=Tag.__name__)
+            logging.error(
+                f"Participant '{participant_id}' >|< Project '{project_id}' -> Tag: \
+                    Single record retrieval failed!",
+                code=404, 
+                description=f"Data tags do not exist for participant '{participant_id}'' under Project '{project_id}'!", 
+                ID_path=SOURCE_FILE,
+                ID_class=Tag.__name__, 
+                ID_function=Tag.get.__name__,
+                **request.view_args
+            )
             ns_api.abort(
                 code=404, 
-                message=f"Tag does not exist for participant '{participant_id}'' under Project '{project_id}'!"
+                message=f"Data tags does not exist for participant '{participant_id}'' under Project '{project_id}'!"
             )
 
     @ns_api.doc("register_tag")
@@ -136,24 +159,44 @@ class Tag(Resource):
                 participant_id=participant_id
             )
             assert new_tag.doc_id == retrieved_tag.doc_id
+
             success_payload = payload_formatter.construct_success_payload(
                 status=201, 
-                method="tags.post",
+                method="tag.post",
                 params={
                     'project_id': project_id, 
                     'participant_id': participant_id
                 },
                 data=retrieved_tag
             )
-            logging.info(f"Sucesss create tag for project_id: {project_id}, participant_id: {participant_id}", code=201, description=success_payload, Class=Tag.__name__)
+            
+            logging.info(
+                f"Participant '{participant_id}' >|< Project '{project_id}' -> Tag: Record creation successful!", 
+                description=f"Data tagging of '{participant_id}' under project '{project_id}' was successfully submitted!",
+                code=201, 
+                ID_path=SOURCE_FILE,
+                ID_class=Tag.__name__, 
+                ID_function=Tag.post.__name__,
+                **request.view_args
+            )
+            
             return success_payload, 201
 
         except jsonschema.exceptions.ValidationError:
-            logging.error(f"Error creating tag for project_id: {project_id}, participant_id: {participant_id}", code=417, description="Inappropriate run configurations passed!", Class=Tag.__name__)
+            logging.error(
+                f"Participant '{participant_id}' >|< Project '{project_id}' -> Tag: Record creation failed.",
+                code=417,
+                description="Inappropriate tag configurations passed!", 
+                ID_path=SOURCE_FILE,
+                ID_class=Tag.__name__, 
+                ID_function=Tag.post.__name__,
+                **request.view_args
+            )
             ns_api.abort(
                 code=417,
                 message="Inappropriate run configurations passed!"
             )
+
 
     @ns_api.doc('update_tags')
     @ns_api.expect(tag_model)
@@ -176,6 +219,7 @@ class Tag(Resource):
                 participant_id=participant_id
             )
             assert updated_tag.doc_id == retrieved_tag.doc_id
+
             success_payload = payload_formatter.construct_success_payload(
                 status=200,
                 method="tag.put",
@@ -185,15 +229,34 @@ class Tag(Resource):
                 },
                 data=retrieved_tag
             )
-            logging.info(f"Sucesss update tag for project_id: {project_id}, participant_id: {participant_id}", code=200, description=success_payload, Class=Tag.__name__)
+
+            logging.info(
+                f"Participant '{participant_id}' >|< Project '{project_id}' -> Tag: Record update successful!",
+                code=200,
+                description=f"Data tagging of '{participant_id}' under project '{project_id}' was successfully updated!", 
+                ID_path=SOURCE_FILE,
+                ID_class=Tag.__name__, 
+                ID_function=Tag.put.__name__,
+                **request.view_args
+            )
+
             return success_payload, 200
 
         except jsonschema.exceptions.ValidationError:
-            logging.error(f"Error updating tag for project_id: {project_id}, participant_id: {participant_id}", code=417, description="Inappropriate tag configurations passed!", Class=Tag.__name__)
+            logging.error(
+                f"Participant '{participant_id}' >|< Project '{project_id}' -> Tag: Record update failed.",
+                code=417, 
+                description="Inappropriate tag configurations passed!", 
+                ID_path=SOURCE_FILE,
+                ID_class=Tag.__name__, 
+                ID_function=Tag.put.__name__,
+                **request.view_args
+            )
             ns_api.abort(                
                 code=417,
                 message="Inappropriate tag configurations passed!"
             )
+
 
     @ns_api.doc('delete_tag')
     @ns_api.marshal_with(payload_formatter.singular_model)
@@ -212,23 +275,42 @@ class Tag(Resource):
         
         if deleted_tag:
             assert deleted_tag.doc_id == retrieved_tag.doc_id
+
             success_payload = payload_formatter.construct_success_payload(
                 status=200,
-                method="registration.delete",
+                method="tag.delete",
                 params={
                     'project_id': project_id,                     
                     'participant_id': participant_id
                 },
                 data=retrieved_tag
             )
-            logging.info(f"Sucesss delete tag for project_id: {project_id}, participant_id: {participant_id}", code=200, description=success_payload, Class=Tag.__name__)
+
+            logging.info(
+                f"Participant '{participant_id}' >|< Project '{project_id}' -> Tag: Record deletion successful!",
+                code=200, 
+                description=f"Data tagging of '{participant_id}' under project '{project_id}' was successfully deleted!", 
+                ID_path=SOURCE_FILE,
+                ID_class=Tag.__name__, 
+                ID_function=Tag.delete.__name__,
+                **request.view_args
+            )           
+            
             return success_payload
 
         else:
-            logging.error(f"Error deleting tag for project_id: {project_id}, participant_id: {participant_id}", code=404, description=f"Tag does not exist for participant '{participant_id}'' under Project '{project_id}'!", Class=Tag.__name__)
+            logging.error(
+                f"Participant '{participant_id}' >|< Project '{project_id}' -> Tag: Record deletion failed.", 
+                code=404, 
+                description=f"Data tags does not exist for participant '{participant_id}'' under Project '{project_id}'!",
+                ID_path=SOURCE_FILE,
+                ID_class=Tag.__name__, 
+                ID_function=Tag.delete.__name__,
+                **request.view_args
+            )            
             ns_api.abort(
                 code=404, 
-                message=f"Tag does not exist for participant '{participant_id}'' under Project '{project_id}'!"
+                message=f"Data tags does not exist for participant '{participant_id}'' under Project '{project_id}'!"
             )
 
 ##############

@@ -6,7 +6,7 @@
 
 # Generic
 import importlib
-import logging
+import os
 from collections import OrderedDict
 from typing import Tuple
 
@@ -16,16 +16,19 @@ import torch as th
 from torch import nn
 
 # Custom
+from rest_rpc import app
 from rest_rpc.training.core.utils import TorchParser
-
-# Synergos logging
-from SynergosLogger.init_logging import logging
 
 ##################
 # Configurations #
 ##################
 
+SOURCE_FILE = os.path.abspath(__file__)
+
 torch_parser = TorchParser()
+
+logging = app.config['NODE_LOGGER'].synlog
+logging.debug("connection/core/model.py logged", Description="No Changes")
 
 ###################################
 # Model Abstraction Class - Model #
@@ -56,7 +59,14 @@ class Model(nn.Module):
         self.layers = OrderedDict()
 
         for layer, params in enumerate(structure):
-            logging.debug(f'params: {params}', Class=Model.__name__) # express as the logger
+
+            logging.debug(
+                f'Model params for layer {layer} tracked.', 
+                params=params,
+                ID_path=SOURCE_FILE,
+                ID_class=Model.__name__,
+                ID_function=Model.__init__.__name__
+            )
 
             # Detect if input layer
             is_input_layer = params['is_input']
@@ -85,7 +95,13 @@ class Model(nn.Module):
                 layer_activation
             )
 
-        logging.debug(f"Layers: {self.layers}", CLass=Model.__name__)
+        logging.debug(
+            f"Accumulated model Layers tracked.",
+            layers=self.layers, 
+            ID_path=SOURCE_FILE,
+            ID_class=Model.__name__,
+            ID_function=Model.__init__.__name__
+        )
 
     ###########
     # Helpers #
@@ -133,16 +149,12 @@ class Model(nn.Module):
 
             _, layer_type = self.__parse_layer_name(layer_name)
 
-             
-            #logging.debug(f"Before activation, Layer {layer_name} output: {curr_layer(x).shape}")
-            #logging.debug(f"After activation,Layer {layer_name} output: {a_func(curr_layer(x)).shape}")
-
             # Check if current layer is a recurrent layer
             if layer_type in self.__SPECIAL_CASES:
                 x, _ = a_func(curr_layer(x))
             else:
                 x = a_func(curr_layer(x))
-            # logging.debug(f"Layer {layer_name} {curr_layer} output: {x.clone().detach().get().shape}")
+
         return x
 
 #########################################
@@ -248,16 +260,12 @@ class ModelPlan(sy.Plan):
 
             _, layer_type = self.__parse_layer_name(layer_name)
 
-            logging.debug(f"Layers: {self.layers}", Class=ModelPlan.__name__)
-            logging.debug(f"Before activation, Layer {layer_name} output: {curr_layer(x).shape}", Class=ModelPlan.__name__)
-            logging.debug(f"After activation,Layer {layer_name} output: {a_func(curr_layer(x)).shape}", Class=ModelPlan.__name__)
-
             # Check if current layer is a recurrent layer
             if layer_type in self.__SPECIAL_CASES:
                 x, _ = a_func(curr_layer(x))
             else:
                 x = a_func(curr_layer(x))
-            # logging.debug(f"Layer {layer_name} {curr_layer} output: {x.clone().detach().get().shape}")
+
         return x
 
 
@@ -271,7 +279,15 @@ class ModelPlan(sy.Plan):
 
         """
         mock_data = th.rand(shape)
-        logging.debug(f"mock data: {mock_data} {mock_data.shape}", Class=ModelPlan.__name__)
+
+        logging.debug(
+            f"Mock data used to build model tracked.",
+            mock_data=mock_data,
+            shape=mock_data.shape, 
+            ID_path=SOURCE_FILE,
+            ID_class=ModelPlan.__name__,
+            ID_function=ModelPlan.build.__name__
+        )
 
         return super().build(mock_data)
 

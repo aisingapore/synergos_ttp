@@ -5,7 +5,7 @@
 ####################
 
 # Generic/Built-in
-import logging
+import os
 
 # Libs
 import jsonschema
@@ -22,25 +22,25 @@ from rest_rpc.training.models import model_output_model
 from rest_rpc.evaluation.validations import val_output_model
 from rest_rpc.evaluation.predictions import pred_output_model
 
-# Synergos logging
-from SynergosLogger.init_logging import logging
-
 ##################
 # Configurations #
 ##################
 
-# logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.DEBUG)
+SOURCE_FILE = os.path.abspath(__file__)
+
+SUBJECT = "Run" # table name
 
 ns_api = Namespace(
     "runs", 
     description='API to faciliate run management in in a PySyft Grid.'
 )
 
-SUBJECT = "Run" # table name
-
 schemas = app.config['SCHEMAS']
 db_path = app.config['DB_PATH']
 run_records = RunRecords(db_path=db_path)
+
+logging = app.config['NODE_LOGGER'].synlog
+logging.debug("connection/experiments.py logged", Description="No Changes")
 
 ###########################################################
 # Models - Used for marshalling (i.e. moulding responses) #
@@ -145,14 +145,26 @@ class Runs(Resource):
         all_relevant_runs = run_records.read_all(
             filter={'project_id': project_id, 'expt_id': expt_id}
         )
+
         success_payload = payload_formatter.construct_success_payload(
             status=200,
             method="runs.get",
             params={'project_id': project_id, 'expt_id': expt_id},
             data=all_relevant_runs
         )
-        logging.info(f"Success Retrieved runs", code=200, description=success_payload, Class=Runs.__name__)
+
+        logging.info(
+            f"Project '{project_id}' -> Experiment '{expt_id}' -> Runs: Bulk record retrieval successful!",
+            code=200, 
+            description=f"Runs under experiment '{expt_id}' of project '{project_id}' were successfully retrieved!", 
+            ID_path=SOURCE_FILE,
+            ID_class=Runs.__name__, 
+            ID_function=Runs.get.__name__,
+            **request.view_args
+        )
+        
         return success_payload, 200        
+
 
     @ns_api.doc("register_run")
     @ns_api.expect(run_input_model)
@@ -177,17 +189,37 @@ class Runs(Resource):
                 run_id=run_id
             )
             assert new_run.doc_id == retrieved_run.doc_id
+
             success_payload = payload_formatter.construct_success_payload(
                 status=201, 
                 method="runs.post",
                 params={'project_id': project_id, 'expt_id': expt_id},
                 data=retrieved_run
             )
-            logging.info(f"Success created run", code=201, description=success_payload, Class=Runs.__name__)
+
+            logging.info(
+                f"Project '{project_id}' -> Experiment '{expt_id}' -> Run '{run_id}': Record creation successful!", 
+                description=f"Run '{run_id}' under experiment '{expt_id}' of project '{project_id}' \
+                    was successfully created!", 
+                code=201, 
+                ID_path=SOURCE_FILE,
+                ID_class=Runs.__name__, 
+                ID_function=Runs.post.__name__,
+                **request.view_args
+            )
+            
             return success_payload, 201
 
         except jsonschema.exceptions.ValidationError:
-            logging.error(f"Error creating run", code=417, description="Inappropriate run configurations passed!", Class=Runs.__name__)
+            logging.error(
+                f"Project '{project_id}' -> Experiment '{expt_id}' -> Run '{run_id}': Record creation failed.",
+                code=417,
+                description="Inappropriate run configurations passed!", 
+                ID_path=SOURCE_FILE,
+                ID_class=Runs.__name__, 
+                ID_function=Runs.post.__name__,
+                **request.view_args
+            )
             ns_api.abort(
                 code=417,
                 message="Inappropriate run configurations passed!"
@@ -221,11 +253,30 @@ class Run(Resource):
                 },
                 data=retrieved_run
             )
-            logging.info(f"Success retrieved all runs", code=200, description=success_payload, Class=Run.__name__)
+
+            logging.info(
+                f"Project '{project_id}' -> Experiment '{expt_id}' -> Run '{run_id}': Single record retrieval successful!", 
+                code=200, 
+                description=f"Run '{run_id}' under experiment '{expt_id}' of project '{project_id}' \
+                    was successfully retrieved!", 
+                ID_path=SOURCE_FILE,
+                ID_class=Run.__name__, 
+                ID_function=Run.get.__name__,
+                **request.view_args
+            )
+            
             return success_payload, 200
 
         else:
-            logging.error(f"Error retrieving all runs", code=404, description=f"Run '{run_id}' does not exist for Experiment {expt_id} under Project '{project_id}'!", Class=Run.__name__)
+            logging.error(
+                f"Project '{project_id}' -> Experiment '{expt_id}' -> Run '{run_id}': Single record retrieval failed!",
+                code=404, 
+                description=f"Run '{run_id}' does not exist for Experiment {expt_id} under Project '{project_id}'!",
+                ID_path=SOURCE_FILE,
+                ID_class=Run.__name__, 
+                ID_function=Run.get.__name__,
+                **request.view_args
+            )
             ns_api.abort(
                 code=404, 
                 message=f"Run '{run_id}' does not exist for Experiment {expt_id} under Project '{project_id}'!"
@@ -240,6 +291,7 @@ class Run(Resource):
         """
         try:
             run_updates = request.json
+
             updated_run = run_records.update(
                 project_id=project_id, 
                 expt_id=expt_id,
@@ -252,6 +304,7 @@ class Run(Resource):
                 run_id=run_id
             )
             assert updated_run.doc_id == retrieved_run.doc_id
+
             success_payload = payload_formatter.construct_success_payload(
                 status=200,
                 method="run.put",
@@ -262,11 +315,30 @@ class Run(Resource):
                 },
                 data=retrieved_run
             )
-            logging.info(f"Success update a run", code=200, description=success_payload, Class=Run.__name__)
+
+            logging.info(
+                f"Project '{project_id}' -> Experiment '{expt_id}' -> Run '{run_id}': Record update successful!",
+                code=200,
+                description=f"Run '{run_id}' under experiment '{expt_id}' of project '{project_id}' \
+                    was successfully updated!", 
+                ID_path=SOURCE_FILE,
+                ID_class=Run.__name__, 
+                ID_function=Run.put.__name__,
+                **request.view_args
+            )
+
             return success_payload, 200
 
         except jsonschema.exceptions.ValidationError:
-            logging.error(f"Error updating a run", code=417, description="Inappropriate experimental configurations passed!", Class=Run.__name__)
+            logging.error(
+                f"Project '{project_id}' -> Experiment '{expt_id}' -> Run '{run_id}': Record update failed.",
+                code=417, 
+                description="Inappropriate run configurations passed!", 
+                ID_path=SOURCE_FILE,
+                ID_class=Run.__name__, 
+                ID_function=Run.put.__name__,
+                **request.view_args
+            )
             ns_api.abort(                
                 code=417,
                 message="Inappropriate experimental configurations passed!"
@@ -289,11 +361,28 @@ class Run(Resource):
                 params=request.view_args,
                 data=deleted_run
             )
-            logging.info(f"Success delete a run", code=200, description=success_payload, Class=Run.__name__)
+            logging.info(
+                f"Project '{project_id}' -> Experiment '{expt_id}' -> Run '{run_id}': Record deletion successful!",
+                code=200, 
+                description=f"Run '{run_id}' under experiment '{expt_id}' of project '{project_id}' \
+                    was successfully deleted!", 
+                ID_path=SOURCE_FILE,
+                ID_class=Run.__name__, 
+                ID_function=Run.delete.__name__,
+                **request.view_args
+            )
             return success_payload, 200
 
         else:
-            logging.error(f"Error deleting a run", code=404, description=f"Run '{run_id}' does not exist in for Experiment {expt_id} under Project '{project_id}'!", Class=Run.__name__)
+            logging.error(
+                f"Project '{project_id}' -> Experiment '{expt_id}' -> Run '{run_id}': Record deletion failed.", 
+                code=404, 
+                description=f"Run '{run_id}' under experiment '{expt_id}' of project '{project_id}' does not exist!", 
+                ID_path=SOURCE_FILE,
+                ID_class=Run.__name__, 
+                ID_function=Run.delete.__name__,
+                **request.view_args
+            )
             ns_api.abort(
                 code=404, 
                 message=f"Run '{run_id}' does not exist in for Experiment {expt_id} under Project '{project_id}'!"

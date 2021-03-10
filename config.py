@@ -16,20 +16,21 @@ from pathlib import Path
 
 # Libs
 import numpy as np
-import torch as th
 import psutil
+import torch as th
+
+# Custom
+from synlogger.general import TTPLogger, SysmetricLogger
 
 ##################
 # Configurations #
 ##################
 
-logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.DEBUG)
-
-infinite_nested_dict = lambda: defaultdict(infinite_nested_dict)
-
 SRC_DIR = Path(__file__).parent.absolute()
 
 API_VERSION = "0.1.0"
+
+infinite_nested_dict = lambda: defaultdict(infinite_nested_dict)
 
 ####################
 # Helper Functions #
@@ -113,6 +114,59 @@ def detect_configurations(dirname):
     config_paths = glob(config_globstring)
 
     return {parse_filename(c_path): c_path for c_path in config_paths}
+
+
+def capture_system_snapshot() -> dict:
+    """ Takes a snapshot of parameters used in system-wide operations
+
+    Returns:
+        System snapshot (dict)
+    """
+    return {
+        'IS_MASTER': IS_MASTER,
+        'IN_DIR': IN_DIR,
+        'OUT_DIR': OUT_DIR,
+        'DATA_DIR': DATA_DIR,
+        'MLFLOW_DIR': MLFLOW_DIR,
+        'TEST_DIR': TEST_DIR,
+        'CORES_USED': CORES_USED,
+        'GPU_COUNT': GPU_COUNT,
+        'GPUS': GPUS,
+        'USE_GPU': USE_GPU,
+        'DEVICE': DEVICE,
+        'DB_PATH': DB_PATH,
+        'SCHEMAS': SCHEMAS,
+        'RETRY_INTERVAL': RETRY_INTERVAL
+    }
+
+
+def configure_node_logger(**logger_kwargs) -> TTPLogger:
+    """ Initialises the synergos logger corresponding to the current node type.
+        In this case, a TTPLogger is initialised.
+
+    Args:
+        logger_kwargs: Any parameters required for node logger configuration
+    Returns:
+        Node logger (TTPLogger)
+    """
+    global NODE_LOGGER
+    NODE_LOGGER = TTPLogger(**logger_kwargs)
+    NODE_LOGGER.initialise()
+    return NODE_LOGGER
+
+
+def configure_sysmetric_logger(**logger_kwargs) -> SysmetricLogger:
+    """ Initialises the sysmetric logger to facillitate polling for hardware
+        statistics.
+
+    Args:
+        logger_kwargs: Any parameters required for node logger configuration
+    Returns:
+        Sysmetric logger (SysmetricLogger)
+    """
+    global SYSMETRIC_LOGGER
+    SYSMETRIC_LOGGER = SysmetricLogger(**logger_kwargs)
+    return SYSMETRIC_LOGGER
 
 #############################################
 # PySyft TTP Container Local Configurations #
@@ -216,6 +270,18 @@ PAYLOAD_TEMPLATE = {
     'params': {},
     'data': {}
 }
+
+##########################################
+# Synergos Worker Logging Configurations #
+##########################################
+"""
+Synergos has certain optional components, such as a centrialised logging 
+server, as well as a metadata catalogue. This section governs configuration of 
+the orchestrator node to facilitate such integrations, where applicable. This 
+portion gets configured during runtime.
+"""
+NODE_LOGGER = None
+SYSMETRIC_LOGGER = None
 
 #################################
 # PySyft REST-RPC Worker Routes #

@@ -5,7 +5,6 @@
 ####################
 
 # Generic/Built-in
-import logging
 import os
 import time
 
@@ -22,28 +21,27 @@ from rest_rpc.training.core.hypertuners import NNITuner, optim_prefix
 from rest_rpc.evaluation.core.utils import ValidationRecords
 # from rest_rpc.evaluation.validations import val_output_model
 
-
-# Synergos logging
-from SynergosLogger.init_logging import logging
-
 ##################
 # Configurations #
 ##################
 
-# logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.DEBUG)
+SOURCE_FILE = os.path.abspath(__file__)
+
+SUBJECT = "Optimization"
 
 ns_api = Namespace(
     "optimizations", 
     description='API to faciliate hyperparameter tuning in a federated grid.'
 )
 
-SUBJECT = "Optimization"
-
 out_dir = app.config['OUT_DIR']
 
 db_path = app.config['DB_PATH']
 run_records = RunRecords(db_path=db_path)
 validation_records = ValidationRecords(db_path=db_path)
+
+logging = app.config['NODE_LOGGER'].synlog
+logging.debug("connection/models.py logged", Description="No Changes")
 
 ###########################################################
 # Models - Used for marshalling (i.e. moulding responses) #
@@ -176,11 +174,31 @@ class Optimizations(Resource):
                 params=request.view_args,
                 data=optim_validations
             )
-            logging.info("Success retrieve optimizations", code=200, description=success_payload, Class=Optimizations.__name__)
+
+            logging.info(
+                f"Project '{project_id}' -> Experiment '{expt_id}' -> Optimizations: \
+                    Record(s) retrieval successful!",
+                code=200, 
+                description="Optimization(s) specified federated conditions were successfully retrieved!",
+                ID_path=SOURCE_FILE,
+                ID_class=Optimizations.__name__, 
+                ID_function=Optimizations.get.__name__,
+                **request.view_args
+            )
+
             return success_payload, 200
 
         else:
-            logging.info("Error retrieving optimizations", code=404, description=f"Optimizations do not exist for specified keyword filters!", Class=Optimizations.__name__)
+            logging.error(
+                f"Project '{project_id}' -> Experiment '{expt_id}' -> Optimizations:  \
+                    Record(s) retrieval failed.",
+                code=404,
+                description="Optimizations do not exist for specified keyword filters!",
+                ID_path=SOURCE_FILE,
+                ID_class=Optimizations.__name__, 
+                ID_function=Optimizations.get.__name__,
+                **request.view_args
+            )
             ns_api.abort(
                 code=404, 
                 message=f"Optimizations do not exist for specified keyword filters!"
@@ -234,14 +252,10 @@ class Optimizations(Resource):
             **tuning_params
         )
 
-        logging.debug(f"NNI Experiment status: {nni_expt.get_experiment_status()}", Class=Optimizations.__name__)
         curr_status = nni_expt.get_experiment_status()['status']
         while curr_status == "RUNNING":
-            logging.info(f"NNI Experiment is still running, idling for now...", Class=Optimizations.__name__)
             time.sleep(1)
             curr_status = nni_expt.get_experiment_status()['status']
-        logging.info(f"NNI Experiment has completed! Fetching results...", Class=Optimizations.__name__) 
-
 
         filter_keys = request.view_args
         search_space = tuning_params['search_space']
@@ -279,11 +293,31 @@ class Optimizations(Resource):
                 params=request.view_args,
                 data=optim_validations
             )
-            logging.info("Success completed optimizations", code=200, description=success_payload, Class=Optimizations.__name__)
+
+            logging.info(
+                f"Project '{project_id}' -> Experiment '{expt_id}' -> Optimizations: \
+                    Record(s) creation successful!",
+                code=200, 
+                description="Optimization(s) specified federated conditions were successfully retrieved!",
+                ID_path=SOURCE_FILE,
+                ID_class=Optimizations.__name__, 
+                ID_function=Optimizations.get.__name__,
+                **request.view_args
+            )
+
             return success_payload, 200
 
         else:
-            logging.info("Error running optimizations", code=404, description=f"Optimizations do not exist for specified keyword filters!", Class=Optimizations.__name__)
+            logging.error(
+                f"Project '{project_id}' -> Experiment '{expt_id}' -> Optimizations:  \
+                    Record(s) creation failed.",
+                code=404,
+                description="Optimizations do not exist for specified keyword filters!",
+                ID_path=SOURCE_FILE,
+                ID_class=Optimizations.__name__, 
+                ID_function=Optimizations.get.__name__,
+                **request.view_args
+            )
             ns_api.abort(
                 code=404, 
                 message=f"Optimizations do not exist for specified keyword filters!"

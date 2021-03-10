@@ -5,7 +5,7 @@
 ####################
 
 # Generic/Built-in
-# import logging
+import os
 
 # Libs
 import jsonschema
@@ -27,25 +27,24 @@ from rest_rpc.training.models import model_output_model
 from rest_rpc.evaluation.validations import val_output_model
 from rest_rpc.evaluation.predictions import pred_output_model
 
-# Synergos logging
-from SynergosLogger.init_logging import logging
-logging.info("smoke test for ttp node", something="somethingx")
-
 ##################
 # Configurations #
 ##################
 
-# logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.DEBUG)
+SOURCE_FILE = os.path.abspath(__file__)
+
+SUBJECT = "Project" # table name
 
 ns_api = Namespace(
     "projects", 
     description='API to faciliate project management in a PySyft Grid.'
 )
 
-SUBJECT = "Project" # table name
-
 schemas = app.config['SCHEMAS']
 db_path = app.config['DB_PATH']
+
+logging = app.config['NODE_LOGGER'].synlog
+logging.debug("connection/experiments.py logged", Description="No Changes")
 
 ###########################################################
 # Models - Used for marshalling (i.e. moulding responses) #
@@ -148,13 +147,26 @@ class Projects(Resource):
         """
         project_records = ProjectRecords(db_path=db_path)
         all_relevant_projects = project_records.read_all()
+
         success_payload = payload_formatter.construct_success_payload(
             status=200,
             method="projects.get",
             params={},
             data=all_relevant_projects
         )
+
+        logging.info(
+            "Projects: Bulk record retrieval successful!",
+            code=200, 
+            description="Successfully retrieved metadata for projects",
+            ID_path=SOURCE_FILE,
+            ID_class=Projects.__name__, 
+            ID_function=Projects.get.__name__,
+            **request.view_args
+        )
+
         return success_payload, 200
+
 
     @ns_api.doc('register_project')
     @ns_api.expect(project_input_model) # for guiding payload
@@ -176,17 +188,36 @@ class Projects(Resource):
             )
             retrieved_project = project_records.read(project_id=project_id)
             assert new_project.doc_id == retrieved_project.doc_id
+
             success_payload = payload_formatter.construct_success_payload(
                 status=201, 
                 method="projects.post",
                 params={},
                 data=retrieved_project
             )
-            logging.info(f"Success create project: {project_id}", code=201, description=success_payload, Class=Projects.__name__)
+
+            logging.info(
+                f"Project '{project_id}': Record creation successful!",
+                code=201,
+                description=f"Projects '{project_id}' was successfully submitted!",
+                ID_path=SOURCE_FILE,
+                ID_class=Projects.__name__, 
+                ID_function=Projects.post.__name__,
+                **request.view_args
+            )
+
             return success_payload, 201
 
         except jsonschema.exceptions.ValidationError:
-            logging.info(f"Error creating project: {project_id}", code=417, description="Inappropriate project configurations passed!", Class=Projects.__name__)
+            logging.error(
+                f"Project '{project_id}': Record creation failed.",
+                code=417,
+                description="Inappropriate project configurations passed!", 
+                ID_path=SOURCE_FILE,
+                ID_class=Projects.__name__, 
+                ID_function=Projects.post.__name__,
+                **request.view_args
+            )
             ns_api.abort(
                 code=417,
                 message="Inappropriate project configurations passed!"
@@ -208,10 +239,7 @@ class Project(Resource):
         """ Retrieves all metadata describing specified project """
         project_records = ProjectRecords(db_path=db_path)
         retrieved_project = project_records.read(project_id=project_id)
-        
-        from pprint import pprint
-        pprint(retrieved_project)
-        
+                
         if retrieved_project:
             success_payload = payload_formatter.construct_success_payload(
                 status=200,
@@ -219,15 +247,33 @@ class Project(Resource):
                 params={'project_id': project_id},
                 data=retrieved_project
             )
-            logging.info(f"Success retrieve metadata for project: {project_id}", code=200, description=success_payload, Class=Projects.__name__)
+
+            logging.info(
+                f"Project '{project_id}': Single record retrieval successful!",
+                code=200, 
+                ID_path=SOURCE_FILE,
+                ID_class=Project.__name__, 
+                ID_function=Project.get.__name__,
+                **request.view_args
+            )
+
             return success_payload, 200
 
         else:
-            logging.error(f"Error retrieving metadata for project: {project_id}", code=404, description=f"Project '{project_id}' does not exist!", Class=Projects.__name__)
+            logging.error(
+                f"Project '{project_id}': Single record retrieval failed!",
+                code=404, 
+                description=f"Project '{project_id}' does not exist!", 
+                ID_path=SOURCE_FILE,
+                ID_class=Project.__name__, 
+                ID_function=Project.get.__name__,
+                **request.view_args
+            )
             ns_api.abort(
                 code=404, 
                 message=f"Project '{project_id}' does not exist!"
             )
+
 
     @ns_api.doc('update_project')
     @ns_api.expect(project_model)
@@ -246,21 +292,41 @@ class Project(Resource):
             )
             retrieved_project = project_records.read(project_id=project_id)
             assert updated_project.doc_id == retrieved_project.doc_id
+
             success_payload = payload_formatter.construct_success_payload(
                 status=200,
                 method="project.put",
                 params={'project_id': project_id},
                 data=retrieved_project
             )
-            logging.info(f"Success update project: {project_id}", code=200, description=success_payload, Class=Projects.__name__)
+
+            logging.info(
+                f"Project '{project_id}': Record update successful!",
+                code=200,
+                description=f"Project '{project_id}' was successfully updated!", 
+                ID_path=SOURCE_FILE,
+                ID_class=Project.__name__, 
+                ID_function=Project.put.__name__,
+                **request.view_args
+            )
+
             return success_payload, 200
 
         except jsonschema.exceptions.ValidationError:
-            logging.info(f"Error updating project: {project_id}", code=417, description="Inappropriate project configurations passed!", Class=Projects.__name__)
+            logging.error(
+                f"Project '{project_id}': Record update failed.",
+                code=417, 
+                description="Inappropriate participant configurations passed!", 
+                ID_path=SOURCE_FILE,
+                ID_class=Project.__name__, 
+                ID_function=Project.put.__name__,
+                **request.view_args
+            )
             ns_api.abort(                
                 code=417,
                 message="Inappropriate project configurations passed!"
             )
+
 
     @ns_api.doc('delete_project')
     @ns_api.marshal_with(payload_formatter.singular_model)
@@ -280,16 +346,36 @@ class Project(Resource):
                 params={'project_id': project_id},
                 data=retrieved_project
             )
-            logging.info(f"Success delete project: {project_id}", code=200, description=success_payload, Class=Projects.__name__)
+
+            logging.info(
+                f"Project '{project_id}': Record deletion successful!",
+                code=200, 
+                description=f"Project '{project_id}' was successfully deleted!",
+                ID_path=SOURCE_FILE,
+                ID_class=Project.__name__, 
+                ID_function=Project.delete.__name__,
+                **request.view_args
+            )
+
             return success_payload
 
         else:
-            logging.error(f"Error deleting project: {project_id}", code=404, description=f"Project '{project_id}' does not exist!", Class=Projects.__name__)
+            logging.error(
+                f"Project '{project_id}': Record deletion failed.", 
+                code=404, 
+                description=f"Project '{project_id}': does not exist!", 
+                ID_path=SOURCE_FILE,
+                ID_class=Project.__name__, 
+                ID_function=Project.delete.__name__,
+                **request.view_args
+            )
             ns_api.abort(
                 code=404, 
                 message=f"Project '{project_id}' does not exist!"
             )
 
+
+### Inherited Resources ###
 
 # Registered Participants
 ns_api.add_resource(

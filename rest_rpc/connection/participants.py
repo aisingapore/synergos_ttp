@@ -5,7 +5,7 @@
 ####################
 
 # Generic/Built-in
-import logging
+import os
 
 # Libs
 import jsonschema
@@ -22,24 +22,24 @@ from rest_rpc.connection.registration import (
 ) 
 from rest_rpc.connection.tags import Tag, tag_output_model
 
-# Synergos logging
-from SynergosLogger.init_logging import logging
-
 ##################
 # Configurations #
 ##################
 
-# logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.DEBUG)
+SOURCE_FILE = os.path.abspath(__file__)
+
+SUBJECT = "Participant" # table name
 
 ns_api = Namespace(
     "participants", 
     description='API to faciliate participant management in a PySyft Grid.'
 )
 
-SUBJECT = "Participant"
-
 schemas = app.config['SCHEMAS']
 db_path = app.config['DB_PATH']
+
+logging = app.config['NODE_LOGGER'].synlog
+logging.debug("connection/participants.py logged", Description="No Changes")
 
 ###########################################################
 # Models - Used for marshalling (i.e. moulding responses) #
@@ -121,14 +121,26 @@ class Participants(Resource):
         """
         participant_records = ParticipantRecords(db_path=db_path)
         all_relevant_participants = participant_records.read_all()
+
         success_payload = payload_formatter.construct_success_payload(
             status=200,
             method="participants.get",
             params={},
             data=all_relevant_participants
         )
-        logging.info(f"Success retrieved metadata for participants", code=200, description=success_payload, Class=Participants.__name__)
+
+        logging.info(
+            "Participants: Bulk record retrieval successful!",
+            code=200, 
+            description="Successfully retrieved metadata for participants",
+            ID_path=SOURCE_FILE,
+            ID_class=Participants.__name__, 
+            ID_function=Participants.get.__name__,
+            **request.view_args
+        )
+
         return success_payload, 200
+
 
     @ns_api.doc('register_participant')
     @ns_api.expect(participant_input_model) # for guiding payload
@@ -152,21 +164,41 @@ class Participants(Resource):
                 participant_id=participant_id
             )
             assert new_participant.doc_id == retrieved_participant.doc_id
+
             success_payload = payload_formatter.construct_success_payload(
                 status=201, 
                 method="participants.post",
                 params={},
                 data=retrieved_participant
             )
-            logging.info(f"New participant created: {participant_id}", code=201, description=success_payload, type_=type(success_payload), Class=Participants.__name__)
+
+            logging.info(
+                f"Particpant '{participant_id}': Record creation successful!",
+                code=201,
+                description=f"Particpant '{participant_id}' was successfully submitted!",
+                ID_path=SOURCE_FILE,
+                ID_class=Participants.__name__, 
+                ID_function=Participants.post.__name__,
+                **request.view_args
+            )
+
             return success_payload, 201
 
         except jsonschema.exceptions.ValidationError:
-            logging.error(f"Error creating participant: {participant_id}", code=417, description="Inappropriate participant configurations passed!", Class=Participants.__name__)
+            logging.error(
+                f"Participant '{participant_id}': Record creation failed.",
+                code=417,
+                description="Inappropriate participant configurations passed!", 
+                ID_path=SOURCE_FILE,
+                ID_class=Participants.__name__, 
+                ID_function=Participants.post.__name__,
+                **request.view_args
+            )
             ns_api.abort(
                 code=417,
                 message="Inappropriate participant configurations passed!"
             )
+
 
 @ns_api.route('/<participant_id>')
 @ns_api.param('participant_id', 'The participant identifier')
@@ -193,15 +225,31 @@ class Participant(Resource):
                 params={'participant_id': participant_id},
                 data=retrieved_participant
             )
-            logging.info(f"Success retrieved participant: {participant_id}", code=200, description=success_payload, Class=Participant.__name__)
+            logging.info(
+                f"Participant '{participant_id}': Single record retrieval successful!",
+                code=200, 
+                ID_path=SOURCE_FILE,
+                ID_class=Participant.__name__, 
+                ID_function=Participant.get.__name__,
+                **request.view_args
+            )
             return success_payload, 200
 
         else:
-            logging.error(f"Error retrieving participant: {participant_id}", code=404, description=f"Participant '{participant_id}' does not exist!", Class=Participant.__name__)
+            logging.error(
+                f"Participant '{participant_id}': Single record retrieval failed!",
+                code=404, 
+                description=f"Participant '{participant_id}' does not exist!", 
+                ID_path=SOURCE_FILE,
+                ID_class=Participant.__name__, 
+                ID_function=Participant.get.__name__,
+                **request.view_args
+            )
             ns_api.abort(
                 code=404, 
                 message=f"Participant '{participant_id}' does not exist!"
             )
+
 
     @ns_api.doc('update_participant')
     @ns_api.expect(participant_model)
@@ -222,21 +270,41 @@ class Participant(Resource):
                 participant_id=participant_id
             )
             assert updated_participant.doc_id == retrieved_participant.doc_id
+
             success_payload = payload_formatter.construct_success_payload(
                 status=200,
                 method="participant.put",
                 params={'participant_id': participant_id},
                 data=retrieved_participant
             )
-            logging.info(f"Success update participant: {participant_id}", code=200, description=success_payload, Class=Participant.__name__)
+
+            logging.info(
+                f"Participant '{participant_id}': Record update successful!",
+                code=200,
+                description=f"Participant '{participant_id}' was successfully updated!", 
+                ID_path=SOURCE_FILE,
+                ID_class=Participant.__name__, 
+                ID_function=Participant.put.__name__,
+                **request.view_args
+            )
+            
             return success_payload, 200
 
         except jsonschema.exceptions.ValidationError:
-            logging.error(f"Error updating participant: {participant_id}", code=417, description="Inappropriate participant configurations passed!", Class=Participant.__name__)
+            logging.error(
+                f"Participant '{participant_id}': Record update failed.",
+                code=417, 
+                description="Inappropriate participant configurations passed!", 
+                ID_path=SOURCE_FILE,
+                ID_class=Participant.__name__, 
+                ID_function=Participant.put.__name__,
+                **request.view_args
+            )
             ns_api.abort(                
                 code=417,
                 message="Inappropriate participant configurations passed!"
             )
+
 
     @ns_api.doc('delete_participant')
     @ns_api.marshal_with(payload_formatter.singular_model)
@@ -259,15 +327,36 @@ class Participant(Resource):
                 params={'participant_id': participant_id},
                 data=retrieved_participant
             )
-            logging.info(f"Success delete participant: {participant_id}", code=200, description="Inappropriate participant configurations passed!", Class=Participant.__name__)
+            
+            logging.info(
+                f"Participant '{participant_id}': Record deletion successful!",
+                code=200, 
+                description=f"Participant '{participant_id}' was successfully deleted!",
+                ID_path=SOURCE_FILE,
+                ID_class=Participant.__name__, 
+                ID_function=Participant.delete.__name__,
+                **request.view_args
+            )
+
             return success_payload
 
         else:
-            logging.error(f"Error deleting participant: {participant_id}", code=404, description=f"Participant '{participant_id}' does not exist!", Class=Participant.__name__)
+            logging.error(
+                f"Participant '{participant_id}': Record deletion failed.", 
+                code=404, 
+                description=f"Participant '{participant_id}': does not exist!", 
+                ID_path=SOURCE_FILE,
+                ID_class=Participant.__name__, 
+                ID_function=Participant.delete.__name__,
+                **request.view_args
+            )
             ns_api.abort(
                 code=404, 
                 message=f"Participant '{participant_id}' does not exist!"
             )
+
+
+### Inherited Resources ###
 
 # Registered Participants
 ns_api.add_resource(
