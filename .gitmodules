@@ -4,3 +4,6 @@
 [submodule "synergos_manager"]
 	path = synergos_manager
 	url = https://gitlab.int.aisingapore.org/aims/federatedlearning/synergos_manager.git
+[submodule "synergos_archive"]
+	path = synergos_archive
+	url = https://gitlab.int.aisingapore.org/aims/federatedlearning/synergos_archive.git
