@@ -74,6 +74,7 @@ RUN pip install --upgrade pip setuptools wheel \
 ADD . /ttp
 WORKDIR /ttp
 
+RUN pip install ./synergos_archive
 RUN pip install ./synergos_logger
 RUN pip install ./synergos_manager
 
