@@ -14,22 +14,18 @@ from flask_restx import Namespace, Resource, fields
 
 # Custom
 from rest_rpc import app
-from rest_rpc.connection.core.utils import (
-    TopicalPayload, 
-    ExperimentRecords
-)
+from rest_rpc.connection.core.utils import TopicalPayload
 from rest_rpc.connection.runs import run_output_model
 from rest_rpc.training.models import model_output_model
 from rest_rpc.evaluation.validations import val_output_model
 from rest_rpc.evaluation.predictions import pred_output_model
+from synarchive.connection import ExperimentRecords
 
 ##################
 # Configurations #
 ##################
 
 SOURCE_FILE = os.path.abspath(__file__)
-
-SUBJECT = "Experiment" # table name
 
 ns_api = Namespace(
     "experiments", 
@@ -206,6 +202,7 @@ expt_output_model = ns_api.inherit(
             ns_api.model(
                 name='key',
                 model={
+                    'collab_id': fields.String(),
                     'project_id': fields.String(),
                     'expt_id': fields.String()
                 }
@@ -236,7 +233,11 @@ expt_output_model = ns_api.inherit(
     }
 )
 
-payload_formatter = TopicalPayload(SUBJECT, ns_api, expt_output_model)
+payload_formatter = TopicalPayload(
+    subject=expt_records.subject, 
+    namespace=ns_api, 
+    model=expt_output_model
+)
 
 #############
 # Resources #
@@ -249,21 +250,24 @@ class Experiments(Resource):
 
     @ns_api.doc("get_experiments")
     @ns_api.marshal_list_with(payload_formatter.plural_model)
-    def get(self, project_id):
+    def get(self, collab_id, project_id):
         """ Retrieve all run configurations queued for training """
         all_relevant_expts = expt_records.read_all(
-            filter={'project_id': project_id}
+            filter={
+                'collab_id': collab_id, 
+                'project_id': project_id
+            }
         )
 
         success_payload = payload_formatter.construct_success_payload(
             status=200,
             method="experiments.get",
-            params={'project_id': project_id},
+            params=request.view_args,
             data=all_relevant_expts
         )
 
         logging.info(
-            f"Project '{project_id}' -> Experiments: Bulk record retrieval successful!",
+            f"Collaboration '{collab_id}' -> Project '{project_id}' -> Experiments: Bulk record retrieval successful!",
             code=200, 
             description=f"Experiments under project '{project_id}' were successfully retrieved!", 
             ID_path=SOURCE_FILE,
@@ -280,57 +284,68 @@ class Experiments(Resource):
     # @ns_api.marshal_with(payload_formatter.singular_model)
     @ns_api.response(201, "New experiment created!")
     @ns_api.response(417, "Inappropriate experiment configurations passed!")
-    def post(self, project_id):
+    def post(self, collab_id, project_id):
         """ Takes a model configuration to be queued for training and stores it
         """
-        # try:
-        new_expt_details = request.json
-        expt_id = new_expt_details.pop('expt_id')
+        try:
+            new_expt_details = request.json
+            expt_id = new_expt_details.pop('expt_id')
 
-        new_expt = expt_records.create(
-            project_id=project_id, 
-            expt_id=expt_id,
-            details=new_expt_details
-        )
-        retrieved_expt = expt_records.read(
-            project_id=project_id, 
-            expt_id=expt_id
-        )
+            expt_records.create(
+                collab_id=collab_id,
+                project_id=project_id, 
+                expt_id=expt_id,
+                details=new_expt_details
+            )
+            retrieved_expt = expt_records.read(
+                collab_id=collab_id,
+                project_id=project_id, 
+                expt_id=expt_id
+            )
 
-        logging.debug(
-            f"Created experiment tracked. Expt_ID: '{expt_id}'", 
-            experiment=retrieved_expt, 
-            ID_path=SOURCE_FILE,
-            ID_class=Experiments.__name__, 
-            ID_function=Experiments.post.__name__,
-            **request.view_args
-        )
-        assert new_expt.doc_id == retrieved_expt.doc_id
+            logging.debug(
+                f"Created experiment tracked. Expt_ID: '{expt_id}'", 
+                experiment=retrieved_expt, 
+                ID_path=SOURCE_FILE,
+                ID_class=Experiments.__name__, 
+                ID_function=Experiments.post.__name__,
+                **request.view_args
+            )
 
-        success_payload = payload_formatter.construct_success_payload(
-            status=201, 
-            method="experiments.post",
-            params={'project_id': project_id},
-            data=retrieved_expt
-        )
-        
-        logging.info(
-            f"Project '{project_id}' -> Experiment '{expt_id}': Record creation successful!", 
-            description=f"Experiment '{expt_id}' was successfully submitted under project '{project_id}'!",
-            code=201, 
-            ID_path=SOURCE_FILE,
-            ID_class=Experiments.__name__, 
-            ID_function=Experiments.post.__name__,
-            **request.view_args
-        )
+            success_payload = payload_formatter.construct_success_payload(
+                status=201, 
+                method="experiments.post",
+                params=request.view_args,
+                data=retrieved_expt
+            )
+            
+            logging.info(
+                f"Collaboration '{collab_id}' -> Project '{project_id}' -> Experiment '{expt_id}': Record creation successful!", 
+                description=f"Experiment '{expt_id}' was successfully submitted under project '{project_id}'!",
+                code=201, 
+                ID_path=SOURCE_FILE,
+                ID_class=Experiments.__name__, 
+                ID_function=Experiments.post.__name__,
+                **request.view_args
+            )
 
-        return success_payload, 201
+            return success_payload, 201
 
-        # except jsonschema.exceptions.ValidationError:
-        #     ns_api.abort(
-        #         code=417,
-        #         message="Inappropriate experimental configurations passed!"
-        #     )
+        except jsonschema.exceptions.ValidationError:
+            logging.error(
+                f"Experiment '{expt_id}': Record creation failed.",
+                code=417,
+                description="Inappropriate experimental configurations passed!", 
+                ID_path=SOURCE_FILE,
+                ID_class=Experiments.__name__, 
+                ID_function=Experiments.post.__name__,
+                **request.view_args
+            )
+            ns_api.abort(
+                code=417,
+                message="Inappropriate experiment configurations passed!"
+            )
+
 
 
 @ns_api.route('/<expt_id>')
@@ -344,11 +359,12 @@ class Experiment(Resource):
 
     @ns_api.doc("get_experiment")
     @ns_api.marshal_with(payload_formatter.singular_model)
-    def get(self, project_id, expt_id):
+    def get(self, collab_id, project_id, expt_id):
         """ Retrieves all experimental parameters corresponding to a specified
             project
         """
         retrieved_expt = expt_records.read(
+            collab_id=collab_id,
             project_id=project_id, 
             expt_id=expt_id
         )
@@ -357,12 +373,12 @@ class Experiment(Resource):
             success_payload = payload_formatter.construct_success_payload(
                 status=200,
                 method="experiment.get",
-                params={'project_id': project_id, 'expt_id': expt_id},
+                params=request.view_args,
                 data=retrieved_expt
             )
 
             logging.info(
-                f"Project '{project_id}' -> Experiment '{expt_id}': Single record retrieval successful!", 
+                f"Collaboration '{collab_id}' -> Project '{project_id}' -> Experiment '{expt_id}': Single record retrieval successful!", 
                 code=200, 
                 description=f"Experiment '{expt_id}' under project '{project_id}' was successfully retrieved!",
                 ID_path=SOURCE_FILE,
@@ -375,7 +391,7 @@ class Experiment(Resource):
 
         else:
             logging.error(
-                f"Project '{project_id}' -> Experiment '{expt_id}': Single record retrieval failed!",
+                f"Collaboration '{collab_id}' -> Project '{project_id}' -> Experiment '{expt_id}': Single record retrieval failed!",
                 code=404, 
                 description=f"Experiment '{expt_id}' does not exist in Project '{project_id}'!", 
                 ID_path=SOURCE_FILE,
@@ -392,33 +408,34 @@ class Experiment(Resource):
     @ns_api.doc("update_experiment")
     @ns_api.expect(expt_model)
     @ns_api.marshal_with(payload_formatter.singular_model)
-    def put(self, project_id, expt_id):
+    def put(self, collab_id, project_id, expt_id):
         """ Updates a participant's specified choices IF & ONLY IF his/her
             registered experiments have not yet commenced
         """
         try:
             expt_updates = request.json
 
-            updated_expt = expt_records.update(
+            expt_records.update(
+                collab_id=collab_id,
                 project_id=project_id, 
                 expt_id=expt_id,
                 updates=expt_updates
             )
             retrieved_expt = expt_records.read(
+                collab_id=collab_id,
                 project_id=project_id, 
                 expt_id=expt_id
             )
-            assert updated_expt.doc_id == retrieved_expt.doc_id
 
             success_payload = payload_formatter.construct_success_payload(
                 status=200,
                 method="experiment.put",
-                params={'project_id': project_id, 'expt_id': expt_id},
+                params=request.view_args,
                 data=retrieved_expt
             )
 
             logging.info(
-                f"Project '{project_id}' -> Experiment '{expt_id}': Record update successful!",
+                f"Collaboration '{collab_id}' -> Project '{project_id}' -> Experiment '{expt_id}': Record update successful!",
                 code=200,
                 description=f"Experiment '{expt_id}' under project '{project_id}' was successfully updated!", 
                 ID_path=SOURCE_FILE,
@@ -431,7 +448,7 @@ class Experiment(Resource):
 
         except jsonschema.exceptions.ValidationError:
             logging.error(
-                f"Project '{project_id}' -> Experiment '{expt_id}': Record update failed.",
+                f"Collaboration '{collab_id}' -> Project '{project_id}' -> Experiment '{expt_id}': Record update failed.",
                 code=417, 
                 description="Inappropriate experimental configurations passed!", 
                 ID_path=SOURCE_FILE,
@@ -447,21 +464,23 @@ class Experiment(Resource):
 
     @ns_api.doc("delete_experiment")
     @ns_api.marshal_with(payload_formatter.singular_model)
-    def delete(self, project_id, expt_id):
+    def delete(self, collab_id, project_id, expt_id):
         """ De-registers previously registered experiment, and clears out all 
             metadata
         """
         retrieved_expt = expt_records.read(
+            collab_id=collab_id,
             project_id=project_id, 
             expt_id=expt_id
         )
         deleted_expt = expt_records.delete(
+            collab_id=collab_id,
             project_id=project_id,
             expt_id=expt_id
         )
 
         if deleted_expt:
-            assert deleted_expt.doc_id == retrieved_expt.doc_id
+
             success_payload = payload_formatter.construct_success_payload(
                 status=200,
                 method="experiment.delete",
@@ -469,7 +488,7 @@ class Experiment(Resource):
                 data=retrieved_expt
             )
             logging.info(
-                f"Project '{project_id}' -> Experiment '{expt_id}': Record deletion successful!",
+                f"Collaboration '{collab_id}' -> Project '{project_id}' -> Experiment '{expt_id}': Record deletion successful!",
                 code=200, 
                 description=f"Experiment '{expt_id}' under project '{project_id}' was successfully deleted!",
                 ID_path=SOURCE_FILE,
@@ -481,7 +500,7 @@ class Experiment(Resource):
 
         else:
             logging.error(
-                f"Project '{project_id}' -> Experiment '{expt_id}': Record deletion failed.", 
+                f"Collaboration '{collab_id}' -> Project '{project_id}' -> Experiment '{expt_id}': Record deletion failed.", 
                 code=404, 
                 description=f"Experiment '{expt_id}' does not exist in Project '{project_id}'!", 
                 ID_path=SOURCE_FILE,

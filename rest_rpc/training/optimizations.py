@@ -9,17 +9,20 @@ import os
 import time
 
 # Libs
-import jsonschema
-import mlflow
 from flask import request
 from flask_restx import Namespace, Resource, fields
 
 # Custom
 from rest_rpc import app
-from rest_rpc.connection.core.utils import TopicalPayload, RunRecords
-from rest_rpc.training.core.hypertuners import NNITuner, optim_prefix
-from rest_rpc.evaluation.core.utils import ValidationRecords
+from rest_rpc.connection.core.utils import TopicalPayload
+from rest_rpc.training.core.hypertuners import (
+    NNITuner, 
+    RayTuneTuner, 
+    optim_prefix
+)
 # from rest_rpc.evaluation.validations import val_output_model
+from synarchive.connection import RunRecords
+from synarchive.evaluation import ValidationRecords
 
 ##################
 # Configurations #
@@ -136,6 +139,23 @@ val_output_model = ns_api.inherit(
 )
 
 payload_formatter = TopicalPayload(SUBJECT, ns_api, val_output_model)
+
+#####################
+# Wrapper Functions #
+#####################
+
+def run_hypertuner(project_id, expt_id, tuning_params):
+    '''
+        Wrapper function to run ray_tuner to avoid process conflict 
+        when called within optimizations API
+    '''
+    ray_tuner = RayTuneTuner()
+    ray_tuner.tune(
+        project_id=project_id,
+        expt_id=expt_id,
+        search_space=tuning_params['search_space'],
+        n_samples=tuning_params['n_samples']
+    )
 
 #############
 # Resources #

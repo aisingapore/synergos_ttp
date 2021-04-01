@@ -23,7 +23,7 @@ blueprint = Blueprint('evaluation', __name__)
 api = Api(
     app=blueprint,
     version="1.0",
-    title="PySyft TTP REST-RPC Evaluation API", 
+    title="Synergos Orchestrator REST-RPC Evaluation API", 
     description="API to facilitate model inference between TTP & participants"
 )
 
@@ -32,15 +32,18 @@ api = Api(
 #############################
 """
 Supported routes:
-1) "/projects/<project_id>/validations"
-2) "/projects/<project_id>/validations/<expt_id>"
-3) "/projects/<project_id>/validations/<expt_id>/<run_id>"
-4) "/projects/<project_id>/validations/<expt_id>/<run_id>/<participant_id>"
+1) "collaborations/<collab_id>/validations"
+1) "collaborations/<collab_id>/validations/<project_id>/<expt_id>/<run_id>/<participant_id>"
+
+1) "collaborations/<collab_id>/projects/<project_id>/validations"
+2) "collaborations/<collab_id>/projects/<project_id>/validations/<expt_id>"
+3) "collaborations/<collab_id>/projects/<project_id>/validations/<expt_id>/<run_id>"
+4) "collaborations/<collab_id>/projects/<project_id>/validations/<expt_id>/<run_id>/<participant_id>"
 """
 
 api.add_namespace(
     validation_ns,
-    path="/projects/<project_id>/validations"
+    path="/collaborations/<collab_id>/projects/<project_id>/validations"
 )
 
 #############################
@@ -48,13 +51,13 @@ api.add_namespace(
 #############################
 """
 Supported routes:
-1) "/participants/<participant_id>/predictions"
-2) "/participants/<participant_id>/predictions/<project_id>"
-3) "/participants/<participant_id>/predictions/<project_id>/<expt_id>"
-4) "/participants/<participant_id>/predictions/<project_id>/<expt_id>/<run_id>"
+1) "/participants/<participant_id>/collaborations/<collab_id>/predictions"
+2) "/participants/<participant_id>/collaborations/<collab_id>/predictions/<project_id>"
+3) "/participants/<participant_id>/collaborations/<collab_id>/predictions/<project_id>/<expt_id>"
+4) "/participants/<participant_id>/collaborations/<collab_id>/predictions/<project_id>/<expt_id>/<run_id>"
 """
 
 api.add_namespace(
     prediction_ns,
-    path="/participants/<participant_id>/predictions"
+    path="/participants/<participant_id>/collaborations/<collab_id>/predictions"
 )

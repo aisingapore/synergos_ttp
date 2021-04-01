@@ -8,6 +8,7 @@
 import importlib
 import inspect
 import os
+import random
 from logging import NOTSET
 
 # Libs
@@ -16,26 +17,17 @@ from flask_restx import Namespace, Resource, fields
 
 # Custom
 from rest_rpc import app
-from rest_rpc.connection.core.utils import (
-    TopicalPayload,
-    ExperimentRecords,
-    RegistrationRecords
-)
-from rest_rpc.training.core.utils import (
-    AlignmentRecords, 
-    UrlConstructor, 
-    Poller,
-    RPCFormatter
-)
+from rest_rpc.connection.core.utils import TopicalPayload
+from rest_rpc.training.core.utils import UrlConstructor, Poller, RPCFormatter
 from rest_rpc.training.core.feature_alignment import MultipleFeatureAligner
+from synarchive.connection import ExperimentRecords, RegistrationRecords
+from synarchive.training import AlignmentRecords
 
 ##################
 # Configurations #
 ##################
 
 SOURCE_FILE = os.path.abspath(__file__)
-
-SUBJECT = "Alignment" # table name
 
 MODULE_OF_LAYERS = "torch.nn"
 MODULE_OF_ACTIVATIONS = "torch.nn.functional"
@@ -49,9 +41,6 @@ db_path = app.config['DB_PATH']
 expt_records = ExperimentRecords(db_path=db_path)
 registration_records = RegistrationRecords(db_path=db_path)
 alignment_records = AlignmentRecords(db_path=db_path)
-
-worker_poll_route = app.config['WORKER_ROUTES']['poll']
-worker_align_route = app.config['WORKER_ROUTES']['align']
 
 rpc_formatter = RPCFormatter()
 
@@ -91,9 +80,9 @@ alignment_output_model = ns_api.inherit(
             ns_api.model(
                 name='key',
                 model={
+                    'collab_id': fields.String(),
                     'project_id': fields.String(),
-                    'participant_id': fields.String(),
-                    'tag_id': fields.String()
+                    'participant_id': fields.String()
                 }
             ),
             required=True
@@ -101,7 +90,11 @@ alignment_output_model = ns_api.inherit(
     }
 )
 
-payload_formatter = TopicalPayload(SUBJECT, ns_api, alignment_output_model)
+payload_formatter = TopicalPayload(
+    subject=alignment_records.subject, 
+    namespace=ns_api, 
+    model=alignment_output_model
+)
 
 #############
 # Resources #
@@ -123,24 +116,25 @@ class Alignments(Resource):
     
     @ns_api.doc("get_alignments")
     @ns_api.marshal_with(payload_formatter.plural_model)
-    def get(self, project_id):
+    def get(self, collab_id, project_id):
         """ Retrieves all alignments for all registered data under a project """
         retrieved_alignments = alignment_records.read_all(
-            filter={'project_id': project_id}
+            filter={
+                'collab_id': collab_id,
+                'project_id': project_id
+            }
         )
 
         if retrieved_alignments:
             success_payload = payload_formatter.construct_success_payload(
                 status=200,
                 method="alignments.get",
-                params={
-                    'project_id': project_id
-                },
+                params=request.view_args,
                 data=retrieved_alignments
             )
             
             logging.info(
-                f"Project '{project_id}' -> Alignments: Bulk record retrieval successful!",
+                f"Collaboration '{collab_id}' -> Project '{project_id}' -> Alignments: Bulk record retrieval successful!",
                 code=200, 
                 description=f"Alignments under project '{project_id}' were successfully retrieved!", 
                 ID_path=SOURCE_FILE,
@@ -153,7 +147,7 @@ class Alignments(Resource):
 
         else:
             logging.error(
-                f"Project '{project_id}' -> Alignments: Bulk record retrieval failed!",
+                f"Collaboration '{collab_id}' -> Project '{project_id}' -> Alignments: Bulk record retrieval failed!",
                 code=404, 
                 description=f"MFA has not been performed for Project '{project_id}'!",
                 ID_path=SOURCE_FILE,
@@ -166,21 +160,27 @@ class Alignments(Resource):
                 message=f"MFA has not been performed for Project '{project_id}'!"
             )
 
+
     @ns_api.doc("trigger_alignments")
     #@ns_api.marshal_with(payload_formatter.plural_model)
     @ns_api.response(201, "New alignments have been created!")
-    def post(self, project_id):
+    def post(self, collab_id, project_id):
         """ Searches for all registered participant under project, and uses
             their registered data tags to trigger the RPC for polling 
             participant metadata for alignment
         """
         try:
             all_relevant_registrations = registration_records.read_all(
-                filter={'project_id': project_id}
+                filter={
+                    'collab_id': collab_id,
+                    'project_id': project_id
+                }
             )
+            usable_grids = rpc_formatter.extract_grids(all_relevant_registrations)
+            selected_grid = random.choice(usable_grids) # tentative fix
 
-            poller = Poller(project_id=project_id)
-            all_metadata = poller.poll(all_relevant_registrations)
+            poller = Poller()
+            all_metadata = poller.poll(grid=selected_grid)
 
             (X_data_headers, y_data_headers, key_sequences, 
             _, descriptors) = rpc_formatter.aggregate_metadata(all_metadata)
@@ -217,19 +217,17 @@ class Alignments(Resource):
             retrieved_alignments = []
             for p_id, spacer_idxs in spacer_collection.items():
 
-                new_alignment = alignment_records.create(
+                alignment_records.create(
+                    collab_id=collab_id,
                     project_id=project_id,
                     participant_id=p_id,
                     details=spacer_idxs
                 ) 
-    
                 retrieved_alignment = alignment_records.read(
+                    collab_id=collab_id,
                     project_id=project_id,
                     participant_id=p_id
                 )
-
-                assert new_alignment.doc_id == retrieved_alignment.doc_id   
-                
                 retrieved_alignments.append(retrieved_alignment)
 
             logging.debug(
@@ -257,9 +255,12 @@ class Alignments(Resource):
 
             layer_modules = importlib.import_module(MODULE_OF_LAYERS)
 
-            all_expts = expt_records.read_all(filter={'project_id': project_id})
+            all_expts = expt_records.read_all(
+                filter={'collab_id': collab_id, 'project_id': project_id}
+            )
             for curr_expt in all_expts:
             
+                expt_id = curr_expt['key']['expt_id']
                 expt_model = curr_expt['model']
 
                 # Check if input layer needs alignment
@@ -278,14 +279,13 @@ class Alignments(Resource):
                 expt_model.insert(0, input_config)
 
                 logging.debug(
-                    f"Modified input structure for project_id: {project_id}",
+                    f"Collaboration '{collab_id}' > Project: '{project_id}' > Experiment '{expt_id}': Modified input structure tracked",
                     modified_input_structure=input_config, 
                     ID_path=SOURCE_FILE,
                     ID_class=Alignments.__name__, 
                     ID_function=Alignments.post.__name__,
                     **request.view_args
                 )
-
 
                 # Check if output layer needs alignment
                 output_config = expt_model.pop(-1)
@@ -307,7 +307,7 @@ class Alignments(Resource):
                 expt_model.append(output_config)
 
                 logging.debug(
-                    f"Modified output config for project_id: {project_id}", 
+                    f"Collaboration '{collab_id}' > Project '{project_id}' > Experiment '{expt_id}': Modified output structure tracked.", 
                     description=output_config, 
                     ID_path=SOURCE_FILE,
                     ID_class=Alignments.__name__, 
@@ -315,7 +315,7 @@ class Alignments(Resource):
                     **request.view_args
                 )
                 logging.info(
-                    f"Self-correction with MFA successfully applied on experiment '{curr_expt['key']['expt_id']}' under project {project_id}!",
+                    f"Collaboration '{collab_id}' > Project: '{project_id}' > Experiment '{expt_id}': Self-correction with MFA successfully applied!",
                     modified_expt_model=expt_model, 
                     ID_path=SOURCE_FILE,
                     ID_class=Alignments.__name__, 
@@ -344,14 +344,12 @@ class Alignments(Resource):
             success_payload = payload_formatter.construct_success_payload(
                 status=201, 
                 method="alignments.post",
-                params={
-                    'project_id': project_id
-                },
+                params=request.view_args,
                 data=retrieved_alignments
             )
             
             logging.info(
-                f"Project '{project_id}' -> Alignments: Record creation successful!", 
+                f"Collaboration '{collab_id}' > Project '{project_id}' > Alignments: Record creation successful!", 
                 description=f"Alignment procedure for project '{project_id}' was completed successfully!",
                 code=201, 
                 ID_path=SOURCE_FILE,

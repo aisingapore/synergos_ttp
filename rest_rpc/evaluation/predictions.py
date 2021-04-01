@@ -6,6 +6,7 @@
 
 # Generic/Built-in
 import os
+import random
 from logging import NOTSET
 
 # Libs
@@ -14,8 +15,12 @@ from flask_restx import Namespace, Resource, fields
 
 # Custom
 from rest_rpc import app
-from rest_rpc.connection.core.utils import (
-    TopicalPayload,
+from rest_rpc.connection.core.utils import TopicalPayload
+from rest_rpc.training.core.feature_alignment import MultipleFeatureAligner
+from rest_rpc.training.core.utils import Poller, RPCFormatter
+from rest_rpc.evaluation.core.server import start_proc
+from rest_rpc.evaluation.validations import meta_stats_model
+from synarchive.connection import (
     ProjectRecords,
     ExperimentRecords,
     RunRecords,
@@ -23,24 +28,14 @@ from rest_rpc.connection.core.utils import (
     RegistrationRecords,
     TagRecords
 )
-from rest_rpc.training.core.feature_alignment import MultipleFeatureAligner
-from rest_rpc.training.core.utils import (
-    AlignmentRecords, 
-    ModelRecords,
-    Poller,
-    RPCFormatter
-)
-from rest_rpc.evaluation.core.server import start_proc
-from rest_rpc.evaluation.core.utils import PredictionRecords
-from rest_rpc.evaluation.validations import meta_stats_model
+from synarchive.training import AlignmentRecords, ModelRecords
+from synarchive.evaluation import PredictionRecords
 
 ##################
 # Configurations #
 ##################
 
 SOURCE_FILE = os.path.abspath(__file__)
-
-SUBJECT = "Prediction"
 
 ns_api = Namespace(
     "predictions", 
@@ -114,7 +109,11 @@ pred_output_model = ns_api.inherit(
     }
 )
 
-payload_formatter = TopicalPayload(SUBJECT, ns_api, pred_output_model)
+payload_formatter = TopicalPayload(
+    subject=prediction_records.subject, 
+    namespace=ns_api, 
+    model=pred_output_model
+)
 
 #############
 # Resources #
@@ -127,8 +126,9 @@ payload_formatter = TopicalPayload(SUBJECT, ns_api, pred_output_model)
 @ns_api.response(404, 'Predictions not found')
 @ns_api.response(500, 'Internal failure')
 class Predictions(Resource):
-    """ Handles model inference within the PySyft grid. Model inference is done
-        a series of 8 stages:
+    """ 
+    Handles model inference within the PySyft grid. Model inference is done
+    a series of 8 stages:
         1) User provides prediction tags for specified projects
         2) Specified model architectures are re-loaded alongside its run configs
         3) Federated grid is re-established
@@ -141,7 +141,7 @@ class Predictions(Resource):
     
     @ns_api.doc("get_predictions")
     @ns_api.marshal_with(payload_formatter.plural_model)
-    def get(self, participant_id, project_id, expt_id, run_id):
+    def get(self, participant_id, collab_id, project_id, expt_id, run_id):
         """ Retrieves global model corresponding to experiment and run 
             parameters for a specified project
         """
@@ -159,9 +159,13 @@ class Predictions(Resource):
             )
 
             logging.info(
-                f"Participant '{participant_id}' >|< Project '{project_id}' -> Experiment '{expt_id}' -> Run '{run_id}' >|< Predictions: Bulk record retrieval successful!",
+                "Participant '{}' >|< Collaboration '{}' > Project '{}' > Experiment '{}' > Run '{}' >|< Predictions: Bulk record retrieval successful!".format(
+                    participant_id, collab_id, project_id, expt_id, run_id
+                ),
                 code=200, 
-                description=f"Predictions for participant '{participant_id}' under project '{self.project}' using experiment '{self.expt_id}' and run '{self.run_id}' was successfully retrieved!",
+                description="Predictions for participant '{}' under collaboration '{}''s project '{}' using experiment '{}' and run '{}' was successfully retrieved!".format(
+                    participant_id, collab_id, project_id, expt_id, run_id
+                ),
                 ID_path=SOURCE_FILE,
                 ID_class=Predictions.__name__, 
                 ID_function=Predictions.get.__name__,
@@ -172,7 +176,9 @@ class Predictions(Resource):
 
         else:
             logging.error(
-                f"Participant '{participant_id}' >|< Project '{project_id}' -> Experiment '{expt_id}' -> Run '{run_id}' >|< Predictions: Bulk record retrieval failed!",
+                "Participant '{}' >|< Collaboration '{}' > Project '{}' > Experiment '{}' > Run '{}' >|< Predictions: Bulk record retrieval failed!".format(
+                    participant_id, collab_id, project_id, expt_id, run_id
+                ),
                 code=404, 
                 description=f"Predictions do not exist for specified keyword filters!", 
                 ID_path=SOURCE_FILE,
@@ -189,7 +195,7 @@ class Predictions(Resource):
     @ns_api.doc("trigger_predictions")
     @ns_api.expect(pred_input_model)
     @ns_api.marshal_with(payload_formatter.plural_model)
-    def post(self, participant_id, project_id, expt_id, run_id):
+    def post(self, participant_id, collab_id, project_id, expt_id, run_id):
         """ Triggers FL inference for specified project-experiment-run
             combination within a PySyft FL grid. 
             Note: Participants have the option to specify additional datasets
@@ -219,7 +225,9 @@ class Predictions(Resource):
         new_pred_tags = request.json['tags']
 
         logging.debug(
-            f"Participant '{participant_id}' >|< Project '{project_id}' -> Experiment '{expt_id}' -> Run '{run_id}' >|< Predictions: Input keys tracked.", 
+            "Participant '{}' >|< Collaboration '{}' > Project '{}' > Experiment '{}' > Run '{}' >|< Predictions: Input keys tracked.".format(
+                participant_id, collab_id, project_id, expt_id, run_id
+            ),
             keys=request.view_args, 
             ID_path=SOURCE_FILE,
             ID_class=Predictions.__name__, 
@@ -230,21 +238,26 @@ class Predictions(Resource):
         # Update prediction tags for all queried projects
         for queried_project_id, tags in new_pred_tags.items():
             tag_records.update(
+                collab_id=collab_id,
                 project_id=queried_project_id, 
                 participant_id=participant_id,
                 updates={'predict': tags}
             )
 
-        # Participant's POV: Retrieve all projects registered under participant
-        # If specific project was declared, collapse inference space
+        # Participant's POV: Retrieve all projects within collaborations
+        # registered under participant. If specific project was declared, 
+        # collapse inference space
         key_filter = {
             'participant_id': participant_id,
+            'collab_id': collab_id,
             'project_id': project_id
         }
         key_filter = {k:v for k,v in key_filter.items() if v is not None}
 
         logging.debug(
-            f"Participant '{participant_id}' >|< Project '{project_id}' -> Experiment '{expt_id}' -> Run '{run_id}' >|< Predictions: key_filter tracked.", 
+            "Participant '{}' >|< Collaboration '{}' > Project '{}' > Experiment '{}' > Run '{}' >|< Predictions: key_filter tracked.".format(
+                participant_id, collab_id, project_id, expt_id, run_id
+            ),
             key_filter=key_filter, 
             ID_path=SOURCE_FILE,
             ID_class=Predictions.__name__, 
@@ -257,7 +270,9 @@ class Predictions(Resource):
         )
 
         logging.debug(
-            f"Participant '{participant_id}' >|< Project '{project_id}' -> Experiment '{expt_id}' -> Run '{run_id}' >|< Predictions: Participant registrations tracked.", 
+            "Participant '{}' >|< Collaboration '{}' > Project '{}' > Experiment '{}' > Run '{}' >|< Predictions: Participant registrations tracked.".format(
+                participant_id, collab_id, project_id, expt_id, run_id
+            ),
             registrations=participant_registrations, 
             ID_path=SOURCE_FILE,
             ID_class=Predictions.__name__, 
@@ -272,6 +287,7 @@ class Predictions(Resource):
 
             # Retrieves expt-run supersets (i.e. before filtering for relevancy)
             retrieved_project = project_records.read(
+                collab_id=collab_id,
                 project_id=registered_project_id
             )
             project_action = retrieved_project['action']
@@ -282,6 +298,7 @@ class Predictions(Resource):
             if expt_id:
 
                 retrieved_expt = expt_records.read(
+                    collab_id=collab_id,
                     project_id=project_id, 
                     expt_id=expt_id
                 )
@@ -292,6 +309,7 @@ class Predictions(Resource):
                 if run_id:
 
                     retrieved_run = run_records.read(
+                        collab_id=collab_id,
                         project_id=project_id, 
                         expt_id=expt_id,
                         run_id=run_id
@@ -301,14 +319,21 @@ class Predictions(Resource):
 
             # Retrieve all participants' metadata enrolled for curr project
             project_registrations = registration_records.read_all(
-                filter={'project_id': registered_project_id}
+                filter={
+                    'collab_id': collab_id,
+                    'project_id': registered_project_id
+                }
             )
+            unaligned_grids = rpc_formatter.extract_grids(project_registrations)
+            selected_unaligned_grid = random.choice(unaligned_grids)
 
-            poller = Poller(project_id=registered_project_id)
-            all_metadata = poller.poll(project_registrations)
+            poller = Poller()
+            all_metadata = poller.poll(grid=selected_unaligned_grid)
 
             logging.debug(
-                f"Participant '{participant_id}' >|< Project '{project_id}' -> Experiment '{expt_id}' -> Run '{run_id}' >|< Predictions: All polled metadata tracked.", 
+                "Participant '{}' >|< Collaboration '{}' > Project '{}' > Experiment '{}' > Run '{}' >|< Predictions: All polled metadata tracked.".format(
+                    participant_id, collab_id, project_id, expt_id, run_id
+                ),
                 polled_metadata=all_metadata, 
                 ID_path=SOURCE_FILE,
                 ID_class=Predictions.__name__, 
@@ -357,7 +382,9 @@ class Predictions(Resource):
                 for p_id, spacer_idxs in spacer_collection.items():
 
                     logging.debug(
-                        f"Participant '{p_id}' >|< Project '{project_id}' -> Experiment '{expt_id}' -> Run '{run_id}' >|< Predictions: Spacer Indexes tracked.", 
+                        "Participant '{}' >|< Collaboration '{}' > Project '{}' > Experiment '{}' > Run '{}' >|< Predictions: Spacer Indexes tracked.".format(
+                            participant_id, collab_id, project_id, expt_id, run_id
+                        ),
                         spacer_idxs=spacer_idxs,
                         ID_path=SOURCE_FILE,
                         ID_class=Predictions.__name__, 
@@ -366,15 +393,19 @@ class Predictions(Resource):
                     )
 
                     alignment_records.update(
+                        collab_id=collab_id,
                         project_id=registered_project_id,
                         participant_id=p_id,
                         updates=spacer_idxs
                     ) 
 
                 logging.debug(
-                    f"Participant '{participant_id}' >|< Project '{project_id}' -> Experiment '{expt_id}' -> Run '{run_id}' >|< Predictions: Updated alignments tracked.", 
+                    "Participant '{}' >|< Collaboration '{}' > Project '{}' > Experiment '{}' > Run '{}' >|< Predictions: Updated alignments tracked.".format(
+                        participant_id, collab_id, project_id, expt_id, run_id
+                    ),
                     updated_alignments=alignment_records.read_all(
                         filter={
+                            'collab_id': collab_id,
                             'project_id': registered_project_id, 
                             'participant_id': participant_id
                         }
@@ -385,13 +416,21 @@ class Predictions(Resource):
                     **request.view_args
                 )
 
-            updated_project_registrations = registration_records.read_all(
-                filter={'project_id': registered_project_id}
+            # Retrieve registrations updated with possibly new alignments
+            updated_registrations = registration_records.read_all(
+                filter={
+                    'collab_id': collab_id,
+                    'project_id': registered_project_id
+                }
             )
+            aligned_grids = rpc_formatter.extract_grids(updated_registrations)
+            selected_grid = random.choice(aligned_grids)
 
             logging.debug(
-                f"Participant '{participant_id}' >|< Project '{project_id}' -> Experiment '{expt_id}' -> Run '{run_id}' >|< Predictions: Updated project registrations tracked.", 
-                updated_project_registrations=updated_project_registrations, 
+                "Participant '{}' >|< Collaboration '{}' > Project '{}' > Experiment '{}' > Run '{}' >|< Predictions: Updated project registrations tracked.".format(
+                    participant_id, collab_id, project_id, expt_id, run_id
+                ),
+                updated_registrations=updated_registrations, 
                 ID_path=SOURCE_FILE,
                 ID_class=Predictions.__name__, 
                 ID_function=Predictions.post.__name__,
@@ -405,7 +444,6 @@ class Predictions(Resource):
                 'dockerised': is_dockerised,
                 'experiments': experiments,
                 'runs': runs,
-                'registrations': updated_project_registrations,
                 'participants': [participant_id],
                 'metas': ['predict'],
                 'version': None # defaults to final state of federated grid
@@ -413,7 +451,9 @@ class Predictions(Resource):
             project_combinations[registered_project_id] = kwargs
 
         logging.debug(
-            f"Participant '{participant_id}' >|< Project '{project_id}' -> Experiment '{expt_id}' -> Run '{run_id}' >|< Predictions: Project combinations tracked.", 
+            "Participant '{}' >|< Collaboration '{}' > Project '{}' > Experiment '{}' > Run '{}' >|< Predictions: Project combinations tracked.".format(
+                participant_id, collab_id, project_id, expt_id, run_id
+            ),
             project_combinations=project_combinations, 
             ID_path=SOURCE_FILE,
             ID_class=Predictions.__name__, 
@@ -421,11 +461,13 @@ class Predictions(Resource):
             **request.view_args
         )
 
-        completed_inferences = start_proc(project_combinations)
+        completed_inferences = start_proc(selected_grid, project_combinations)
 
         logging.log(
             level=NOTSET,
-            event=f"Participant '{participant_id}' >|< Project '{project_id}' -> Experiment '{expt_id}' -> Run '{run_id}' >|< Predictions:- Completed Inferences tracked.",
+            event="Participant '{}' >|< Collaboration '{}' > Project '{}' > Experiment '{}' > Run '{}' >|< Predictions: Completed Inferences tracked.".format(
+                participant_id, collab_id, project_id, expt_id, run_id
+            ),
             completed_inferences=completed_inferences,
             ID_path=SOURCE_FILE,
             ID_class=Predictions.__name__, 
@@ -438,7 +480,9 @@ class Predictions(Resource):
         for combination_key, inference_stats in completed_inferences.items():
 
             logging.debug(
-                f"Participant '{participant_id}' >|< Project '{project_id}' -> Experiment '{expt_id}' -> Run '{run_id}' >|< Predictions: Inference stats tracked.", 
+                "Participant '{}' >|< Collaboration '{}' > Project '{}' > Experiment '{}' > Run '{}' >|< Predictions: Inference stats tracked.".format(
+                    participant_id, collab_id, project_id, expt_id, run_id
+                ),
                 inference_stats=inference_stats, 
                 ID_path=SOURCE_FILE,
                 ID_class=Predictions.__name__, 
@@ -466,8 +510,10 @@ class Predictions(Resource):
         )
 
         logging.info(
-            f"Participant '{participant_id}' >|< Project '{project_id}' -> Experiment '{expt_id}' -> Run '{run_id}' >|< Predictions: Record creation successful!", 
-            description=f"Predictions for participant '{participant_id}' under project '{project_id}' using experiment '{expt_id}' and run '{run_id}' was successfully collected!",
+            "Participant '{}' >|< Collaboration '{}' > Project '{}' > Experiment '{}' > Run '{}' >|< Predictions: Record creation successful!".format(
+                participant_id, collab_id, project_id, expt_id, run_id
+            ),
+            description=f"Predictions for participant '{participant_id}' under collaboration '{collab_id}' for project '{project_id}' using experiment '{expt_id}' and run '{run_id}' was successfully collected!",
             code=201, 
             ID_path=SOURCE_FILE,
             ID_class=Predictions.__name__, 

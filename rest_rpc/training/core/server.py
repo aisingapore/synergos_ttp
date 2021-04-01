@@ -15,6 +15,7 @@ import time
 from logging import NOTSET
 from glob import glob
 from pathlib import Path
+from typing import Dict, List, Any
 
 # Libs
 import dill
@@ -30,7 +31,7 @@ from rest_rpc import app
 from rest_rpc.training.core.arguments import Arguments
 from rest_rpc.training.core.model import Model, ModelPlan
 from rest_rpc.training.core.federated_learning import FederatedLearning
-from rest_rpc.training.core.utils import Poller, Governor, RPCFormatter
+from rest_rpc.training.core.utils import Orchestrator, Governor, RPCFormatter
 from rest_rpc.training.core.custom import CustomClientWorker, CustomWSClient
 
 ##################
@@ -44,6 +45,7 @@ out_dir = app.config['OUT_DIR']
 cache = mp.Queue()#app.config['CACHE']
 
 rpc_formatter = RPCFormatter()
+orchestrator = Orchestrator()
 
 # Instantiate a local hook for coordinating clients
 # Note: `is_client=True` ensures that all objects are deleted once WS 
@@ -60,7 +62,6 @@ REF_WORKER = sy.local_worker
 
 """
 [Redacted - Multiprocessing]
-
 core_count = mp.cpu_count()
 
 # Configure dill to recursively serialise dependencies
@@ -134,29 +135,29 @@ def connect_to_ttp(log_msgs=False, verbose=False):
     return grid_hook.local_worker
 
 
-def connect_to_workers(keys, reg_records, dockerised=True, log_msgs=False, verbose=False):
+def connect_to_workers(
+    grid: List[Dict[str, Any]], 
+    log_msgs: bool = False, 
+    verbose: bool = False
+) -> List[WebsocketClientWorker]:
     """ Create client workers for participants to their complete WS connections
         Note: At any point of time, there will always be 1 set of workers per
               main process
 
     Args:
-        keys (dict(str)): Processing IDs for caching
-        reg_records (list(tinydb.database.Document))): Registry of participants
+        grid (list(dict))): Registry of participants' node information
         log_msgs (bool): Toggles if messages are to be logged
         verbose (bool): Toggles verbosity of logs for WSCW objects
     Returns:
         workers (list(WebsocketClientWorker))
     """
     workers = []
-    for reg_record in reg_records:
+    for node_info in grid:
 
-        # Remove redundant fields
-        config = rpc_formatter.strip_keys(reg_record['participant'])
-        config.pop('f_port')
+        config = orchestrator.parse_syft_info(node_info)
 
         # Replace log & verbosity settings with locally specified settings
-        config['log_msgs'] = log_msgs
-        config['verbose'] = verbose
+        config.update({'log_msgs': log_msgs, 'verbose': verbose})
 
         try:
             curr_worker = WebsocketClientWorker(
@@ -168,7 +169,7 @@ def connect_to_workers(keys, reg_records, dockerised=True, log_msgs=False, verbo
                 # self-contained at the TTP, and that the workers' local grid is not
                 # polluted with unncessary tensors. Doing so optimizes tag searches.
                 is_client_worker=False, #True
-
+                
                 **config
             )
 
@@ -324,7 +325,7 @@ def load_selected_experiment(expt_record):
 def start_expt_run_training(
     keys: dict, 
     action: str,
-    registrations: list, 
+    grid: List[Dict[str, Any]], 
     experiment: dict, 
     run: dict, 
     auto_align: bool,
@@ -337,7 +338,7 @@ def start_expt_run_training(
     Args:
         keys (dict): Relevant Project ID, Expt ID & Run ID
         action (str): Type of machine learning operation to be executed
-        registrations (dict): Registry of all participants for current project
+        grid (list(dict))): Registry of participants' node information
         experiment (dict): Parameters for reconstructing experimental model
         run (dict): Hyperparameters to be used during grid FL training
         auto_align (bool): Toggles if multiple feature alignments will be used
@@ -396,9 +397,7 @@ def start_expt_run_training(
 
         # Complete WS handshake with participants
         workers = connect_to_workers(
-            keys=keys,
-            reg_records=registrations,
-            dockerised=dockerised,
+            grid=grid,
             log_msgs=log_msgs,
             verbose=verbose
         )
@@ -547,7 +546,7 @@ def start_expt_run_training(
 
     # Send initialisation signal to all remote worker WSSW objects
     governor = Governor(auto_align=auto_align, dockerised=dockerised, **keys)
-    governor.initialise(reg_records=registrations)
+    governor.initialise(grid=grid)
 
     try:
         results = train_combination()
@@ -592,8 +591,7 @@ def start_expt_run_training(
         )
 
     # Send terminate signal to all participants' worker nodes
-    # governor = Governor(dockerised=dockerised, **keys)
-    governor.terminate(reg_records=registrations)
+    governor.terminate(grid=grid)
 
     return results
 
@@ -618,11 +616,29 @@ def start_expt_run_training(
 #     return results
 
 
-def start_proc(kwargs):
+def align_proc(
+    grid: List[Dict[str, Any]], 
+    kwargs: Dict[str, Any]
+):
+    """
+    """
+    pass
+
+
+def start_proc(
+    grid: List[Dict[str, Any]], 
+    kwargs: Dict[str, Any]
+):
     """ Automates the execution of Federated learning experiments on different
-        hyperparameter sets & model architectures
+        hyperparameter sets & model architectures.
+        Note: This is a process that runs on a single grid! Hence, grid 
+        assignment needs to be handled prior to this. Similarly, load balancing
+        of federated combinations should be handled outside of this functional
+        context, as all combinations detected here will be assumed to be
+        assigned to the same grid.
 
     Args:
+        grid (list(dict))): Registry of participants' node information
         kwargs (dict): Experiments & models to be tested
     Returns:
         Path-to-trained-models (list(str))
@@ -630,7 +646,6 @@ def start_proc(kwargs):
     action = kwargs['action']
     experiments = kwargs['experiments']
     runs = kwargs['runs']
-    registrations = kwargs['registrations']
     is_verbose = kwargs['verbose']
     log_msgs = kwargs['log_msgs']
     is_dockerised = kwargs['dockerised']
@@ -642,17 +657,18 @@ def start_proc(kwargs):
 
         for run_record in runs:
             run_key = run_record['key']
-            r_project_id = run_key['project_id']
-            r_expt_id = run_key['expt_id']
-            r_run_id = run_key['run_id']
+            collab_id = run_key['collab_id']
+            project_id = run_key['project_id']
+            expt_id = run_key['expt_id']
+            run_id = run_key['run_id']
 
-            if r_expt_id == curr_expt_id:
+            if expt_id == curr_expt_id:
 
-                combination_key = (r_project_id, r_expt_id, r_run_id)
+                combination_key = (collab_id, project_id, expt_id, run_id)
                 project_expt_run_params = {
                     'keys': run_key,
                     'action': action,
-                    'registrations': registrations,
+                    'grid': grid,
                     'experiment': expt_record,
                     'run': run_record,
                     'auto_align': auto_align,

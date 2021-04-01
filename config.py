@@ -13,6 +13,7 @@ import subprocess
 from collections import defaultdict, OrderedDict
 from glob import glob
 from pathlib import Path
+from string import Template
 
 # Libs
 import numpy as np
@@ -168,9 +169,9 @@ def configure_sysmetric_logger(**logger_kwargs) -> SysmetricLogger:
     SYSMETRIC_LOGGER = SysmetricLogger(**logger_kwargs)
     return SYSMETRIC_LOGGER
 
-#############################################
-# PySyft TTP Container Local Configurations #
-#############################################
+########################################################
+# Synergos Orchestrator Container Local Configurations #
+########################################################
 """ 
 General parameters required for processing inputs & outputs
 """
@@ -221,9 +222,9 @@ logging.debug(f"Are GPUs active: {USE_GPU}")
 logging.debug(f"Final device used: {DEVICE}")
 logging.debug(f"Retry Interval: {RETRY_INTERVAL} seconds")
 
-##########################################
-# PySyft Project Database Configurations #
-##########################################
+#############################################
+# Synergos Metadata Database Configurations #
+#############################################
 """ 
 In PySyft TTP, each registered project is factored into many tables, namely 
 Project, Experiment, Run, Participant, Registration, Tag, Alignment & Model, all
@@ -238,9 +239,9 @@ DB_PATH = os.path.join(SRC_DIR, "data", "database.json")
 
 logging.debug(f"Database path detected: {DB_PATH}")
 
-###############################
-# PySyft TTP Template Schemas #
-###############################
+#########################################
+# Synergos Marshalling Template Schemas #
+#########################################
 """
 For REST service to be stable, there must be schemas enforced to ensure that any
 erroneous queries will affect the functions of the system.
@@ -254,9 +255,9 @@ for name, s_path in template_paths.items():
 
 logging.debug(f"Schemas loaded: {list(SCHEMAS.keys())}")
 
-#######################################
-# PySyft Flask Payload Configurations #
-####################################### 
+########################################
+# Synergos REST Payload Configurations #
+######################################## 
 """
 Responses for REST-RPC have a specific format to allow compatibility between TTP
 & Worker Flask Interfaces. Remember to modify rest_rpc.connection.core.utils.Payload 
@@ -283,17 +284,21 @@ portion gets configured during runtime.
 NODE_LOGGER = None
 SYSMETRIC_LOGGER = None
 
-#################################
-# PySyft REST-RPC Worker Routes #
-#################################
+###################################
+# Synergos REST-RPC Worker Routes #
+###################################
 """
-In a PySyft REST-RPC Worker Node, there are a few flask routes that serve as
+In a Synergos REST-RPC Worker Node, there are a few flask routes that serve as
 interfacing services in order to initialise the WSSW pysyft worker.
 """
-WORKER_ROUTES = {
-    'poll': '/worker/poll/<project_id>',
-    'align': '/worker/align/<project_id>',
-    'initialise': '/worker/initialise/<project_id>/<expt_id>/<run_id>',
-    'terminate': '/worker/terminate/<project_id>/<expt_id>/<run_id>',
-    'predict': '/worker/predict/<project_id>/<expt_id>/<run_id>'
+WORKER_ROUTE_TEMPLATES = {
+    'poll': Template('/worker/poll/$collab_id/$project_id'),
+    'align': Template('/worker/align/$collab_id/$project_id'),
+    'initialise': Template('/worker/initialise/$collab_id/$project_id/$expt_id/$run_id'),
+    'terminate': Template('/worker/terminate/$collab_id/$project_id/$expt_id/$run_id'),
+    'predict': Template('/worker/predict/$collab_id/$project_id/$expt_id/$run_id')
 }
+
+NODE_ID_TEMPLATE = Template("$participant") #Template("$participant-[$node]")
+NODE_PID_REGEX = "^(.*)(?=-\[node_\d*\])"
+NODE_NID_REGEX = "(?:(?!\[)(node_\d*)(?=\]$))"

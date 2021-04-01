@@ -6,6 +6,7 @@
 
 # Generic/Built-in
 import os
+import random
 
 # Libs
 from flask import request
@@ -13,8 +14,10 @@ from flask_restx import Namespace, Resource, fields
 
 # Custom
 from rest_rpc import app
-from rest_rpc.connection.core.utils import (
-    TopicalPayload,
+from rest_rpc.connection.core.utils import TopicalPayload
+from rest_rpc.training.core.utils import Poller, RPCFormatter
+from rest_rpc.training.core.server import start_proc
+from synarchive.connection import (
     ProjectRecords,
     ExperimentRecords,
     RunRecords,
@@ -22,22 +25,13 @@ from rest_rpc.connection.core.utils import (
     RegistrationRecords,
     TagRecords
 )
-from rest_rpc.training.core.utils import (
-    AlignmentRecords, 
-    ModelRecords,
-    Poller,
-    RPCFormatter
-)
-from rest_rpc.training.core.server import start_proc
-from rest_rpc.training.alignments import alignment_model
+from synarchive.training import AlignmentRecords, ModelRecords
 
 ##################
 # Configurations #
 ##################
 
 SOURCE_FILE = os.path.abspath(__file__)
-
-SUBJECT = "Model"
 
 ns_api = Namespace(
     "models", 
@@ -129,7 +123,11 @@ model_output_model = ns_api.inherit(
     }
 )
 
-payload_formatter = TopicalPayload(SUBJECT, ns_api, model_output_model)
+payload_formatter = TopicalPayload(
+    subject=model_records.subject, 
+    namespace=ns_api, 
+    model=model_output_model
+)
 
 #############
 # Resources #
@@ -150,7 +148,7 @@ class Models(Resource):
     
     @ns_api.doc("get_models")
     @ns_api.marshal_with(payload_formatter.plural_model)
-    def get(self, project_id, expt_id, run_id):
+    def get(self, collab_id, project_id, expt_id, run_id):
         """ Retrieves global model corresponding to experiment and run 
             parameters for a specified project
         """
@@ -163,18 +161,14 @@ class Models(Resource):
             success_payload = payload_formatter.construct_success_payload(
                 status=200,
                 method="models.get",
-                params={
-                    'project_id': project_id, 
-                    'expt_id': expt_id,
-                    'run_id': run_id    
-                },
+                params=request.view_args,
                 data=retrieved_models
             )
 
             logging.info(
-                f"Project '{project_id}' -> Experiment '{expt_id}' -> Run '{run_id}' -> Models: Record(s) retrieval successful!",
+                f"Collaboration '{collab_id}' > Project '{project_id}' > Experiment '{expt_id}' > Run '{run_id}' -> Models: Record(s) retrieval successful!",
                 code=200, 
-                description="Model(s) for specified federated conditions were successfully retrieved!",
+                description="Model(s) for specified federated combination(s) successfully retrieved!",
                 ID_path=SOURCE_FILE,
                 ID_class=Models.__name__, 
                 ID_function=Models.get.__name__,
@@ -185,7 +179,7 @@ class Models(Resource):
 
         else:
             logging.error(
-                f"Project '{project_id}' -> Experiment '{expt_id}' -> Run '{run_id}' -> Models: Record(s) retrieval failed.",
+                f"Collaboration '{collab_id}' > Project '{project_id}' -> Experiment '{expt_id}' -> Run '{run_id}' -> Models: Record(s) retrieval failed.",
                 code=404,
                 description="Model(s) does not exist for specified keyword filters!",
                 ID_path=SOURCE_FILE,
@@ -202,7 +196,7 @@ class Models(Resource):
     @ns_api.doc("trigger_training")
     @ns_api.expect(input_model)
     @ns_api.marshal_with(payload_formatter.plural_model)
-    def post(self, project_id, expt_id, run_id):
+    def post(self, collab_id, project_id, expt_id, run_id):
         """ Triggers FL training for specified experiment & run parameters by
             initialising a PySyft FL grid
         """
@@ -210,7 +204,10 @@ class Models(Resource):
         init_params = request.json
 
         # Retrieves expt-run supersets (i.e. before filtering for relevancy)
-        retrieved_project = project_records.read(project_id=project_id)
+        retrieved_project = project_records.read(
+            collab_id=collab_id,
+            project_id=project_id
+        )
         project_action = retrieved_project['action']
         experiments = retrieved_project['relations']['Experiment']
         runs = retrieved_project['relations']['Run']
@@ -219,6 +216,7 @@ class Models(Resource):
         if expt_id:
 
             retrieved_expt = expt_records.read(
+                collab_id=collab_id,
                 project_id=project_id, 
                 expt_id=expt_id
             )
@@ -229,6 +227,7 @@ class Models(Resource):
             if run_id:
 
                 retrieved_run = run_records.read(
+                    collab_id=collab_id,
                     project_id=project_id, 
                     expt_id=expt_id,
                     run_id=run_id
@@ -238,8 +237,13 @@ class Models(Resource):
 
         # Retrieve all participants' metadata
         registrations = registration_records.read_all(
-            filter={'project_id': project_id}
+            filter={
+                'collab_id': collab_id,
+                'project_id': project_id
+            }
         )
+        usable_grids = rpc_formatter.extract_grids(registrations)
+        selected_grid = random.choice(usable_grids) # tentative fix
 
         ###########################
         # Implementation Footnote #
@@ -261,38 +265,37 @@ class Models(Resource):
 
         auto_align = init_params['auto_align']
         if not auto_align:
-            poller = Poller(project_id=project_id)
-            poller.poll(registrations)
+            poller = Poller()
+            poller.poll(grid=selected_grid)
 
         # Template for starting FL grid and initialising training
         kwargs = {
             'action': project_action,
             'experiments': experiments,
-            'runs': runs,
-            'registrations': registrations
+            'runs': runs
         }
         kwargs.update(init_params)
 
-        completed_trainings = start_proc(kwargs)
+        completed_trainings = start_proc(selected_grid, kwargs)
 
         # Store output metadata into database
         retrieved_models = []
-        for (project_id, expt_id, run_id), data in completed_trainings.items():
+        for fl_combination, data in completed_trainings.items():
 
-            new_model = model_records.create(
+            collab_id, project_id, expt_id, run_id = fl_combination
+            model_records.create(
+                collab_id=collab_id,
                 project_id=project_id,
                 expt_id=expt_id,
                 run_id=run_id,
                 details=data
             )
-
             retrieved_model = model_records.read(
+                collab_id=collab_id,
                 project_id=project_id,
                 expt_id=expt_id,
                 run_id=run_id
             )
-
-            assert new_model.doc_id == retrieved_model.doc_id
             retrieved_models.append(retrieved_model)
 
         success_payload = payload_formatter.construct_success_payload(
@@ -302,7 +305,7 @@ class Models(Resource):
             data=retrieved_models
         )
         logging.info(
-            f"Project '{project_id}' -> Experiment '{expt_id}' -> Run '{run_id}' -> Models: Record(s) creation successful!", 
+            f"Collaboration '{collab_id}' > Project '{project_id}' > Experiment '{expt_id}' > Run '{run_id}' > Models: Record(s) creation successful!", 
             description="Model(s) for specified federated conditions were successfully created!",
             code=201, 
             ID_path=SOURCE_FILE,

@@ -8,21 +8,18 @@
 import asyncio
 import copy
 import importlib
-import json
 import os
+import re
 import time
-import uuid
-from datetime import datetime
-from typing import Dict, List, Tuple, Callable
+from string import Template
+from typing import Any, Dict, List, Union, Tuple, Callable
 
 # Libs
 import aiohttp
-import jsonschema
+from tinydb.database import Document
 
 # Custom
 from rest_rpc import app
-from rest_rpc.connection.core.utils import TopicalPayload, AssociationRecords
-from rest_rpc.connection.core.datetime_serialization import DateTimeSerializer
 
 ##################
 # Configurations #
@@ -31,29 +28,17 @@ from rest_rpc.connection.core.datetime_serialization import DateTimeSerializer
 SOURCE_FILE = os.path.abspath(__file__)
 
 schemas = app.config['SCHEMAS']
-db_path = app.config['DB_PATH']
 
 retry_interval = app.config['RETRY_INTERVAL']
-worker_poll_route = app.config['WORKER_ROUTES']['poll']
-worker_align_route = app.config['WORKER_ROUTES']['align']
-worker_initialise_route = app.config['WORKER_ROUTES']['initialise']
-worker_terminate_route = app.config['WORKER_ROUTES']['terminate']
-worker_predict_route = app.config['WORKER_ROUTES']['predict']
+worker_poll_template = app.config['WORKER_ROUTE_TEMPLATES']['poll']
+worker_align_template = app.config['WORKER_ROUTE_TEMPLATES']['align']
+worker_initialise_template = app.config['WORKER_ROUTE_TEMPLATES']['initialise']
+worker_terminate_template = app.config['WORKER_ROUTE_TEMPLATES']['terminate']
+worker_predict_template = app.config['WORKER_ROUTE_TEMPLATES']['predict']
 
-"""
-These are the subject-id-class mappings for the main utility records in 
-Training:
-{
-    'Alignment': {
-        'id': 'alignment_id',
-        'class': AlignmentRecords
-    },
-    'Model': {
-        'id': 'model_id',
-        'class': ModelRecords
-    }
-}
-"""
+node_id_template = app.config['NODE_ID_TEMPLATE']
+node_pid_regex = app.config['NODE_PID_REGEX']
+node_nid_regex = app.config['NODE_NID_REGEX']
 
 logging = app.config['NODE_LOGGER'].synlog
 logging.debug("training/core/utils.py logged", Description="No Changes")
@@ -63,7 +48,16 @@ logging.debug("training/core/utils.py logged", Description="No Changes")
 #################################
 
 class UrlConstructor:
-    def __init__(self, host, port, secure=False):
+    """ 
+    Helper class that facilitates the construction of REST-RPC related URLs
+
+    Attributes:
+        host (str): IP of the remote node to be contacted
+        port (int): Port of the remote node assigned for REST-RPC
+        secure (bool): Toggles the security of connection (i.e. http or https)
+            Default: False (i.e. http)
+    """
+    def __init__(self, host: str, port: int, secure: bool = False):
         self.host = host
         self.port = port
         self.secure = secure
@@ -72,7 +66,7 @@ class UrlConstructor:
     # Helpers #
     ###########
 
-    def construct_url(self, route):
+    def construct_url(self, route: str) -> str:
         protocol = "http" if not self.secure else "https"
         base_url = f"{protocol}://{self.host}:{self.port}"
         destination_url = base_url + route
@@ -82,130 +76,75 @@ class UrlConstructor:
     # Core Functions #
     ##################
 
-    def construct_poll_url(self, project_id):
-        destination_url = self.construct_url(route=worker_poll_route)
-        custom_poll_url = destination_url.replace("<project_id>", project_id)
-        return custom_poll_url
+    def construct_poll_url(self, collab_id: str, project_id: str) -> str:
+        custom_poll_url = worker_poll_template.substitute({
+            'collab_id': collab_id,
+            'project_id': project_id
+        })
+        destination_url = self.construct_url(route=custom_poll_url)
+        return destination_url
         
-    def construct_align_url(self, project_id):
-        destination_url = self.construct_url(route=worker_align_route)
-        custom_align_url = destination_url.replace("<project_id>", project_id)
-        return custom_align_url
 
-    def construct_initialise_url(self, project_id, expt_id, run_id):
-        destination_url = self.construct_url(route=worker_initialise_route)
-        custom_intialise_url = destination_url.replace(
-            "<project_id>", project_id
-        ).replace(
-            "<expt_id>", expt_id
-        ).replace(
-            "<run_id>", run_id
-        )
-        return custom_intialise_url
+    def construct_align_url(self, collab_id: str, project_id: str) -> str:
+        custom_align_url = worker_align_template.substitute({
+            'collab_id': collab_id,
+            'project_id': project_id
+        })
+        destination_url = self.construct_url(route=custom_align_url)
+        return destination_url
 
-    def construct_terminate_url(self, project_id, expt_id, run_id):
-        destination_url = self.construct_url(route=worker_terminate_route)
-        custom_terminate_url = destination_url.replace(
-            "<project_id>", project_id
-        ).replace(
-            "<expt_id>", expt_id
-        ).replace(
-            "<run_id>", run_id
-        )
-        return custom_terminate_url
 
-    def construct_predict_url(self, project_id, expt_id, run_id):
-        destination_url = self.construct_url(route=worker_predict_route)
-        custom_predict_url = destination_url.replace(
-            "<project_id>", project_id
-        ).replace(
-            "<expt_id>", expt_id
-        ).replace(
-            "<run_id>", run_id
-        )
-        return custom_predict_url
+    def construct_initialise_url(
+        self, 
+        collab_id: str,
+        project_id: str, 
+        expt_id: str, 
+        run_id: str
+    ) -> str:
+        custom_intialise_url = worker_initialise_template.substitute({
+            'collab_id': collab_id,
+            'project_id': project_id,
+            'expt_id': expt_id,
+            'run_id': run_id
+        })
+        destination_url = self.construct_url(route=custom_intialise_url)
+        return destination_url
 
-#####################################################
-# Data Storage Association class - AlignmentRecords #
-#####################################################
 
-class AlignmentRecords(AssociationRecords):
+    def construct_terminate_url(
+        self, 
+        collab_id: str,
+        project_id: str, 
+        expt_id: str, 
+        run_id: str
+    ) -> str:
+        custom_terminate_url = worker_terminate_template.substitute({
+            'collab_id': collab_id,
+            'project_id': project_id,
+            'expt_id': expt_id,
+            'run_id': run_id
+        })
+        destination_url = self.construct_url(route=custom_terminate_url)
+        return destination_url
 
-    def __init__(self, db_path=db_path):
-        super().__init__(
-            "Alignment",  
-            "alignment_id", 
-            db_path,
-            [],
-            *["Registration", "Tag"]
-        )
 
-    def __generate_key(self, project_id, participant_id):
-        return {
-            "project_id": project_id, 
-            "participant_id": participant_id
-        }
+    def construct_predict_url(
+        self, 
+        collab_id: str,
+        project_id: str, 
+        expt_id: str, 
+        run_id: str
+    ) -> str:
+        custom_predict_url = worker_predict_template.substitute({
+            'collab_id': collab_id,
+            'project_id': project_id,
+            'expt_id': expt_id,
+            'run_id': run_id
+        })
+        destination_url = self.construct_url(route=custom_predict_url)
+        return destination_url
 
-    def create(self, project_id, participant_id, details):
-        # Check that new details specified conforms to experiment schema
-        jsonschema.validate(details, schemas["alignment_schema"])
-        alignment_key = self.__generate_key(project_id, participant_id)
-        new_alignment = {'key': alignment_key}
-        new_alignment.update(details)
-        return super().create(new_alignment)
 
-    def read(self, project_id, participant_id):
-        alignment_key = self.__generate_key(project_id, participant_id)
-        return super().read(alignment_key)
-
-    def update(self, project_id, participant_id, updates):
-        alignment_key = self.__generate_key(project_id, participant_id)
-        return super().update(alignment_key, updates)
-
-    def delete(self, project_id, participant_id):
-        alignment_key = self.__generate_key(project_id, participant_id)
-        return super().delete(alignment_key)
-
-#################################################
-# Data Storage Association class - ModelRecords #
-#################################################
-
-class ModelRecords(AssociationRecords):
-
-    def __init__(self, db_path=db_path):
-        super().__init__(
-            subject="Model",  
-            identifier="model_id", 
-            db_path=db_path,
-            relations=["Validation", "Prediction"]
-        )
-
-    def __generate_key(self, project_id, expt_id, run_id):
-        return {
-            "project_id": project_id,
-            "expt_id": expt_id,
-            "run_id": run_id
-        }
-
-    def create(self, project_id, expt_id, run_id, details):
-        # Check that new details specified conforms to experiment schema
-        jsonschema.validate(details, schemas["model_schema"])
-        model_key = self.__generate_key(project_id, expt_id, run_id)
-        new_model = {'key': model_key}
-        new_model.update(details)
-        return super().create(new_model)
-
-    def read(self, project_id, expt_id, run_id):
-        model_key = self.__generate_key(project_id, expt_id, run_id)
-        return super().read(model_key)
-
-    def update(self, project_id, expt_id, run_id, updates):
-        model_key = self.__generate_key(project_id, expt_id, run_id)
-        return super().update(model_key, updates)
-
-    def delete(self, project_id, expt_id, run_id):
-        model_key = self.__generate_key(project_id, expt_id, run_id)
-        return super().delete(model_key)
            
 ##########################################
 # Data Augmentation class - RPCFormatter #
@@ -235,6 +174,7 @@ class RPCFormatter:
         if concise:
             copied_record.pop('relations')
         return copied_record
+
 
     def aggregate_metadata(self, all_metadata):
         """ Takes a series of metadata and aggregates them in preparation for
@@ -323,14 +263,15 @@ class RPCFormatter:
             descriptors
         )
 
+
     def alignment_to_spacer_idxs(
         self, 
         X_mf_alignments: Tuple[List[str]], 
         y_mf_alignments: Tuple[List[str]], 
         key_sequences: List[Tuple[str]]
     ) -> dict:
-        """ Aggregates feature and target alignments and formats them w.r.t each
-            corresponding participant
+        """ Aggregates feature and target alignments and formats them w.r.t 
+            each corresponding participant
 
         Args:
             X_mf_alignments (tuple(list(str))): MFA sequence for features
@@ -347,7 +288,10 @@ class RPCFormatter:
         """
         
         def extract_null_idxs(alignment):
-            """
+            """ Given a list of headers obtained from MFA, generate the
+                necessary null indexes that will be required to augment the
+                data residing in the remote node
+
             Args:
                 alignment (list(str)): Aligned list of headers from MFA
             Returns:
@@ -383,246 +327,235 @@ class RPCFormatter:
         
         return spacer_collection
 
-#####################################
-# Data Orchestration class - Poller #
-#####################################
 
-class Poller:
-    """
-    Polls for headers & schemas, before performing multiple feature alignment,
-    to obtain aligned headers alongside a super schema for subsequent reference
-    """
-    def __init__(self, project_id):
-        self.__rpc_formatter = RPCFormatter()
-        self.project_id = project_id
-
-    ###########
-    # Helpers #
-    ###########
-
-    async def _poll_metadata(self, reg_record):
-        """ Parses a registration record for participant metadata, before
-            polling for data-specific descriptors from corresponding worker 
-            node's REST-RPC service
-
-        Args:
-            reg_record (tinydb.database.Document)
-        Returns:
-            headers (dict)
-        """
-        project_action = reg_record['project']['action']
-
-        participant_details = reg_record['participant'].copy()
-        participant_id = participant_details['id']
-        participant_ip = participant_details['host']
-        participant_f_port = participant_details.pop('f_port') # Flask port
-
-        # Construct destination url for interfacing with worker REST-RPC
-        destination_constructor = UrlConstructor(
-            host=participant_ip,
-            port=participant_f_port
-        )
-        destination_url = destination_constructor.construct_poll_url(
-            project_id=self.project_id
-        )
-
-        # Search for tags using composite project + participant
-        relevant_tags = reg_record['relations']['Tag'][0]
-        stripped_tags = self.__rpc_formatter.strip_keys(relevant_tags)
-        
-        payload = {'action': project_action, 'tags': stripped_tags}
-
-        timeout = aiohttp.ClientTimeout(
-            total=None, 
-            connect=None,
-            sock_connect=None, 
-            sock_read=None
-        ) # `0` or None value to disable timeout
-
-        # Submit loading job by POSTING tags to `Poll` route in worker
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.post(
-                destination_url,
-                timeout=timeout,
-                json=payload
-            ) as response:
-                load_resp_json = await response.json(content_type='application/json')
-                jobs_in_queue = load_resp_json['data']['jobs']
-
-        # Check if archives are retrievable every X=1 second
-        archive_retrieved = False
-        metadata = None
-        while not archive_retrieved:
-
-            # Attempt archive retrieval via GET request to `Poll` route in worker
-            async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.get(
-                    destination_url,
-                    timeout=timeout,
-                    json=payload
-                ) as response:
-
-                    retrieval_resp_json = await response.json(content_type='application/json')
-                       
-                    if response.status == 200:
-                        metadata = retrieval_resp_json['data']
-                        archive_retrieved = True
-
-                    elif response.status == 406:
-                        sleep_interval = jobs_in_queue * retry_interval
-
-                        logging.info(
-                            f"Archives for participant '{participant_id}' are not yet loaded. Retrying after {sleep_interval} seconds...",
-                            ID_path=SOURCE_FILE,
-                            ID_class=Poller.__name__,
-                            ID_function=Poller._poll_metadata.__name__
-                        )
-
-                        time.sleep(sleep_interval)
-
-                    else:
-                        logging.error(
-                            f"Something went wrong when polling for metadata from participant '{participant_id}'!",
-                            description=f"Unexpected response status received: {response.status}",
-                            ID_path=SOURCE_FILE,
-                            ID_class=Poller.__name__,
-                            ID_function=Poller._poll_metadata.__name__
-                        )
-                        raise RuntimeError(
-                            f"Something went wrong when polling for metadata from participant '{participant_id}'"
-                        )
-        
-        return {participant_id: metadata}
+    # def generate_node_id(self, participant: str, signature: str) -> str:
+    #     """
+    #     """
+    #     return node_id_template.substitute({
+    #         'participant': participant,
+    #         'node': signature
+    #     })
 
 
-    async def _collect_all_metadata(self, reg_records):
-        """ Asynchroneous function to poll metadata from registered participant
-            servers
+    # def nodeID_to_participant(self, node_id: str) -> str:
+    #     """
+    #     """
+    #     return re.findall(node_pid_regex, node_id).pop()
+
+
+    # def nodeID_to_signature(self, node_id: str) -> str:
+    #     """
+    #     """
+    #     return re.findall(node_nid_regex, node_id).pop()
+
+
+    def extract_grids(self, reg_records: List[Document]):
+        """ Given a list of registration records from participants in the same
+            project under a specific collaboration, extract N no. of grids, 
+            where N is some pre-determined number decided upon by all parties
+            before the current federated cycle commences.
+
+            For example, if all parties agreed to hosting 3 grids, then each
+            party's registration records should look like this:
+
+            {
+                'key': {
+                    'collab_id': "test_collab",
+                    'project_id': "test_project",
+                    'participant_id': "test_participant_1"
+                }
+                'role': "guest",
+                'n_count': 3,
+                'node_0': {
+                    'host': "111.111.111.111",
+                    'port': 8020,
+                    'f_port': 5000,
+                    'log_msgs': False,
+                    'verbose': False
+                },
+                'node_1': {
+                    'host': "222.222.222.222",
+                    'port': 8020,
+                    'f_port': 5000,
+                    'log_msgs': False,
+                    'verbose': False
+                },
+                'node_2': {
+                    'host': "333.333.333.333",
+                    'port': 8020,
+                    'f_port': 5000,
+                    'log_msgs': False,
+                    'verbose': False
+                }
+                'collaboration': {...},
+                'project': {...},
+                'participant': {...},
+                'relations': [...]
+            }
+
+        After processing, the grids generated will be as follows:
+
+        eg. Grid #1
+        [
+            {
+                'keys': {
+                    'collab_id': "test_collab",
+                    'project_id': "test_project",
+                    'participant_id': "test_participant_1"
+                },
+                'action': "classify",
+                'rest': {
+                    'host': "111.111.111.111",  # Node 0 of participant_1
+                    'port': 5000
+                },
+                'syft': {
+                    'id': "test_participant_1-[node_0]"
+                    'host': "111.111.111.111",
+                    'port': 8020,
+                    'log_msgs': False,
+                    'verbose': False
+                },
+                'relations': [...]
+            }, 
+            ...
+        ]
 
         Args:
-            reg_records (list(tinydb.database.Document))): Registry of participants
+
         Returns:
-            All participants' metadata (dict)
+            Grids
         """
-        all_metadata = {}
-        for future in asyncio.as_completed(map(self._poll_metadata, reg_records)):
-            result = await future
-            all_metadata.update(result)
+        aligned_n_count = min([record['n_count'] for record in reg_records])
 
-        return all_metadata
+        grids = []
+        for n_idx in range(aligned_n_count):
+            node_signature = f"node_{n_idx}"
 
-    ##################
-    # Core Functions #
-    ##################
+            curr_grid = []
+            for record in reg_records:
+                keys = record['key']
+                action = record['project']['action']
 
-    def poll(self, reg_records):
-        """ Wrapper function for triggering asychroneous polling of registered
-            participants' metadata 
+                node = record[node_signature]
+                rest_connection = {
+                    'host': record[node_signature]['host'],
+                    'port': record[node_signature]['f_port']
+                }
 
-        Args:
-            reg_records (list(tinydb.database.Document))): Registry of participants
-        Returns:
-            All participants' metadata (dict)
-        """
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
+                node.pop('f_port')
+                syft_connection = {'id': record['participant']['id'], **node}
 
-        try:
-            all_metadata = loop.run_until_complete(
-                self._collect_all_metadata(reg_records)
-            )
-        finally:
-            loop.close()
+                relations = record['relations']
 
-        return all_metadata
+                node_info = {
+                    'keys': keys,
+                    'action': action,
+                    'rest': rest_connection,
+                    'syft': syft_connection,
+                    'relations': relations
+                }
+                curr_grid.append(node_info)
 
-#######################################
-# Data Orchestration class - Governor #
-#######################################
+            grids.append(curr_grid)
+                
+        return grids
 
-class Governor:
+
+
+##########################################
+# Base Orchestrator Class - Orchestrator #
+##########################################
+
+class Orchestrator:
     """
-    Governs intialisations and terminations of remote WSSW objects via REST-RPC
-    
-    Args:
-        project_id (str): Unique identifier of project
-        expt_id (str): Unique identifier of experiment
-        run_id (str): Unique identifier of run
-        dockerised (bool): Defines if the worker nodes are dockerised or not. 
-                           If worker nodes are dockerised, the host IPs & ports
-                           used for intialisation default to "0.0.0.0" & "5000"
-                           respectively, since actual host IPs & ports are
-                           routed though container port mappings.
-                           Otherwise, initialise using registered IPs & ports
 
     Attributes:
-        # Private attributes
-        __DEFAULT_SERVER_CONFIG (dict): Default server mappings to be used in a
-                                        containerised setting
-        # Public attributes
-        project_id (str): Unique identifier of project
-        expt_id (str): Unique identifier of experiment
-        run_id (str): Unique identifier of run
-        auto_align (bool): Toggles if multiple feature alignments will be used
-        dockerised (bool): Defines if the worker nodes are dockerised or not
+        __rpc_formatter (RPCFormatter): Formatter for structured data in REST-RPC
     """
-    def __init__(
-        self, 
-        project_id: str,
-        expt_id: str, 
-        run_id: str, 
-        auto_align: bool = True,
-        dockerised: bool = True
-    ):
-        self.__DEFAULT_SERVER_CONFIG = {
-            'host': "0.0.0.0",
-            'port': 8020
-        }
+    def __init__(self):
         self.__rpc_formatter = RPCFormatter()
-        self.project_id = project_id
-        self.expt_id = expt_id
-        self.run_id = run_id
-        self.auto_align = auto_align
-        self.dockerised = dockerised
 
     ###########
     # Helpers #
     ###########
 
-    @staticmethod
-    def is_live(status):
-        return status['is_live']
-
-    async def _initialise_participant(self, reg_record):
-        """ Parses a registration record for participant metadata, before
-            posting to his/her corresponding worker node's REST-RPC service for
-            WSSW initialisation
+    def parse_keys(self, node_info: dict) -> Dict[str, str]:
+        """
 
         Args:
-            reg_record (tinydb.database.Document)
+            node_info (dict):
         Returns:
-            State of WSSW object (dict)
+            
         """
-        project_action = reg_record['project']['action'] 
+        node_keys = node_info.get('keys')
+        collab_id = node_keys.get('collab_id')
+        project_id = node_keys.get('project_id')
+        participant_id = node_keys.get('participant_id')
+        return collab_id, project_id, participant_id
 
-        participant_details = reg_record['participant'].copy()
-        participant_id = participant_details['id']
-        participant_ip = participant_details['host']
-        participant_f_port = participant_details.pop('f_port') # Flask port
 
-        # Construct destination url for interfacing with worker REST-RPC
-        destination_constructor = UrlConstructor(
-            host=participant_ip,
-            port=participant_f_port
-        )
-        destination_url = destination_constructor.construct_initialise_url(
-            project_id=self.project_id,
-            expt_id=self.expt_id,
-            run_id=self.run_id
-        )
+    def parse_action(self, node_info: dict) -> str:
+        """
 
-        relevant_tags = reg_record['relations']['Tag'][0]
+        Args:
+            node_info (dict):
+        Returns:
+            
+        """
+        return node_info.get('action')
+
+
+    def parse_rest_info(self, node_info: dict) -> dict:
+        """
+
+        Args:
+            node_info (dict):
+        Returns:
+            
+        """
+        return node_info.get('rest')
+
+    
+    def parse_syft_info(self, node_info: dict) -> dict:
+        """
+
+        Args:
+            node_info (dict):
+        Returns:
+            
+        """
+        return node_info.get('syft')
+
+
+    def parse_tags(self, node_info: dict) -> dict:
+        """
+
+        Args:
+            node_info (dict):
+        Returns:
+            
+        """
+        node_relations = node_info.get('relations')
+        relevant_tags = node_relations['Tag'][0]
         stripped_tags = self.__rpc_formatter.strip_keys(relevant_tags)
+        return stripped_tags
+        
+
+    def parse_alignments(
+        self, 
+        node_info: dict, 
+        auto_align: bool = True
+    ) -> dict:
+        """
+
+        Args:
+            node_info (dict):
+            auto_align (bool): Toggles if multiple feature alignments will be used
+        Returns:
+
+        """
+        node_relations = node_info.get('relations')
+        node_tags = self.parse_tags(node_info) 
 
         ###########################
         # Implementation Footnote #
@@ -644,9 +577,9 @@ class Governor:
         # performed, otherwise a Runtime Error will be thrown. If `auto-align` 
         # is false, then an empty set of MFA indexes will be declared. 
 
-        if self.auto_align:
+        if auto_align:
             try:
-                relevant_alignments = reg_record['relations']['Alignment'][0]
+                relevant_alignments = node_relations['Alignment'][0]
                 stripped_alignments = self.__rpc_formatter.strip_keys(
                     relevant_alignments
                 )
@@ -655,8 +588,8 @@ class Governor:
                     "No prior alignments have been detected! Please run multiple feature alignment first and try again!", 
                     description=f"{e}",
                     ID_path=SOURCE_FILE,
-                    ID_class=Governor.__name__,
-                    ID_function=Governor._initialise_participant.__name__
+                    ID_class=Orchestrator.__name__,
+                    ID_function=Orchestrator.parse_alignments.__name__
                 )
                 raise RuntimeError(
                     "No prior alignments have been detected! Please run multiple feature alignment first and try again!"
@@ -665,16 +598,289 @@ class Governor:
         else:
             stripped_alignments = {
                 meta: {"X": [], "y": []} # do not apply any alignment indexes
-                for meta, _ in stripped_tags.items()
+                for meta, _ in node_tags.items()
             }
 
-        payload = {
-            'action': project_action,
-            'tags': stripped_tags,
-            'alignments': stripped_alignments            
+        return stripped_alignments
+
+    ##################    
+    # Core Functions #
+    ##################
+
+    async def instruct(
+        self, 
+        command: str, 
+        url: str, 
+        payload: dict = {}
+    ) -> dict:
+        """ Sends an order to a remote node for execution. An order is a
+            prefined REST command that is triggered when a particular url 
+            hosted by the remote machine is contacted.
+
+        Args:
+            command (str): Type of request (i.e. 'get', 'post', 'put', 'delete')
+            url (str): Endpoint corresponding to the order
+            payload (dict): Information required to trigger the order
+        Returns:
+            Response Data (dict)
+            Response Status (int)
+        """
+        # Disable connection timeout
+        timeout = aiohttp.ClientTimeout(
+            total=None, 
+            connect=None,
+            sock_connect=None, 
+            sock_read=None
+        ) # `0` or None value to disable timeout
+
+        # Submit loading job by POSTING tags to `Poll` route in worker
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            order = getattr(session, command)
+
+            async with order(url, timeout=timeout, json=payload) as response:
+                resp_json = await response.json(content_type='application/json')
+                resp_data = resp_json.get('data')
+                resp_status = response.status
+
+        return resp_data, resp_status
+
+            
+
+#####################################
+# Data Orchestration class - Poller #
+#####################################
+
+class Poller(Orchestrator):
+    """
+    Polls for headers & schemas, before performing multiple feature alignment,
+    to obtain aligned headers alongside a super schema for subsequent reference
+    """
+    def __init__(self):
+        super().__init__()
+
+    ###########
+    # Helpers #
+    ###########
+
+    async def _poll_metadata(self, node_info: dict) -> dict:
+        """ Parses a registration record for participant metadata, before
+            polling for data-specific descriptors from corresponding worker 
+            node's REST-RPC service
+
+        Args:
+            node_info (dict): Metadata describing a single participant node
+        Returns:
+            headers (dict)
+        """
+        collab_id, project_id, participant_id = self.parse_keys(node_info)
+
+        # Construct destination url for interfacing with worker REST-RPC
+        rest_connection = self.parse_rest_info(node_info)
+        destination_constructor = UrlConstructor(**rest_connection)
+        destination_url = destination_constructor.construct_poll_url(
+            collab_id=collab_id,
+            project_id=project_id
+        )
+
+        ml_action = self.parse_action(node_info)
+
+        # Search for tags using composite project + participant
+        data_tags = self.parse_tags(node_info)
+        
+        payload = {'action': ml_action, 'tags': data_tags}
+
+        # Submit loading job by POSTING tags to `Poll` route in worker
+        load_resp_data, _ = await self.instruct(
+            command='post', 
+            url=destination_url, 
+            payload=payload
+        )
+        jobs_in_queue = load_resp_data.get('jobs')
+
+        # Check if archives are retrievable every X=1 second
+        archive_retrieved = False
+        metadata = None
+        while not archive_retrieved:
+
+            # Attempt archive retrieval via GET request to `Poll` route in worker
+            retrieval_resp_data, resp_status = await self.instruct(
+                command='get', 
+                url=destination_url, 
+                payload=payload
+            )
+                       
+            if resp_status == 200:
+                metadata = retrieval_resp_data
+                archive_retrieved = True
+
+            elif resp_status == 406:
+                sleep_interval = jobs_in_queue * retry_interval
+
+                logging.info(
+                    f"Archives for participant '{participant_id}' are not yet loaded. Retrying after {sleep_interval} seconds...",
+                    ID_path=SOURCE_FILE,
+                    ID_class=Poller.__name__,
+                    ID_function=Poller._poll_metadata.__name__
+                )
+
+                time.sleep(sleep_interval)
+
+            else:
+                logging.error(
+                    f"Something went wrong when polling for metadata from participant '{participant_id}'!",
+                    description=f"Unexpected response status received: {resp_status}",
+                    ID_path=SOURCE_FILE,
+                    ID_class=Poller.__name__,
+                    ID_function=Poller._poll_metadata.__name__
+                )
+                raise RuntimeError(f"Something went wrong when polling for metadata from participant '{participant_id}'")
+        
+        return {participant_id: metadata}
+
+
+    async def _collect_all_metadata(
+        self, 
+        grid: List[Dict[str, Union[str, Any]]]
+    ) -> Dict[str, Union[str, Any]]:
+        """ Asynchroneous function to poll metadata from registered participant
+            servers
+
+        Args:
+            grid (list(dict))): Registry of participants' node information
+        Returns:
+            All participants' metadata (dict)
+        """
+        all_metadata = {}
+        for future in asyncio.as_completed(map(self._poll_metadata, grid)):
+            result = await future
+            all_metadata.update(result)
+
+        return all_metadata
+
+    ##################
+    # Core Functions #
+    ##################
+
+    def poll(self, grid: List[Dict[str, Any]]):
+        """ Wrapper function for triggering asychroneous polling of registered
+            participants' metadata 
+
+        Args:
+            grid (list(dict))): Registry of participants' node information
+        Returns:
+            All participants' metadata (dict)
+        """
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+        try:
+            all_metadata = loop.run_until_complete(
+                self._collect_all_metadata(grid=grid)
+            )
+        finally:
+            loop.close()
+
+        return all_metadata
+
+
+
+#######################################
+# Data Orchestration class - Governor #
+#######################################
+
+class Governor(Orchestrator):
+    """
+    Governs intialisations and terminations of remote WSSW objects via REST-RPC
+    
+    Args:
+        project_id (str): Unique identifier of project
+        expt_id (str): Unique identifier of experiment
+        run_id (str): Unique identifier of run
+        dockerised (bool): Defines if the worker nodes are dockerised or not. 
+                           If worker nodes are dockerised, the host IPs & ports
+                           used for intialisation default to "0.0.0.0" & "5000"
+                           respectively, since actual host IPs & ports are
+                           routed though container port mappings.
+                           Otherwise, initialise using registered IPs & ports
+
+    Attributes:
+        # Private attributes
+        __DEFAULT_SERVER_CONFIG (dict): Default server mappings to be used in a
+                                        containerised setting
+        # Public attributes
+        collab_id (str): Unique identifier of collaboration
+        project_id (str): Unique identifier of project
+        expt_id (str): Unique identifier of experiment
+        run_id (str): Unique identifier of run
+        auto_align (bool): Toggles if multiple feature alignments will be used
+        dockerised (bool): Defines if the worker nodes are dockerised or not
+    """
+    def __init__(
+        self, 
+        collab_id: str,
+        project_id: str,
+        expt_id: str, 
+        run_id: str, 
+        auto_align: bool = True,
+        dockerised: bool = True
+    ):
+        super().__init__()
+
+        self.__DEFAULT_SERVER_CONFIG = {
+            'host': "0.0.0.0",
+            'port': 8020
         }
-        stripped_participant_details = self.__rpc_formatter.strip_keys(participant_details)
-        payload.update(stripped_participant_details)
+        self.collab_id = collab_id
+        self.project_id = project_id
+        self.expt_id = expt_id
+        self.run_id = run_id
+        self.auto_align = auto_align
+        self.dockerised = dockerised
+
+    ###########
+    # Helpers #
+    ###########
+
+    @staticmethod
+    def is_live(status):
+        return status['is_live']
+
+
+    async def _initialise_participant(self, node_info: dict) -> dict:
+        """ Parses a registration record for participant metadata, before
+            posting to his/her corresponding worker node's REST-RPC service for
+            WSSW initialisation
+
+        Args:
+            node_info (dict): Metadata describing a single participant node
+        Returns:
+            State of WSSW object (dict)
+        """
+        # Construct destination url for interfacing with worker REST-RPC
+        rest_connection = self.parse_rest_info(node_info)
+        destination_constructor = UrlConstructor(**rest_connection)
+        destination_url = destination_constructor.construct_initialise_url(
+            collab_id=self.collab_id,
+            project_id=self.project_id,
+            expt_id=self.expt_id,
+            run_id=self.run_id
+        )
+
+        _, _, participant_id = self.parse_keys(node_info)
+        participant_details = self.parse_syft_info(node_info)
+
+        ml_action = self.parse_action(node_info)
+        data_tags = self.parse_tags(node_info)
+        data_alignments = self.parse_alignments(node_info, self.auto_align)
+
+        logging.warn(f"---> data alignments: {data_alignments}")
+
+        payload = {
+            'action': ml_action,
+            'tags': data_tags,
+            'alignments': data_alignments,      
+            **participant_details
+        }
         
         # If workers are dockerised, use default container mappings
         if self.dockerised:
@@ -690,24 +896,15 @@ class Governor:
         
         # Initialise WSSW object on participant's worker node by posting tags &
         # alignments to `initialise` route in worker's REST-RPC
-        timeout = aiohttp.ClientTimeout(
-            total=None, 
-            connect=None,
-            sock_connect=None, 
-            sock_read=None
-        ) # `0` or None value to disable timeout
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.post(
-                destination_url,
-                timeout=timeout,
-                json=payload
-            ) as response:
-                resp_json = await response.json(content_type='application/json')
-        
-        state = resp_json['data']
+        state, _ = await self.instruct(
+            command='post', 
+            url=destination_url, 
+            payload=payload
+        )
         return {participant_id: state}
 
-    async def _terminate_participant(self, reg_record):
+
+    async def _terminate_participant(self, node_info: dict) -> dict:
         """ Parses a registration record for participant metadata, before
             posting to his/her corresponding worker node's REST-RPC service for
             WSSW initialisation
@@ -717,46 +914,35 @@ class Governor:
         Returns:
             State of WSSW object (dict)
         """
-        participant_details = reg_record['participant'].copy()
-        participant_id = participant_details['id']
-        participant_ip = participant_details['host']
-        participant_f_port = participant_details.pop('f_port') # Flask port
-
         # Construct destination url for interfacing with worker REST-RPC
-        destination_constructor = UrlConstructor(
-            host=participant_ip,
-            port=participant_f_port
-        )
+        rest_connection = self.parse_rest_info(node_info)
+        destination_constructor = UrlConstructor(**rest_connection)
         destination_url = destination_constructor.construct_terminate_url(
+            collab_id=self.collab_id,
             project_id=self.project_id,
             expt_id=self.expt_id,
             run_id=self.run_id
         )
 
+        _, _, participant_id = self.parse_keys(node_info)
+
         # Terminate WSSW object on participant's worker node (if possible) by
         # posting to `terminate` route in worker's REST-RPC
-        timeout = aiohttp.ClientTimeout(
-            total=None, 
-            connect=None,
-            sock_connect=None, 
-            sock_read=None
-        ) # `0` or None value to disable timeout
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.post(
-                destination_url,
-                timeout=timeout
-            ) as response:
-                resp_json = await response.json(content_type='application/json')
-        
-        state = resp_json['data']
+        state, _ = await self.instruct(command='post', url=destination_url)
+
         return {participant_id: state}
 
-    async def _operate_on_participants(self, reg_records, operation):
+
+    async def _operate_on_participants(
+        self, 
+        grid: List[Dict[str, Any]],
+        operation: str
+    ):
         """ Asynchroneous function to poll metadata from registered participant
             servers
 
         Args:
-            reg_records (list(tinydb.database.Document))): Registry of participants
+            grid (list(dict))): Registry of participants' node information
             operation (str): Operation (either initialise or terminate) to be
                              executed on participant's worker node
         Returns:
@@ -776,7 +962,7 @@ class Governor:
             raise ValueError("Invalid operation specified")
 
         all_states = {}
-        for future in asyncio.as_completed(map(method, reg_records)):
+        for future in asyncio.as_completed(map(method, grid)):
             result = await future
             all_states.update(result)
 
@@ -786,12 +972,12 @@ class Governor:
     # Core functions #
     ##################
 
-    def initialise(self, reg_records):
+    def initialise(self, grid: List[Dict[str, Any]]) -> dict:
         """ Wrapper function for triggering asychroneous polling of registered
             participants' metadata 
 
         Args:
-            reg_records (list(tinydb.database.Document))): Registry of participants
+            grid (list(dict))): Registry of participants' node information
         Returns:
             All participants' metadata (dict)
         """
@@ -801,7 +987,7 @@ class Governor:
         try:
             all_states = loop.run_until_complete(
                 self._operate_on_participants(
-                    reg_records=reg_records,
+                    grid=grid,
                     operation="initialise"
                 )
             )
@@ -810,7 +996,8 @@ class Governor:
 
         return all_states
 
-    def terminate(self, reg_records):
+
+    def terminate(self, grid: List[Dict[str, Any]]) -> dict:
         """ Wrapper function for triggering asychroneous polling of registered
             participants' metadata 
 
@@ -825,7 +1012,7 @@ class Governor:
         try:
             all_states = loop.run_until_complete(
                 self._operate_on_participants(
-                    reg_records=reg_records,
+                    grid=grid,
                     operation="terminate"
                 )
             )
@@ -835,11 +1022,16 @@ class Governor:
         return all_states
 
 
+
 ############################################
 # Base Configuration Parser Class - Parser #
 ############################################
 
 class Parser:
+    """ 
+    Base class that facilitates the loading of modules at runtime given
+    their string names
+    """
 
     def parse_operation(self, module_str: str, operation_str: str):
         """ Detects layer type of a specified layer from configuration
@@ -863,12 +1055,15 @@ class Parser:
                 ID_function=Parser.parse_operation.__name__
             )
 
+
+
 ############################################
 # Configuration Parser Class - TorchParser #
 ############################################
 
 class TorchParser(Parser):
-    """ Dynamically translates string names to PyTorch classes
+    """ 
+    Dynamically translates string names to PyTorch classes
 
     Attributes:
         MODULE_OF_LAYERS      (str): Import string for layer modules

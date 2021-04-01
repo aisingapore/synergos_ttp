@@ -14,7 +14,7 @@ import time
 from glob import glob
 from logging import NOTSET
 from pathlib import Path
-from typing import Tuple, Dict
+from typing import Dict, List, Tuple, Any
 
 # Libs
 import syft as sy
@@ -24,10 +24,8 @@ from syft.workers.websocket_client import WebsocketClientWorker
 
 # Custom
 from rest_rpc import app
-from rest_rpc.training.core.arguments import Arguments
-from rest_rpc.training.core.model import Model
 from rest_rpc.training.core.federated_learning import FederatedLearning
-from rest_rpc.training.core.utils import Governor, RPCFormatter, ModelRecords
+from rest_rpc.training.core.utils import Governor, RPCFormatter
 from rest_rpc.training.core.server import (
     connect_to_ttp, 
     connect_to_workers,
@@ -36,6 +34,7 @@ from rest_rpc.training.core.server import (
     terminate_connections
 )
 from rest_rpc.evaluation.core.utils import Analyser
+from synarchive.training import ModelRecords
 
 ##################
 # Configurations #
@@ -60,7 +59,6 @@ logging.debug("evaluation/core/server.py logged", Description="No Changes")
 def enumerate_expt_run_conbinations(
     experiments: list,
     runs: list,
-    registrations: list,
     auto_align: bool = True,
     dockerised: bool = True,
     log_msgs: bool = True,
@@ -72,7 +70,6 @@ def enumerate_expt_run_conbinations(
     Args:
         experiments (list): All experimental models to be reconstructed
         runs (dict): All hyperparameter sets to be used during grid FL inference
-        registrations (list): Registry of all participants involved
         auto_align (bool): Toggles if multiple feature alignments will be used
         dockerised (bool): Toggles if current FL grid is containerised or not. 
             If true (default), hosts & ports of all participants are locked at
@@ -89,16 +86,16 @@ def enumerate_expt_run_conbinations(
 
         for run_record in runs:
             run_key = run_record['key']
-            r_project_id = run_key['project_id']
-            r_expt_id = run_key['expt_id']
-            r_run_id = run_key['run_id']
+            collab_id = run_key['collab_id']
+            project_id = run_key['project_id']
+            expt_id = run_key['expt_id']
+            run_id = run_key['run_id']
 
-            if r_expt_id == curr_expt_id:
+            if expt_id == curr_expt_id:
 
-                combination_key = (r_project_id, r_expt_id, r_run_id)
-                project_expt_run_params = {
+                combination_key = (collab_id, project_id, expt_id, run_id)
+                collab_project_expt_run_params = {
                     'keys': run_key,
-                    'registrations': registrations,
                     'experiment': expt_record,
                     'run': run_record,
                     'auto_align': auto_align,
@@ -106,7 +103,7 @@ def enumerate_expt_run_conbinations(
                     'log_msgs': log_msgs, 
                     'verbose': verbose
                 }
-                combinations[combination_key] = project_expt_run_params
+                combinations[combination_key] = collab_project_expt_run_params
 
     return combinations
 
@@ -114,8 +111,8 @@ def enumerate_expt_run_conbinations(
 def start_expt_run_inference(
     keys: dict, 
     action: str,
+    grid: List[Dict[str, Any]],
     participants: list, 
-    registrations: list, 
     experiment: dict, 
     run: dict, 
     metas: list = ['train', 'evaluate', 'predict'],
@@ -129,8 +126,9 @@ def start_expt_run_inference(
 
     Args:
         keys (dict): Relevant Project ID, Expt ID & Run ID
+        action (str): Type of machine learning operation to be executed
+        grid (list(dict))): Registry of participants' node information
         participants (str): Specified IDs of participants requesting predictions
-        registrations (list): Registry of all participants involved
         experiment (dict): Parameters for reconstructing experimental model
         run (dict): Hyperparameters to be used during grid FL inference
         metas (list): Type(s) of datasets to perform inference on
@@ -141,20 +139,20 @@ def start_expt_run_inference(
             configurations will be used (grid architecture has to be finalised).
         log_msgs (bool): Toggles if messages are to be logged
         verbose (bool): Toggles verbosity of logs for WSCW objects
+        version (tuple): Specifies set of weights from (round, epoch) to load
     Returns:
         Statistics (dict)
     """
 
     def infer_combination():
 
+        logging.warn(f"---> Participants declared: {participants}")
         # Create worker representation for local machine as TTP
         ttp = connect_to_ttp(log_msgs=log_msgs, verbose=verbose)
 
         # Complete WS handshake with participants
         workers = connect_to_workers(
-            keys=keys,
-            reg_records=registrations,
-            dockerised=dockerised,
+            grid=grid,
             log_msgs=log_msgs,
             verbose=verbose
         )
@@ -199,6 +197,8 @@ def start_expt_run_inference(
                 for participant in participants
             }
 
+        logging.warn(f"participant_interference: {participants_inferences}")
+
         # Close WSCW local objects once training process is completed (if possible)
         # (i.e. graceful termination)
         terminate_connections(ttp=ttp, workers=workers)
@@ -214,7 +214,7 @@ def start_expt_run_inference(
 
     # Send initialisation signal to all remote worker WSSW objects
     governor = Governor(auto_align=auto_align, dockerised=dockerised, **keys)
-    governor.initialise(reg_records=registrations)
+    governor.initialise(grid=grid)
 
     participants_inferences = infer_combination()
 
@@ -228,21 +228,14 @@ def start_expt_run_inference(
 
     # Stats will only be computed for relevant participants
     # (i.e. contributed datasets used for inference)
-    relevant_participants = list(participants_inferences.keys())
-    relevant_registrations = [
-        reg_records 
-        for reg_records in registrations
-        if reg_records['participant']['id'] in relevant_participants
-    ]
-
-    # Convert collection of object IDs accumulated from minibatch 
     analyser = Analyser(
         auto_align=auto_align, 
         inferences=participants_inferences, 
         metas=metas,
         **keys
     )
-    polled_stats = analyser.infer(reg_records=relevant_registrations)
+    polled_stats = analyser.infer(grid=grid)
+    logging.warn(f"---> polled stats: {polled_stats}")
 
     logging.debug(
         f"Evaluation - Polled statistics tracked.", 
@@ -252,16 +245,17 @@ def start_expt_run_inference(
     )
 
     # Send terminate signal to all participants' worker nodes
-    governor.terminate(reg_records=registrations)
+    governor.terminate(grid=grid)
     
     return polled_stats
 
 
-def start_proc(multi_kwargs: dict) -> dict:
+def start_proc(grid: List[Dict[str, Any]], multi_kwargs: dict) -> dict:
     """ Automates the inference of Federated models of different architectures
         and parameter sets
 
     Args:
+        grid (list(dict))): Registry of participants' node information
         multi_kwargs (dict): Experiments & models to be tested
     Returns:
         Statistics of each specified project-expt-run configuration (dict)
@@ -277,6 +271,7 @@ def start_proc(multi_kwargs: dict) -> dict:
         for _, combination in project_combinations.items(): 
             combination.update({
                 'action': action,
+                'grid': grid,
                 'participants': participants, 
                 'metas': metas,
                 'version': version

@@ -10,26 +10,23 @@ import json
 import os
 import shutil
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Any
 
 # Libs
 import aiohttp
-import jsonschema
 import mlflow
+import torch as th
 
 # Custom
 from rest_rpc import app
-from rest_rpc.connection.core.utils import (
-    TopicalRecords, 
-    AssociationRecords,
-    ExperimentRecords,
-    RunRecords
-)
 from rest_rpc.training.core.utils import (
     UrlConstructor, 
-    RPCFormatter,
-    ModelRecords
+    RPCFormatter, 
+    Orchestrator
 )
+from synarchive.connection import ExperimentRecords, RunRecords
+from synarchive.training import ModelRecords
+from synarchive.evaluation import MLFRecords
 
 ##################
 # Configurations #
@@ -41,25 +38,6 @@ schemas = app.config['SCHEMAS']
 db_path = app.config['DB_PATH']
 mlflow_dir = app.config['MLFLOW_DIR']
 
-"""
-These are the subject-id-class mappings for the main utility records in 
-Prediction:
-{
-    'MLFlow': {
-        'id': 'name',
-        'class': MLFRecords
-    },
-    'Validation': {
-        'id': 'val_id',
-        'class': ValidationRecords
-    },
-    'Prediction': {
-        'id': 'pred_id',
-        'class': PredictionRecords
-    }
-}
-"""
-
 logging = app.config['NODE_LOGGER'].synlog
 logging.debug("evaluation/core/utils.py logged", Description="No Changes")
 
@@ -70,192 +48,11 @@ logging.debug("evaluation/core/utils.py logged", Description="No Changes")
 def replicate_combination_key(expt_id, run_id):
     return str((expt_id, run_id))
 
-#########################################
-# MLFlow Key storage class - MLFRecords #
-#########################################
-
-class MLFRecords(TopicalRecords):
-    """ 
-    This class solely exists as a persistent storage of `experiment_id/run_id`
-    mappings to MLFlow generated experiement IDs & run IDs respectively. This is
-    due to the fact that each unique experiment/run name can only be assigned a
-    single MLFlow ID. Any attempt to re-initialise a new experiment/run will not
-    override the existing registries, raising `mlflow.exceptions.MlflowException`
-    """
-    def __init__(self, db_path=db_path):
-        super().__init__(
-            subject="MLFlow",  
-            identifier="name", 
-            db_path=db_path
-        )
-
-    def __generate_key(self, project, name):
-        return {"project": project, "name": name}
-
-    def create(self, project, name, details):
-        # Check that new details specified conforms to experiment schema
-        jsonschema.validate(details, schemas["mlflow_schema"])
-        mlf_key = self.__generate_key(project, name)
-        new_entry = {'key': mlf_key}
-        new_entry.update(details)
-        return super().create(new_entry)
-
-    def read(self, project, name):
-        mlf_key = self.__generate_key(project, name)
-        return super().read(mlf_key)
-
-    def update(self, project, name, updates):
-        mlf_key = self.__generate_key(project, name)
-        return super().update(mlf_key, updates)
-
-    def delete(self, project, name):
-        mlf_key = self.__generate_key(project, name)
-        return super().delete(mlf_key)
-
-######################################################
-# Data Storage Association class - ValidationRecords #
-######################################################
-
-class ValidationRecords(AssociationRecords):
-    """ This class catalogues exported changes of both the global & local models
-        as federated training is in progress. Unlike PredictionRecords, this
-        table does not record statistics, but rather tracked values to be fed
-        MLFlow for visualisations, as well as incentive calculation.
-    """
-
-    def __init__(self, db_path=db_path):
-        super().__init__(
-            "Validation",  
-            "val_id", 
-            db_path,
-            [],
-            *["Model"]
-        )
-
-    def __generate_key(self, participant_id, project_id, expt_id, run_id):
-        return {
-            "participant_id": participant_id,
-            "project_id": project_id,
-            "expt_id": expt_id,
-            "run_id": run_id
-        }
-
-    def create(self, participant_id, project_id, expt_id, run_id, details):
-        logging.debug(
-            f"Validation statistics tracked.", 
-            details=details, 
-            ID_path=SOURCE_FILE,
-            ID_class=ValidationRecords.__name__,
-            ID_function=ValidationRecords.create.__name__
-        )
-
-        # Check that new details specified conforms to experiment schema
-        jsonschema.validate(details, schemas["prediction_schema"])
-        validation_key = self.__generate_key(
-            participant_id, 
-            project_id, 
-            expt_id, 
-            run_id
-        )
-        new_validation = {'key': validation_key}
-        new_validation.update(details)
-        return super().create(new_validation)
-
-    def read(self, participant_id, project_id, expt_id, run_id):
-        validation_key = self.__generate_key(
-            participant_id, 
-            project_id, 
-            expt_id, 
-            run_id
-        )
-        return super().read(validation_key)
-
-    def update(self, participant_id, project_id, expt_id, run_id, updates):
-        validation_key = self.__generate_key(
-            participant_id, 
-            project_id, 
-            expt_id, 
-            run_id
-        )
-        return super().update(validation_key, updates)
-
-    def delete(self, participant_id, project_id, expt_id, run_id):
-        validation_key = self.__generate_key(
-            participant_id, 
-            project_id, 
-            expt_id, 
-            run_id
-        )
-        return super().delete(validation_key)
-
-######################################################
-# Data Storage Association class - PredictionRecords #
-######################################################
-
-class PredictionRecords(AssociationRecords):
-
-    def __init__(self, db_path=db_path):
-        super().__init__(
-            "Prediction",  
-            "pred_id", 
-            db_path,
-            [],
-            *["Model", "Registration", "Tag"]
-        )
-
-    def __generate_key(self, participant_id, project_id, expt_id, run_id):
-        return {
-            "participant_id": participant_id,
-            "project_id": project_id,
-            "expt_id": expt_id,
-            "run_id": run_id
-        }
-
-    def create(self, participant_id, project_id, expt_id, run_id, details):
-        # Check that new details specified conforms to experiment schema
-        jsonschema.validate(details, schemas["prediction_schema"])
-        prediction_key = self.__generate_key(
-            participant_id, 
-            project_id, 
-            expt_id, 
-            run_id
-        )
-        new_prediction = {'key': prediction_key}
-        new_prediction.update(details)
-        return super().create(new_prediction)
-
-    def read(self, participant_id, project_id, expt_id, run_id):
-        prediction_key = self.__generate_key(
-            participant_id, 
-            project_id, 
-            expt_id, 
-            run_id
-        )
-        return super().read(prediction_key)
-
-    def update(self, participant_id, project_id, expt_id, run_id, updates):
-        prediction_key = self.__generate_key(
-            participant_id, 
-            project_id, 
-            expt_id, 
-            run_id
-        )
-        return super().update(prediction_key, updates)
-
-    def delete(self, participant_id, project_id, expt_id, run_id):
-        prediction_key = self.__generate_key(
-            participant_id, 
-            project_id, 
-            expt_id, 
-            run_id
-        )
-        return super().delete(prediction_key)
-
 ############################################
 # Inference Orchestration class - Analyser #
 ############################################
 
-class Analyser:
+class Analyser(Orchestrator):
     """ 
     Takes in a list of minibatch IDs and sends them to worker nodes. Workers
     will use these IDs to reconstruct their aggregated test datasets with 
@@ -266,6 +63,7 @@ class Analyser:
     """
     def __init__(
         self, 
+        collab_id: str,
         project_id: str,
         expt_id: str, 
         run_id: str,
@@ -273,8 +71,10 @@ class Analyser:
         metas: list = ['train', 'evaluate', 'predict'],
         auto_align: bool = True
     ):
-        self.__rpc_formatter = RPCFormatter()
+        super().__init__()
+
         self.metas = metas
+        self.collab_id = collab_id
         self.project_id = project_id
         self.expt_id = expt_id
         self.run_id = run_id
@@ -285,7 +85,11 @@ class Analyser:
     # Helpers #
     ###########
 
-    async def _poll_for_stats(self, reg_record, inferences):
+    async def _poll_for_stats(
+        self, 
+        node_info: Dict[str, Any], 
+        inferences: Dict[str, Dict[str, th.Tensor]]
+    ):
         """ Parses a registration record for participant metadata, before
             submitting minibatch IDs of inference objects to corresponding 
             worker node's REST-RPC service for calculating descriptive
@@ -297,72 +101,44 @@ class Analyser:
         Returns:
             Statistics (dict)
         """
-        project_action = reg_record['project']['action'] 
-        
-        participant_details = reg_record['participant'].copy()
-        participant_id = participant_details['id']
-        participant_ip = participant_details['host']
-        participant_f_port = participant_details.pop('f_port') # Flask port
-
-        # Search for tags using composite project + participant
-        relevant_tags = reg_record['relations']['Tag'][0]
-        stripped_tags = self.__rpc_formatter.strip_keys(relevant_tags)
-
-        if self.auto_align:
-            try:
-                relevant_alignments = reg_record['relations']['Alignment'][0]
-                stripped_alignments = self.__rpc_formatter.strip_keys(
-                    relevant_alignments
-                )
-            except (KeyError, AttributeError) as e:
-                logging.error(
-                    f"Analyser._poll_for_stats: Error - {e}",
-                    description="No prior alignments have been detected! Please run multiple feature alignment first and try again!",
-                    ID_path=SOURCE_FILE,
-                    ID_class=Analyser.__name__,
-                    ID_function=Analyser._poll_for_stats.__name__
-                )
-                raise RuntimeError("No prior alignments have been detected! Please run multiple feature alignment first and try again!")
-        else:
-            stripped_alignments = {
-                meta: {"X": [], "y": []} # do not apply any alignment indexes
-                for meta, _ in stripped_tags.items()
-            }
-
+        _, _, participant_id = self.parse_keys(node_info)
+ 
         if not inferences:
             return {participant_id: {meta:{} for meta in self.metas}}
 
         # Construct destination url for interfacing with worker REST-RPC
-        destination_constructor = UrlConstructor(
-            host=participant_ip,
-            port=participant_f_port
-        )
+        rest_connection = self.parse_rest_info(node_info)
+        destination_constructor = UrlConstructor(**rest_connection)
         destination_url = destination_constructor.construct_predict_url(
+            collab_id=self.collab_id,
             project_id=self.project_id,
             expt_id=self.expt_id,
             run_id=self.run_id
         )
-        
+
+        ml_action = self.parse_action(node_info)
+        data_tags = self.parse_tags(node_info)
+        data_alignments = self.parse_alignments(node_info, self.auto_align)
+
         payload = {
-            'action': project_action, 
-            'tags': stripped_tags,
-            'alignments': stripped_alignments,
+            'action': ml_action, 
+            'tags': data_tags,
+            'alignments': data_alignments,
             'inferences': inferences
         }
 
         # Trigger remote inference by posting alignments & ID mappings to 
         # `Predict` route in worker
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                destination_url,
-                json=payload
-            ) as response:
-                resp_json = await response.json(content_type='application/json')
+        resp_inference_data, _ = await self.instruct(
+            command='post', 
+            url=destination_url, 
+            payload=payload
+        )
         
         logging.debug(
             f"Participant '{participant_id}' >|< Project '{self.project_id}' -> Experiment '{self.expt_id}' -> Run '{self.run_id}': Polled statistics tracked.",
             description=f"Polled statistics for participant '{participant_id}' under project '{self.project_id}' using experiment '{self.expt_id}' and run '{self.run_id}' tracked.",
-            resp_json=resp_json,
+            resp_json=resp_inference_data,
             ID_path=SOURCE_FILE,
             ID_class=Analyser.__name__,
             ID_function=Analyser._poll_for_stats.__name__
@@ -370,7 +146,7 @@ class Analyser:
 
         # Extract the relevant expt-run results
         expt_run_key = replicate_combination_key(self.expt_id, self.run_id)
-        metadata = resp_json['data']['results'][expt_run_key]
+        metadata = resp_inference_data['results'][expt_run_key]
 
         # Filter by selected meta-datasets
         filtered_statistics = {
@@ -382,23 +158,20 @@ class Analyser:
         return {participant_id: filtered_statistics}
 
 
-    async def _collect_all_stats(self, reg_records):
+    async def _collect_all_stats(self, grid: List[Dict[str, Any]]) -> dict:
         """ Asynchronous function to submit inference data to registered
             participant servers in return for remote performance statistics
 
         Args:
-            reg_records (list(tinydb.database.Document))): Participant Registry
+            grid (list(dict))): Registry of participants' node information
         Returns:
             All participants' statistics (dict)
         """
-        sorted_reg_records = sorted(
-            reg_records, 
-            key=lambda x: x['participant']['id']
+        sorted_node_info = sorted(
+            grid, 
+            key=lambda x: self.parse_syft_info(x).get('id')
         )
-        sorted_inferences = sorted(
-            self.inferences.items(), 
-            key=lambda x: x[0]
-        )
+        sorted_inferences = sorted(self.inferences.items(), key=lambda x: x[0])
 
         logging.debug(
             "Sorted inferences tracked.",
@@ -411,7 +184,7 @@ class Analyser:
         mapped_pairs = [
             (record, inferences) 
             for record, (_, inferences) in zip(
-                sorted_reg_records, 
+                sorted_node_info, 
                 sorted_inferences
             )
         ]
@@ -429,12 +202,12 @@ class Analyser:
     # Core Functions #
     ##################
 
-    def infer(self, reg_records):
+    def infer(self, grid: List[Dict[str, Any]]) -> dict:
         """ Wrapper function for triggering asychroneous remote inferencing of
             participant nodes
 
         Args:
-            reg_records (list(tinydb.database.Document))): Participant Registry
+            grid (list(dict))): Registry of participants' node information
         Returns:
             All participants' statistics (dict)
         """
@@ -443,12 +216,14 @@ class Analyser:
 
         try:
             all_stats = loop.run_until_complete(
-                self._collect_all_stats(reg_records)
+                self._collect_all_stats(grid=grid)
             )
         finally:
             loop.close()
 
         return all_stats
+
+
 
 ####################################
 # MLFLow logging class - MLFlogger #
@@ -475,24 +250,33 @@ class MLFlogger:
     # Helpers #
     ###########
 
-    def initialise_mlflow_project(self, project_id: str) -> str:
-        """ In MLFlow, there is no concept of project-level stratification.
-            While they have MLFlow Projects, using this functionality will come
-            at the cost since this conflicts with REST-RPC's job orchestration.
-            As such, project intialisation is done natively, by creating project
-            URIs, and switching to them when necessary.
+    def initialise_mlflow_project(
+        self, 
+        collab_id: str, 
+        project_id: str
+    ) -> str:
+        """ In MLFlow, there is no concept of collaboration-level 
+            stratification. While they have MLFlow Projects, using this 
+            functionality will come at the cost since this conflicts with 
+            REST-RPC's job orchestration. As such, collaboration & project 
+            intialisation is done natively, by creating custom project URIs, 
+            and switching to them when necessary.
 
         Args:
             project_id (str): REST-RPC ID of specified project
         Returns:
             Project-specific URI (str)
         """
-        project_uri = os.path.join(mlflow_dir, project_id)
+        project_uri = os.path.join(mlflow_dir, collab_id, project_id)
         Path(project_uri).mkdir(parents=True, exist_ok=True)
         return project_uri
 
 
-    def delete_mlflow_project(self, project_id: str) -> str:
+    def delete_mlflow_project(        
+        self, 
+        collab_id: str, 
+        project_id: str
+    ) -> str:
         """ Conceptually remove all MLFlow logs made under a specific project.
 
         Args:
@@ -501,13 +285,14 @@ class MLFlogger:
             Removed Project-specific URI (str)
         """
         # Remove MLFlow directory corresponding to project's URI
-        project_uri = os.path.join(mlflow_dir, project_id)
+        project_uri = os.path.join(mlflow_dir, collab_id, project_id)
         shutil.rmtree(project_uri)
         return project_uri
 
 
     def initialise_mlflow_experiment(
         self, 
+        collab_id: str, 
         project_id: str,
         expt_id: str
     ) -> Dict[str, str]:
@@ -519,11 +304,15 @@ class MLFlogger:
         Returns:
             MLFlow Experiment configuration (dict)
         """
-        project_uri = self.initialise_mlflow_project(project_id=project_id)
+        project_uri = self.initialise_mlflow_project(
+            collab_id=collab_id,
+            project_id=project_id
+        )
         mlflow.set_tracking_uri(project_uri)
 
         # Check if MLFlow experiment has already been created
         mlflow_details = self.mlf_records.read(
+            collaboration=collab_id,
             project=project_id, 
             name=expt_id
         )
@@ -533,6 +322,7 @@ class MLFlogger:
             mlflow_id = mlflow.create_experiment(name=expt_id)
 
             mlflow_details = {
+                'collaboration': collab_id,
                 'project': project_id,
                 'name': expt_id,
                 'mlflow_type': 'experiment',
@@ -540,6 +330,7 @@ class MLFlogger:
                 'mlflow_uri': project_uri
             }
             self.mlf_records.create(
+                collaboration=collab_id,
                 project=project_id,
                 name=expt_id, 
                 details=mlflow_details
@@ -550,6 +341,7 @@ class MLFlogger:
 
     def delete_mlflow_experiment(
         self, 
+        collab_id: str, 
         project_id: str, 
         expt_id: str,
     ) -> str:
@@ -564,6 +356,7 @@ class MLFlogger:
         """
         # Delete the details themselves
         deleted_details = self.mlf_records.delete(
+            collaboration=collab_id,
             project=project_id, 
             name=expt_id
         )
@@ -584,6 +377,7 @@ class MLFlogger:
 
     def initialise_mlflow_run(
         self, 
+        collab_id: str, 
         project_id: str, 
         expt_id: str, 
         run_id: str
@@ -599,6 +393,7 @@ class MLFlogger:
         """
         # Initialise the parent MLFlow experiment
         expt_mlflow_details = self.initialise_mlflow_experiment(
+            collab_id=collab_id,
             project_id=project_id,
             expt_id=expt_id
         )
@@ -610,7 +405,12 @@ class MLFlogger:
         ) as mlf_run:
 
             # Retrieve run details from database
-            run_details = self.__run_records.read(project_id, expt_id, run_id)
+            run_details = self.__run_records.read(
+                collab_id=collab_id, 
+                project_id=project_id, 
+                expt_id=expt_id, 
+                run_id=run_id
+            )
             stripped_run_details = self.__rpc_formatter.strip_keys(
                 record=run_details,
                 concise=True
@@ -621,6 +421,7 @@ class MLFlogger:
             # Save the MLFlow ID mapping
             run_mlflow_id = mlf_run.info.run_id
             run_mlflow_details = {
+                'collaboration': collab_id,
                 'project': project_id,
                 'name': run_id,
                 'mlflow_type': 'run',
@@ -628,6 +429,7 @@ class MLFlogger:
                 'mlflow_uri': expt_mlflow_details['mlflow_uri'] # same as expt
             }
             new_run_mlflow_details = self.mlf_records.create(
+                collaboration=collab_id,
                 project=project_id,
                 name=run_id, 
                 details=run_mlflow_details
@@ -653,7 +455,13 @@ class MLFlogger:
 
 
 
-    def log_losses(self, project_id: str, expt_id: str, run_id: str):
+    def log_losses(
+        self, 
+        collab_id: str, 
+        project_id: str, 
+        expt_id: str, 
+        run_id: str
+    ):
         """ Registers all cached losses, be it global or local, obtained from
             federated training into MLFlow.
 
@@ -666,6 +474,7 @@ class MLFlogger:
         """
         # Initialise the parent MLFlow experiment
         expt_mlflow_details = self.initialise_mlflow_experiment(
+            collab_id=collab_id,
             project_id=project_id,
             expt_id=expt_id
         )
@@ -673,21 +482,27 @@ class MLFlogger:
 
         # Search for run session to update entry, not create a new one
         run_mlflow_details = self.mlf_records.read(
+            collaboration=collab_id,
             project=project_id, 
             name=run_id
         )
 
         if not run_mlflow_details:
             logging.error(
-                "Run has not been initialised!",
+                "MLFlow run has not been initialised!",
                 ID_path=SOURCE_FILE,
                 ID_class=MLFlogger.__name__,
                 ID_function=MLFlogger.log_losses.__name__
             )
-            raise RuntimeError("Run has not been initialised!")
+            raise RuntimeError("MLFlow run has not been initialised!")
 
         # Retrieve all model metadata from storage
-        model_metadata = self.__model_records.read(project_id, expt_id, run_id)
+        model_metadata = self.__model_records.read(
+            collab_id=collab_id, 
+            project_id=project_id, 
+            expt_id=expt_id, 
+            run_id=run_id
+        )
         stripped_metadata = self.__rpc_formatter.strip_keys(
             record=model_metadata, 
             concise=True
@@ -731,6 +546,7 @@ class MLFlogger:
     
     def log_model_performance(
         self, 
+        collab_id: str,
         project_id: str, 
         expt_id: str, 
         run_id: str,
@@ -750,6 +566,7 @@ class MLFlogger:
         """
         # Initialise the parent MLFlow experiment
         expt_mlflow_details = self.initialise_mlflow_experiment(
+            collab_id=collab_id,
             project_id=project_id,
             expt_id=expt_id
         )
@@ -757,6 +574,7 @@ class MLFlogger:
 
         # Search for run session to update entry, not create a new one
         run_mlflow_details = self.mlf_records.read(
+            collaboration=collab_id,
             project=project_id, 
             name=run_id
         )
@@ -777,8 +595,8 @@ class MLFlogger:
         ) as mlf_run:
 
             # Store output metadata into database
-            for participant_id, inference_stats in statistics.items():
-                for meta, meta_stats in inference_stats.items():
+            for _, inference_stats in statistics.items():
+                for _, meta_stats in inference_stats.items():
 
                     # Log statistics to MLFlow for analysis
                     stats = meta_stats.get('statistics', {})
@@ -795,7 +613,11 @@ class MLFlogger:
                         else:
                             mlflow.log_metric(key=stat_type, value=stat_value)
 
-        return self.__rpc_formatter.strip_keys(run_mlflow_details, concise=True)
+        stripped_mlflow_run_details = self.__rpc_formatter.strip_keys(
+            run_mlflow_details, 
+            concise=True
+        )
+        return stripped_mlflow_run_details
 
     ##################
     # Core Functions #
@@ -814,24 +636,25 @@ class MLFlogger:
         jobs_ran = []
         for combination_key, statistics in accumulations.items():
 
-            curr_project_id = combination_key[0]
-            curr_expt_id = combination_key[1]
-            curr_run_id = combination_key[2]
+            collab_id, project_id, expt_id, run_id = combination_key
 
             run_mlflow_details = self.initialise_mlflow_run(
-                project_id=curr_project_id,
-                expt_id=curr_expt_id,
-                run_id=curr_run_id
+                collab_id=collab_id,
+                project_id=project_id,
+                expt_id=expt_id,
+                run_id=run_id
             )
             self.log_losses(
-                project_id=curr_project_id,
-                expt_id=curr_expt_id,
-                run_id=curr_run_id
+                collab_id=collab_id,
+                project_id=project_id,
+                expt_id=expt_id,
+                run_id=run_id
             )
             self.log_model_performance(
-                project_id=curr_project_id,
-                expt_id=curr_expt_id,
-                run_id=curr_run_id,
+                collab_id=collab_id,
+                project_id=project_id,
+                expt_id=expt_id,
+                run_id=run_id,
                 statistics=statistics
             )
             jobs_ran.append(run_mlflow_details['mlflow_id'])

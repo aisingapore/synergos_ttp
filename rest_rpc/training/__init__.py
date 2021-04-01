@@ -24,7 +24,7 @@ blueprint = Blueprint('training', __name__)
 api = Api(
     app=blueprint,
     version="1.0",
-    title="PySyft TTP REST-RPC Training API", 
+    title="Synergos Orchestrator REST-RPC Training API", 
     description="API to facilitate Grid setup & training kickoff between TTP & participants"
 )
 
@@ -33,12 +33,12 @@ api = Api(
 ############################
 """
 Supported routes:
-1) "/projects/<project_id>/alignments"
+1) "/collaborations/<collab_id>/projects/<project_id>/alignments"
 """
 
 api.add_namespace(
     alignment_ns,
-    path="/projects/<project_id>/alignments"
+    path="/collaborations/<collab_id>/projects/<project_id>/alignments"
 )
 
 ########################
@@ -46,14 +46,14 @@ api.add_namespace(
 ########################
 """
 Supported routes:
-1) "/projects/<project_id>/models"
-2) "/projects/<project_id>/models/<expt_id>"
-3) "/projects/<project_id>/models/<expt_id>/<run_id>"
+1) "/collaborations/<collab_id>/projects/<project_id>/models"
+2) "/collaborations/<collab_id>/projects/<project_id>/models/<expt_id>"
+3) "/collaborations/<collab_id>/projects/<project_id>/models/<expt_id>/<run_id>"
 """
 
 api.add_namespace(
     model_ns,
-    path="/projects/<project_id>/models"
+    path="/collaborations/<collab_id>/projects/<project_id>/models"
 )
 
 ###############################
@@ -61,10 +61,10 @@ api.add_namespace(
 ###############################
 """
 Supported routes:
-1) "/projects/<project_id>/models/<expt_id>/optimizations/"
+1) "/collaborations/<collab_id>/projects/<project_id>/models/<expt_id>/optimizations/"
 """
 
 api.add_namespace(
     optim_ns,
-    path="/projects/<project_id>/models/<expt_id>/optimizations"
+    path="/collaborations/<collab_id>/projects/<project_id>/models/<expt_id>/optimizations"
 )

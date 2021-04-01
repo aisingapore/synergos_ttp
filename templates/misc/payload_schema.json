@@ -30,6 +30,12 @@
             "type": "object",
             "anyOf": [
                 {
+                    "collab_id": {
+                        "description": "Unique Identifier for a collaboration",
+                        "type": "string"
+                    }
+                },
+                {
                     "project_id": {
                         "description": "Identifier for a project",
                         "type": "string"

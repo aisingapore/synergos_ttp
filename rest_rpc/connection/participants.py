@@ -14,21 +14,20 @@ from flask_restx import Namespace, Resource, fields
 
 # Custom
 from rest_rpc import app
-from rest_rpc.connection.core.utils import TopicalPayload, ParticipantRecords
+from rest_rpc.connection.core.utils import TopicalPayload
 from rest_rpc.connection.registration import (
     Registrations,
     Registration,
-    registration_export_model
+    registration_output_model#registration_export_model
 ) 
 from rest_rpc.connection.tags import Tag, tag_output_model
+from synarchive.connection import ParticipantRecords
 
 ##################
 # Configurations #
 ##################
 
 SOURCE_FILE = os.path.abspath(__file__)
-
-SUBJECT = "Participant" # table name
 
 ns_api = Namespace(
     "participants", 
@@ -37,6 +36,7 @@ ns_api = Namespace(
 
 schemas = app.config['SCHEMAS']
 db_path = app.config['DB_PATH']
+participant_records = ParticipantRecords(db_path=db_path)
 
 logging = app.config['NODE_LOGGER'].synlog
 logging.debug("connection/participants.py logged", Description="No Changes")
@@ -48,12 +48,7 @@ logging.debug("connection/participants.py logged", Description="No Changes")
 participant_model = ns_api.model(
     name="participant",
     model={
-        'id': fields.String(required=True),
-        'host': fields.String(required=True),
-        'port': fields.Integer(required=True),
-        'log_msgs': fields.Boolean(),
-        'verbose': fields.Boolean(),
-        'f_port': fields.Integer(required=True)
+        'id': fields.String(required=True)
     }
 )
 
@@ -83,7 +78,7 @@ participant_output_model = ns_api.inherit(
                 name='participant_relations',
                 model={
                     'Registration': fields.List(
-                        fields.Nested(registration_export_model, skip_none=True)
+                        fields.Nested(registration_output_model, skip_none=True)
                     ),
                     'Tag': fields.List(
                         fields.Nested(tag_output_model, skip_none=True)
@@ -96,8 +91,11 @@ participant_output_model = ns_api.inherit(
     }
 )
 
-
-payload_formatter = TopicalPayload(SUBJECT, ns_api, participant_output_model)
+payload_formatter = TopicalPayload(
+    subject=participant_records.subject, 
+    namespace=ns_api, 
+    model=participant_output_model
+)
 
 #############
 # Resources #
@@ -119,7 +117,6 @@ class Participants(Resource):
             4) Log_msgs (boolean switch to toggle logs)
             5) verbose  (boolean switch to toggle verbosity)
         """
-        participant_records = ParticipantRecords(db_path=db_path)
         all_relevant_participants = participant_records.read_all()
 
         success_payload = payload_formatter.construct_success_payload(
@@ -155,7 +152,6 @@ class Participants(Resource):
             new_participant_details = request.json
             participant_id = new_participant_details['id']
 
-            participant_records = ParticipantRecords(db_path=db_path)
             new_participant = participant_records.create(
                 participant_id=participant_id, 
                 details=new_participant_details
@@ -200,6 +196,7 @@ class Participants(Resource):
             )
 
 
+
 @ns_api.route('/<participant_id>')
 @ns_api.param('participant_id', 'The participant identifier')
 @ns_api.response(404, 'Participant not found')
@@ -213,7 +210,6 @@ class Participant(Resource):
     @ns_api.marshal_with(payload_formatter.singular_model)
     def get(self, participant_id):
         """ Retrieves all metadata describing specified project """
-        participant_records = ParticipantRecords(db_path=db_path)
         retrieved_participant = participant_records.read(
             participant_id=participant_id
         )
@@ -261,7 +257,6 @@ class Participant(Resource):
         try:
             participant_updates = request.json
 
-            participant_records = ParticipantRecords(db_path=db_path)
             updated_participant = participant_records.update(
                 participant_id=participant_id,
                 updates=participant_updates
@@ -311,7 +306,6 @@ class Participant(Resource):
     def delete(self, participant_id):
         """ Removes participant's account & registered interactions entirely
         """
-        participant_records = ParticipantRecords(db_path=db_path)
         retrieved_participant = participant_records.read(
             participant_id=participant_id
         )
@@ -356,22 +350,35 @@ class Participant(Resource):
             )
 
 
-### Inherited Resources ###
 
-# Registered Participants
+#######################
+# Inherited Resources #
+#######################
+
+### Registration Routing ###
+
+# Accesses all participant's registrations across all collaborations
 ns_api.add_resource(
     Registrations,
     '/<participant_id>/registrations'
 )
 
-# Registered Participants
+# Accesses all participant's registrations for a single collaboration
 ns_api.add_resource(
    Registration, 
-   '/<participant_id>/projects/<project_id>/registration'
+   '/<participant_id>/collaborations/<collab_id>/registrations'
 )
 
-# Registered Tags
+# Accesses a participant's registration for a single project under a specific collaboration
+ns_api.add_resource(
+   Registration, 
+   '/<participant_id>/collaborations/<collab_id>/projects/<project_id>/registration'
+)
+
+### Tag Routing ###
+
+# Accesses all participant's data tags submitted for a single project under a specific collaboration
 ns_api.add_resource(
    Tag, 
-   '/<participant_id>/projects/<project_id>/registration/tags'
+   '/<participant_id>/collaborations/<collab_id>/projects/<project_id>/registration/tags'
 )

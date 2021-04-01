@@ -6,6 +6,7 @@
 
 # Generic/Built-in
 import os
+import random
 from logging import NOTSET
 from pathlib import Path
 
@@ -15,8 +16,11 @@ from flask_restx import Namespace, Resource, fields
 
 # Custom
 from rest_rpc import app
-from rest_rpc.connection.core.utils import (
-    TopicalPayload,
+from rest_rpc.connection.core.utils import TopicalPayload
+from rest_rpc.training.core.utils import RPCFormatter
+from rest_rpc.evaluation.core.server import start_proc
+from rest_rpc.evaluation.core.utils import MLFlogger
+from synarchive.connection import (
     ProjectRecords,
     ExperimentRecords,
     RunRecords,
@@ -24,26 +28,14 @@ from rest_rpc.connection.core.utils import (
     RegistrationRecords,
     TagRecords
 )
-from rest_rpc.training.core.utils import (
-    AlignmentRecords, 
-    ModelRecords,
-    Poller,
-    RPCFormatter
-)
-from rest_rpc.evaluation.core.server import start_proc
-from rest_rpc.evaluation.core.utils import (
-    ValidationRecords, 
-    MLFRecords, 
-    MLFlogger
-)
+from synarchive.training import AlignmentRecords, ModelRecords
+from synarchive.evaluation import ValidationRecords, MLFRecords
 
 ##################
 # Configurations #
 ##################
 
 SOURCE_FILE = os.path.abspath(__file__)
-
-SUBJECT = "Validation"
 
 ns_api = Namespace(
     "validations", 
@@ -61,6 +53,8 @@ tag_records = TagRecords(db_path=db_path)
 alignment_records = AlignmentRecords(db_path=db_path)
 model_records = ModelRecords(db_path=db_path)
 validation_records = ValidationRecords(db_path=db_path)
+
+rpc_formatter = RPCFormatter()
 
 mlflow_dir = app.config['MLFLOW_DIR']
 mlf_logger = MLFlogger()
@@ -135,6 +129,7 @@ val_output_model = ns_api.inherit(
                 name='key',
                 model={
                     'participant_id': fields.String(),
+                    'collab_id': fields.String(),
                     'project_id': fields.String(),
                     'expt_id': fields.String(),
                     'run_id': fields.String()
@@ -145,7 +140,11 @@ val_output_model = ns_api.inherit(
     }
 )
 
-payload_formatter = TopicalPayload(SUBJECT, ns_api, val_output_model)
+payload_formatter = TopicalPayload(
+    subject=validation_records.subject, 
+    namespace=ns_api, 
+    model=val_output_model
+)
 
 #############
 # Resources #
@@ -176,7 +175,7 @@ class Validations(Resource):
     
     @ns_api.doc("get_validations")
     @ns_api.marshal_with(payload_formatter.plural_model)
-    def get(self, project_id, expt_id, run_id, participant_id):
+    def get(self, collab_id, project_id, expt_id, run_id, participant_id):
         """ Retrieves validation statistics corresponding to experiment and run 
             parameters for a specified project
         """
@@ -194,9 +193,13 @@ class Validations(Resource):
             )
 
             logging.info(
-                f"Participant '{participant_id}' >|< Project '{project_id}' -> Experiment '{expt_id}' -> Run '{run_id}' >|< Validations: Bulk record retrieval successful!",
+                "Participant '{}' >|< Collaboration '{}' > Project '{}' > Experiment '{}' > Run '{}' >|< Validations: Bulk record retrieval successful!".format(
+                    participant_id, collab_id, project_id, expt_id, run_id
+                ),
                 code=200, 
-                description=f"Validations for participant '{participant_id}' under project '{self.project}' using experiment '{self.expt_id}' and run '{self.run_id}' was successfully retrieved!",
+                description="Validations for participant '{}' under collaboration '{}''s project '{}' using experiment '{}' and run '{}' was successfully retrieved!".format(
+                    participant_id, collab_id, project_id, expt_id, run_id
+                ),
                 ID_path=SOURCE_FILE,
                 ID_class=Validations.__name__, 
                 ID_function=Validations.get.__name__,
@@ -207,7 +210,9 @@ class Validations(Resource):
 
         else:
             logging.error(
-                f"Participant '{participant_id}' >|< Project '{project_id}' -> Experiment '{expt_id}' -> Run '{run_id}' >|< Validations: Bulk record retrieval failed!",
+                "Participant '{}' >|< Collaboration '{}' > Project '{}' > Experiment '{}' > Run '{}' >|< Validations: Bulk record retrieval failed!".format(
+                    participant_id, collab_id, project_id, expt_id, run_id
+                ),
                 code=404, 
                 description=f"Predictions do not exist for specified keyword filters!", 
                 ID_path=SOURCE_FILE,
@@ -224,7 +229,7 @@ class Validations(Resource):
     @ns_api.doc("trigger_predictions")
     @ns_api.expect(input_model)
     @ns_api.marshal_with(payload_formatter.plural_model)
-    def post(self, project_id, expt_id, run_id, participant_id):
+    def post(self, collab_id, project_id, expt_id, run_id, participant_id):
         """ Triggers FL inference for specified project-experiment-run
             combination within a PySyft FL grid. 
             Note: Participants have the option to specify additional datasets
@@ -249,7 +254,10 @@ class Validations(Resource):
         init_params = request.json
 
         # Retrieves expt-run supersets (i.e. before filtering for relevancy)
-        retrieved_project = project_records.read(project_id=project_id)
+        retrieved_project = project_records.read(
+            collab_id=collab_id,
+            project_id=project_id
+        )
         project_action = retrieved_project['action']
         experiments = retrieved_project['relations']['Experiment']
         runs = retrieved_project['relations']['Run']
@@ -258,6 +266,7 @@ class Validations(Resource):
         if expt_id:
 
             retrieved_expt = expt_records.read(
+                collab_id=collab_id,
                 project_id=project_id, 
                 expt_id=expt_id
             )
@@ -268,6 +277,7 @@ class Validations(Resource):
             if run_id:
 
                 retrieved_run = run_records.read(
+                    collab_id=collab_id,
                     project_id=project_id, 
                     expt_id=expt_id,
                     run_id=run_id
@@ -277,8 +287,14 @@ class Validations(Resource):
 
         # Retrieve all participants' metadata
         registrations = registration_records.read_all(
-            filter={'project_id': project_id}
+            filter={
+                'collab_id': collab_id,
+                'project_id': project_id
+            }
         )
+        usable_grids = rpc_formatter.extract_grids(registrations)
+        selected_grid = random.choice(usable_grids) # tentative fix
+        logging.warn(f"selected_grid: {[node_info['syft']['id'] for node_info in selected_grid]}")
 
         # Retrieve all relevant participant IDs, collapsing evaluation space if
         # a specific participant was declared
@@ -292,14 +308,14 @@ class Validations(Resource):
             'action': project_action,
             'experiments': experiments,
             'runs': runs,
-            'registrations': registrations,
             'participants': participants,
             'metas': ['evaluate'],
             'version': None # defaults to final state of federated grid
         }
         kwargs.update(init_params)
 
-        completed_validations = start_proc({project_id: kwargs})
+        completed_validations = start_proc(selected_grid, {project_id: kwargs})
+        logging.warn(f"completed_validations: {completed_validations}")
 
         retrieved_validations = []
         for combination_key, validation_stats in completed_validations.items():
@@ -307,7 +323,7 @@ class Validations(Resource):
             # Store output metadata into database
             for participant_id, inference_stats in validation_stats.items():
                 
-                #log the inference stats
+                # Log the inference stats
                 worker_key = (participant_id,) + combination_key
 
                 new_validation = validation_records.create(

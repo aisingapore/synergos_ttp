@@ -9,31 +9,30 @@ import os
 
 # Libs
 import jsonschema
-from flask import request, redirect, url_for
+from flask import request
 from flask_restx import Namespace, Resource, fields
 
 # Custom
 from rest_rpc import app
-from rest_rpc.connection.core.utils import TopicalPayload, ProjectRecords
+from rest_rpc.connection.core.utils import TopicalPayload
 from rest_rpc.connection.experiments import expt_output_model
 from rest_rpc.connection.runs import run_output_model
 from rest_rpc.connection.registration import (
     Registrations, 
     Registration, 
-    registration_export_model
+    registration_output_model#registration_export_model
 )
 from rest_rpc.connection.tags import Tag, tag_output_model
 from rest_rpc.training.models import model_output_model
 from rest_rpc.evaluation.validations import val_output_model
 from rest_rpc.evaluation.predictions import pred_output_model
+from synarchive.connection import ProjectRecords
 
 ##################
 # Configurations #
 ##################
 
 SOURCE_FILE = os.path.abspath(__file__)
-
-SUBJECT = "Project" # table name
 
 ns_api = Namespace(
     "projects", 
@@ -42,6 +41,7 @@ ns_api = Namespace(
 
 schemas = app.config['SCHEMAS']
 db_path = app.config['DB_PATH']
+project_records = ProjectRecords(db_path=db_path)
 
 logging = app.config['NODE_LOGGER'].synlog
 logging.debug("connection/projects.py logged", Description="No Changes")
@@ -86,6 +86,7 @@ project_output_model = ns_api.inherit(
             ns_api.model(
                 name='key',
                 model={
+                    'collab_id': fields.String(),
                     'project_id': fields.String()
                 }
             ),
@@ -102,7 +103,7 @@ project_output_model = ns_api.inherit(
                         fields.Nested(run_output_model, skip_none=True)
                     ),
                     'Registration': fields.List(
-                        fields.Nested(registration_export_model, skip_none=True)
+                        fields.Nested(registration_output_model, skip_none=True)
                     ),
                     'Tag': fields.List(
                         fields.Nested(tag_output_model, skip_none=True)
@@ -124,7 +125,11 @@ project_output_model = ns_api.inherit(
     }
 )
 
-payload_formatter = TopicalPayload(SUBJECT, ns_api, project_output_model)
+payload_formatter = TopicalPayload(
+    subject=project_records.subject, 
+    namespace=ns_api, 
+    model=project_output_model
+)
 
 #############
 # Resources #
@@ -137,7 +142,7 @@ class Projects(Resource):
 
     @ns_api.doc('list_projects')
     @ns_api.marshal_list_with(payload_formatter.plural_model)
-    def get(self):
+    def get(self, collab_id):
         """ Retrieve all metadata for each registered project.
             Metadata here includes:
             1) List of participant_ids
@@ -145,18 +150,19 @@ class Projects(Resource):
             3) Parameters for incentive mechanism (pending)
             4) Date created
         """
-        project_records = ProjectRecords(db_path=db_path)
-        all_relevant_projects = project_records.read_all()
+        all_relevant_projects = project_records.read_all(
+            filter={'collab_id': collab_id}
+        )
 
         success_payload = payload_formatter.construct_success_payload(
             status=200,
             method="projects.get",
-            params={},
+            params=request.view_args,
             data=all_relevant_projects
         )
 
         logging.info(
-            "Projects: Bulk record retrieval successful!",
+            "Collaboration '{collab_id}' -> Projects: Bulk record retrieval successful!",
             code=200, 
             description="Successfully retrieved metadata for projects",
             ID_path=SOURCE_FILE,
@@ -173,7 +179,7 @@ class Projects(Resource):
     @ns_api.marshal_with(payload_formatter.singular_model)
     @ns_api.response(201, "New project created!")
     @ns_api.response(417, "Insufficient project configurations passed!")
-    def post(self):
+    def post(self, collab_id):
         """ Takes in a project configuration, which includes its incentives,
             scheduled starting time, and stores it for use in orchestration
         """
@@ -181,23 +187,25 @@ class Projects(Resource):
             new_project_details = request.json
             project_id = new_project_details.pop('project_id')
 
-            project_records = ProjectRecords(db_path=db_path)
-            new_project = project_records.create(
+            project_records.create(
+                collab_id=collab_id,
                 project_id=project_id, 
                 details=new_project_details
             )
-            retrieved_project = project_records.read(project_id=project_id)
-            assert new_project.doc_id == retrieved_project.doc_id
+            retrieved_project = project_records.read(
+                collab_id=collab_id,
+                project_id=project_id
+            )
 
             success_payload = payload_formatter.construct_success_payload(
                 status=201, 
                 method="projects.post",
-                params={},
+                params=request.view_args,
                 data=retrieved_project
             )
 
             logging.info(
-                f"Project '{project_id}': Record creation successful!",
+                f"Collaboration '{collab_id}' -> Project '{project_id}': Record creation successful!",
                 code=201,
                 description=f"Projects '{project_id}' was successfully submitted!",
                 ID_path=SOURCE_FILE,
@@ -210,7 +218,7 @@ class Projects(Resource):
 
         except jsonschema.exceptions.ValidationError:
             logging.error(
-                f"Project '{project_id}': Record creation failed.",
+                f"Collaboration '{collab_id}' -> Project '{project_id}': Record creation failed.",
                 code=417,
                 description="Inappropriate project configurations passed!", 
                 ID_path=SOURCE_FILE,
@@ -224,6 +232,7 @@ class Projects(Resource):
             )
 
 
+
 @ns_api.route('/<project_id>')
 @ns_api.param('project_id', 'The project identifier')
 @ns_api.response(404, 'Project not found')
@@ -235,21 +244,23 @@ class Project(Resource):
 
     @ns_api.doc('get_project')
     @ns_api.marshal_with(payload_formatter.singular_model)
-    def get(self, project_id):
+    def get(self, collab_id, project_id):
         """ Retrieves all metadata describing specified project """
-        project_records = ProjectRecords(db_path=db_path)
-        retrieved_project = project_records.read(project_id=project_id)
+        retrieved_project = project_records.read(
+            collab_id=collab_id,
+            project_id=project_id
+        )
                 
         if retrieved_project:
             success_payload = payload_formatter.construct_success_payload(
                 status=200,
                 method="project.get",
-                params={'project_id': project_id},
+                params=request.view_args,
                 data=retrieved_project
             )
 
             logging.info(
-                f"Project '{project_id}': Single record retrieval successful!",
+                f"Collaboration '{collab_id}' -> Project '{project_id}': Single record retrieval successful!",
                 code=200, 
                 ID_path=SOURCE_FILE,
                 ID_class=Project.__name__, 
@@ -261,7 +272,7 @@ class Project(Resource):
 
         else:
             logging.error(
-                f"Project '{project_id}': Single record retrieval failed!",
+                f"Collaboration '{collab_id}' -> Project '{project_id}': Single record retrieval failed!",
                 code=404, 
                 description=f"Project '{project_id}' does not exist!", 
                 ID_path=SOURCE_FILE,
@@ -278,30 +289,32 @@ class Project(Resource):
     @ns_api.doc('update_project')
     @ns_api.expect(project_model)
     @ns_api.marshal_with(payload_formatter.singular_model)
-    def put(self, project_id):
+    def put(self, collab_id, project_id):
         """ Updates a participant's specified choices IF & ONLY IF his/her
             registered experiments have not yet commenced
         """
         try:
             project_updates = request.json
 
-            project_records = ProjectRecords(db_path=db_path)
-            updated_project = project_records.update(
+            project_records.update(
+                collab_id=collab_id,
                 project_id=project_id,
                 updates=project_updates
             )
-            retrieved_project = project_records.read(project_id=project_id)
-            assert updated_project.doc_id == retrieved_project.doc_id
+            retrieved_project = project_records.read(
+                collab_id=collab_id,
+                project_id=project_id
+            )
 
             success_payload = payload_formatter.construct_success_payload(
                 status=200,
                 method="project.put",
-                params={'project_id': project_id},
+                params=request.view_args,
                 data=retrieved_project
             )
 
             logging.info(
-                f"Project '{project_id}': Record update successful!",
+                f"Collaboration '{collab_id}' -> Project '{project_id}': Record update successful!",
                 code=200,
                 description=f"Project '{project_id}' was successfully updated!", 
                 ID_path=SOURCE_FILE,
@@ -314,7 +327,7 @@ class Project(Resource):
 
         except jsonschema.exceptions.ValidationError:
             logging.error(
-                f"Project '{project_id}': Record update failed.",
+                f"Collaboration '{collab_id}' -> Project '{project_id}': Record update failed.",
                 code=417, 
                 description="Inappropriate participant configurations passed!", 
                 ID_path=SOURCE_FILE,
@@ -330,25 +343,30 @@ class Project(Resource):
 
     @ns_api.doc('delete_project')
     @ns_api.marshal_with(payload_formatter.singular_model)
-    def delete(self, project_id):
+    def delete(self, collab_id, project_id):
         """ De-registers all participants from previously registered 
             experiment(s), and removes the project
         """
-        project_records = ProjectRecords(db_path=db_path)
-        retrieved_project = project_records.read(project_id=project_id)
-        deleted_project = project_records.delete(project_id=project_id)
+        retrieved_project = project_records.read(
+            collab_id=collab_id,
+            project_id=project_id
+        )
+        deleted_project = project_records.delete(
+            collab_id=collab_id,
+            project_id=project_id
+        )
         
         if deleted_project:
-            assert deleted_project.doc_id == retrieved_project.doc_id
+
             success_payload = payload_formatter.construct_success_payload(
                 status=200,
                 method="project.delete",
-                params={'project_id': project_id},
+                params=request.view_args,
                 data=retrieved_project
             )
 
             logging.info(
-                f"Project '{project_id}': Record deletion successful!",
+                f"Collaboration '{collab_id}' -> Project '{project_id}': Record deletion successful!",
                 code=200, 
                 description=f"Project '{project_id}' was successfully deleted!",
                 ID_path=SOURCE_FILE,
@@ -361,7 +379,7 @@ class Project(Resource):
 
         else:
             logging.error(
-                f"Project '{project_id}': Record deletion failed.", 
+                f"Collaboration '{collab_id}' -> Project '{project_id}': Record deletion failed.", 
                 code=404, 
                 description=f"Project '{project_id}': does not exist!", 
                 ID_path=SOURCE_FILE,
@@ -375,21 +393,28 @@ class Project(Resource):
             )
 
 
-### Inherited Resources ###
 
-# Registered Participants
+#######################
+# Inherited Resources #
+#######################
+
+### Registration Routing ###
+
+# Accesses all registrations submitted for a single project under a specific collaboration
 ns_api.add_resource(
     Registrations,
     '/<project_id>/registrations'
 )
 
-# Registered Registration
+# Accesses a participant's registration for a single project under a specific collaboration
 ns_api.add_resource(
    Registration, 
    '/<project_id>/participants/<participant_id>/registration'
 )
 
-# Registered Tags
+### Tag Routing ###
+
+# Accesses all participant's data tags submitted for a single project under a specific collaboration
 ns_api.add_resource(
    Tag, 
    '/<project_id>/participants/<participant_id>/registration/tags'

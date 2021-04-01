@@ -14,21 +14,17 @@ from flask_restx import Namespace, Resource, fields
 
 # Custom
 from rest_rpc import app
-from rest_rpc.connection.core.utils import (
-    TopicalPayload, 
-    RunRecords
-)
+from rest_rpc.connection.core.utils import TopicalPayload
 from rest_rpc.training.models import model_output_model
 from rest_rpc.evaluation.validations import val_output_model
 from rest_rpc.evaluation.predictions import pred_output_model
+from synarchive.connection import RunRecords
 
 ##################
 # Configurations #
 ##################
 
 SOURCE_FILE = os.path.abspath(__file__)
-
-SUBJECT = "Run" # table name
 
 ns_api = Namespace(
     "runs", 
@@ -99,6 +95,7 @@ run_output_model = ns_api.inherit(
             ns_api.model(
                 name='key',
                 model={
+                    'collab_id': fields.String(),
                     'project_id': fields.String(),
                     'expt_id': fields.String(),
                     'run_id': fields.String()
@@ -127,7 +124,11 @@ run_output_model = ns_api.inherit(
     }
 )
 
-payload_formatter = TopicalPayload(SUBJECT, ns_api, run_output_model)
+payload_formatter = TopicalPayload(
+    subject=run_records.subject, 
+    namespace=ns_api, 
+    model=run_output_model
+)
 
 #############
 # Resources #
@@ -140,21 +141,25 @@ class Runs(Resource):
 
     @ns_api.doc("get_runs")
     @ns_api.marshal_list_with(payload_formatter.plural_model)
-    def get(self, project_id, expt_id):
+    def get(self, collab_id, project_id, expt_id):
         """ Retrieve all run configurations queued for training """
         all_relevant_runs = run_records.read_all(
-            filter={'project_id': project_id, 'expt_id': expt_id}
+            filter={
+                'collab_id': collab_id,
+                'project_id': project_id, 
+                'expt_id': expt_id
+            }
         )
 
         success_payload = payload_formatter.construct_success_payload(
             status=200,
             method="runs.get",
-            params={'project_id': project_id, 'expt_id': expt_id},
+            params=request.view_args,
             data=all_relevant_runs
         )
 
         logging.info(
-            f"Project '{project_id}' -> Experiment '{expt_id}' -> Runs: Bulk record retrieval successful!",
+            f"Collaboration '{collab_id}' -> Project '{project_id}' -> Experiment '{expt_id}' -> Runs: Bulk record retrieval successful!",
             code=200, 
             description=f"Runs under experiment '{expt_id}' of project '{project_id}' were successfully retrieved!", 
             ID_path=SOURCE_FILE,
@@ -171,34 +176,35 @@ class Runs(Resource):
     @ns_api.marshal_with(payload_formatter.singular_model)
     @ns_api.response(201, "New run created!")
     @ns_api.response(417, "Inappropriate run configurations passed!")
-    def post(self, project_id, expt_id):
+    def post(self, collab_id, project_id, expt_id):
         """ Takes in a set of FL training run configurations and stores it """
         try:
             new_run_details = request.json
             run_id = new_run_details.pop('run_id')
 
-            new_run = run_records.create(
+            run_records.create(
+                collab_id=collab_id,
                 project_id=project_id, 
                 expt_id=expt_id,
                 run_id=run_id,
                 details=new_run_details
             )
             retrieved_run = run_records.read(
+                collab_id=collab_id,
                 project_id=project_id, 
                 expt_id=expt_id,
                 run_id=run_id
             )
-            assert new_run.doc_id == retrieved_run.doc_id
 
             success_payload = payload_formatter.construct_success_payload(
                 status=201, 
                 method="runs.post",
-                params={'project_id': project_id, 'expt_id': expt_id},
+                params=request.view_args,
                 data=retrieved_run
             )
 
             logging.info(
-                f"Project '{project_id}' -> Experiment '{expt_id}' -> Run '{run_id}': Record creation successful!", 
+                f"Collaboration '{collab_id}' -> Project '{project_id}' -> Experiment '{expt_id}' -> Run '{run_id}': Record creation successful!", 
                 description=f"Run '{run_id}' under experiment '{expt_id}' of project '{project_id}' was successfully created!", 
                 code=201, 
                 ID_path=SOURCE_FILE,
@@ -211,7 +217,7 @@ class Runs(Resource):
 
         except jsonschema.exceptions.ValidationError:
             logging.error(
-                f"Project '{project_id}' -> Experiment '{expt_id}' -> Run '{run_id}': Record creation failed.",
+                f"Collaboration '{collab_id}' -> Project '{project_id}' -> Experiment '{expt_id}' -> Run '{run_id}': Record creation failed.",
                 code=417,
                 description="Inappropriate run configurations passed!", 
                 ID_path=SOURCE_FILE,
@@ -225,6 +231,7 @@ class Runs(Resource):
             )
 
 
+
 @ns_api.route('/<run_id>')
 @ns_api.response(404, 'Run not found')
 @ns_api.response(500, 'Internal failure')
@@ -233,9 +240,10 @@ class Run(Resource):
     
     @ns_api.doc("get_run")
     @ns_api.marshal_with(payload_formatter.singular_model)
-    def get(self, project_id, expt_id, run_id):
+    def get(self, collab_id, project_id, expt_id, run_id):
         """ Retrieves all runs registered for an experiment under a project """
         retrieved_run = run_records.read(
+            collab_id=collab_id,
             project_id=project_id, 
             expt_id=expt_id,
             run_id=run_id
@@ -245,16 +253,12 @@ class Run(Resource):
             success_payload = payload_formatter.construct_success_payload(
                 status=200,
                 method="run.get",
-                params={
-                    'project_id': project_id, 
-                    'expt_id': expt_id,
-                    'run_id': run_id    
-                },
+                params=request.view_args,
                 data=retrieved_run
             )
 
             logging.info(
-                f"Project '{project_id}' -> Experiment '{expt_id}' -> Run '{run_id}': Single record retrieval successful!", 
+                f"Collaboration '{collab_id}' -> Project '{project_id}' -> Experiment '{expt_id}' -> Run '{run_id}': Single record retrieval successful!", 
                 code=200, 
                 description=f"Run '{run_id}' under experiment '{expt_id}' of project '{project_id}' was successfully retrieved!", 
                 ID_path=SOURCE_FILE,
@@ -267,7 +271,7 @@ class Run(Resource):
 
         else:
             logging.error(
-                f"Project '{project_id}' -> Experiment '{expt_id}' -> Run '{run_id}': Single record retrieval failed!",
+                f"Collaboration '{collab_id}' -> Project '{project_id}' -> Experiment '{expt_id}' -> Run '{run_id}': Single record retrieval failed!",
                 code=404, 
                 description=f"Run '{run_id}' does not exist for Experiment {expt_id} under Project '{project_id}'!",
                 ID_path=SOURCE_FILE,
@@ -280,42 +284,40 @@ class Run(Resource):
                 message=f"Run '{run_id}' does not exist for Experiment {expt_id} under Project '{project_id}'!"
             )
 
+
     @ns_api.doc("update_run")
     @ns_api.expect(config_model)
     @ns_api.marshal_with(payload_formatter.singular_model)
-    def put(self, project_id, expt_id, run_id):
+    def put(self, collab_id, project_id, expt_id, run_id):
         """ Updates a run's specified configurations IF & ONLY IF the run has
             yet to begin
         """
         try:
             run_updates = request.json
 
-            updated_run = run_records.update(
+            run_records.update(
+                collab_id=collab_id,
                 project_id=project_id, 
                 expt_id=expt_id,
                 run_id=run_id,
                 updates=run_updates
             )
             retrieved_run = run_records.read(
+                collab_id=collab_id,
                 project_id=project_id, 
                 expt_id=expt_id,
                 run_id=run_id
             )
-            assert updated_run.doc_id == retrieved_run.doc_id
 
             success_payload = payload_formatter.construct_success_payload(
                 status=200,
                 method="run.put",
-                params={
-                    'project_id': project_id, 
-                    'expt_id': expt_id,
-                    "run_id": run_id
-                },
+                params=request.view_args,
                 data=retrieved_run
             )
 
             logging.info(
-                f"Project '{project_id}' -> Experiment '{expt_id}' -> Run '{run_id}': Record update successful!",
+                f"Collaboration '{collab_id}' -> Project '{project_id}' -> Experiment '{expt_id}' -> Run '{run_id}': Record update successful!",
                 code=200,
                 description=f"Run '{run_id}' under experiment '{expt_id}' of project '{project_id}' was successfully updated!", 
                 ID_path=SOURCE_FILE,
@@ -328,7 +330,7 @@ class Run(Resource):
 
         except jsonschema.exceptions.ValidationError:
             logging.error(
-                f"Project '{project_id}' -> Experiment '{expt_id}' -> Run '{run_id}': Record update failed.",
+                f"Collaboration '{collab_id}' -> Project '{project_id}' -> Experiment '{expt_id}' -> Run '{run_id}': Record update failed.",
                 code=417, 
                 description="Inappropriate run configurations passed!", 
                 ID_path=SOURCE_FILE,
@@ -341,11 +343,19 @@ class Run(Resource):
                 message="Inappropriate experimental configurations passed!"
             )
 
+
     @ns_api.doc("delete_run")
     @ns_api.marshal_with(payload_formatter.singular_model)
-    def delete(self, project_id, expt_id, run_id):
+    def delete(self, collab_id, project_id, expt_id, run_id):
         """ De-registers a previously registered run and deletes it """
+        retrieved_run = run_records.read(
+            collab_id=collab_id,
+            project_id=project_id, 
+            expt_id=expt_id,
+            run_id=run_id
+        )
         deleted_run = run_records.delete(
+            collab_id=collab_id,
             project_id=project_id,
             expt_id=expt_id,
             run_id=run_id
@@ -356,10 +366,10 @@ class Run(Resource):
                 status=200,
                 method="run.delete",
                 params=request.view_args,
-                data=deleted_run
+                data=retrieved_run
             )
             logging.info(
-                f"Project '{project_id}' -> Experiment '{expt_id}' -> Run '{run_id}': Record deletion successful!",
+                f"Collaboration '{collab_id}' -> Project '{project_id}' -> Experiment '{expt_id}' -> Run '{run_id}': Record deletion successful!",
                 code=200, 
                 description=f"Run '{run_id}' under experiment '{expt_id}' of project '{project_id}' was successfully deleted!", 
                 ID_path=SOURCE_FILE,
@@ -371,7 +381,7 @@ class Run(Resource):
 
         else:
             logging.error(
-                f"Project '{project_id}' -> Experiment '{expt_id}' -> Run '{run_id}': Record deletion failed.", 
+                f"Collaboration '{collab_id}' -> Project '{project_id}' -> Experiment '{expt_id}' -> Run '{run_id}': Record deletion failed.", 
                 code=404, 
                 description=f"Run '{run_id}' under experiment '{expt_id}' of project '{project_id}' does not exist!", 
                 ID_path=SOURCE_FILE,
