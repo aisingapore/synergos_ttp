@@ -38,6 +38,8 @@ ns_api = Namespace(
     description='API to faciliate model training in a PySyft Grid.'
 )
 
+grid_idx = app.config['GRID']
+
 db_path = app.config['DB_PATH']
 project_records = ProjectRecords(db_path=db_path)
 expt_records = ExperimentRecords(db_path=db_path)
@@ -220,7 +222,7 @@ class Models(Resource):
                 project_id=project_id, 
                 expt_id=expt_id
             )
-            runs = retrieved_expt.pop('relations')['Run']
+            runs = retrieved_expt['relations']['Run']
             experiments = [retrieved_expt]
 
             # If specific run was declared, further collapse training space
@@ -232,7 +234,6 @@ class Models(Resource):
                     expt_id=expt_id,
                     run_id=run_id
                 )
-                retrieved_run.pop('relations')
                 runs = [retrieved_run]
 
         # Retrieve all participants' metadata
@@ -243,7 +244,7 @@ class Models(Resource):
             }
         )
         usable_grids = rpc_formatter.extract_grids(registrations)
-        selected_grid = random.choice(usable_grids) # tentative fix
+        selected_grid = usable_grids[grid_idx]
 
         ###########################
         # Implementation Footnote #

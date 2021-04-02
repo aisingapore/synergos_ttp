@@ -19,6 +19,7 @@ from pathlib import Path
 # Custom
 from config import (
     capture_system_snapshot,
+    configure_grid,
     configure_node_logger, 
     configure_sysmetric_logger
 )
@@ -32,6 +33,17 @@ SECRET_KEY = "synergos_ttp" #os.urandom(24) # secret key
 #############
 # Functions #
 #############
+
+def construct_grid_kwargs(**kwargs) -> dict:
+    """ Extracts grid configuration values for linking server to said grid
+
+    Args:
+        kwargs: Any user input captured 
+    Returns:
+        Grid configurations (dict)
+    """
+    return {'grid': kwargs['grid']}
+
 
 def construct_logger_kwargs(**kwargs) -> dict:
     """ Extracts user-parsed values and re-mapping them into parameters 
@@ -95,7 +107,15 @@ if __name__ == "__main__":
         "-i",
         type=str,
         default=f"ttp/{uuid.uuid4()}",
-        help="ID of orchestrating party, e.g. --id TTP"
+        help="ID of orchestrating party. e.g. --id TTP"
+    )
+
+    parser.add_argument(
+        "--grid",
+        "-g",
+        type=int,
+        default=0,
+        help="Grid index that this Synergos TTP node is bounded on."
     )
 
     parser.add_argument(
@@ -124,24 +144,31 @@ if __name__ == "__main__":
     )
 
     input_kwargs = vars(parser.parse_args())
-    system_kwargs = capture_system_snapshot()
-    logger_kwargs = construct_logger_kwargs(**input_kwargs)
 
+    # Bind node to grid
+    grid_kwargs = construct_grid_kwargs(**input_kwargs)
+    configure_grid(**grid_kwargs)
+
+    # Set up core logger
     server_id = input_kwargs['id']
+    logger_kwargs = construct_logger_kwargs(**input_kwargs)
     node_logger = configure_node_logger(**logger_kwargs)
     node_logger.synlog.info(
         f"Orchestrator `{server_id}` -> Snapshot of Input Parameters",
         **input_kwargs
     )
     node_logger.synlog.info(
-        f"Orchestrator `{server_id}` -> Snapshot of System Parameters",
-        **system_kwargs
-    )
-    node_logger.synlog.info(
         f"Orchestrator `{server_id}` -> Snapshot of Logging Parameters",
         **logger_kwargs
     )
 
+    system_kwargs = capture_system_snapshot()
+    node_logger.synlog.info(
+        f"Orchestrator `{server_id}` -> Snapshot of System Parameters",
+        **system_kwargs
+    )
+
+    # Set up sysmetric logger
     sysmetric_logger = configure_sysmetric_logger(**logger_kwargs)
     sysmetric_logger.track("/test/path", 'TestClass', 'test_function')
 

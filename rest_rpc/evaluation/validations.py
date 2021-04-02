@@ -42,6 +42,8 @@ ns_api = Namespace(
     description='API to faciliate model validation in a REST-RPC Grid.'
 )
 
+grid_idx = app.config['GRID']
+
 db_path = app.config['DB_PATH']
 project_records = ProjectRecords(db_path=db_path)
 expt_records = ExperimentRecords(db_path=db_path)
@@ -270,7 +272,7 @@ class Validations(Resource):
                 project_id=project_id, 
                 expt_id=expt_id
             )
-            runs = retrieved_expt.pop('relations')['Run']
+            runs = retrieved_expt['relations']['Run']
             experiments = [retrieved_expt]
 
             # If specific run was declared, further collapse training space
@@ -282,19 +284,14 @@ class Validations(Resource):
                     expt_id=expt_id,
                     run_id=run_id
                 )
-                retrieved_run.pop('relations')
                 runs = [retrieved_run]
 
         # Retrieve all participants' metadata
         registrations = registration_records.read_all(
-            filter={
-                'collab_id': collab_id,
-                'project_id': project_id
-            }
+            filter={'collab_id': collab_id, 'project_id': project_id}
         )
         usable_grids = rpc_formatter.extract_grids(registrations)
-        selected_grid = random.choice(usable_grids) # tentative fix
-        logging.warn(f"selected_grid: {[node_info['syft']['id'] for node_info in selected_grid]}")
+        selected_grid = usable_grids[grid_idx]
 
         # Retrieve all relevant participant IDs, collapsing evaluation space if
         # a specific participant was declared
@@ -325,15 +322,8 @@ class Validations(Resource):
                 
                 # Log the inference stats
                 worker_key = (participant_id,) + combination_key
-
-                new_validation = validation_records.create(
-                    *worker_key,
-                    details=inference_stats
-                )
-
+                validation_records.create(*worker_key, details=inference_stats)
                 retrieved_validation = validation_records.read(*worker_key)
-
-                assert new_validation.doc_id == retrieved_validation.doc_id
                 retrieved_validations.append(retrieved_validation)
 
         # Log all statistics to MLFlow

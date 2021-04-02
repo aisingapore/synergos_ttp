@@ -37,6 +37,8 @@ ns_api = Namespace(
     description='API to faciliate multiple feature alignment tracking in in a PySyft Grid.'
 )
 
+grid_idx = app.config['GRID']
+
 db_path = app.config['DB_PATH']
 expt_records = ExperimentRecords(db_path=db_path)
 registration_records = RegistrationRecords(db_path=db_path)
@@ -177,7 +179,7 @@ class Alignments(Resource):
                 }
             )
             usable_grids = rpc_formatter.extract_grids(all_relevant_registrations)
-            selected_grid = random.choice(usable_grids) # tentative fix
+            selected_grid = usable_grids[grid_idx]
 
             poller = Poller()
             all_metadata = poller.poll(grid=selected_grid)

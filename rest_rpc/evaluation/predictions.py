@@ -42,6 +42,8 @@ ns_api = Namespace(
     description='API to faciliate model inference in a REST-RPC Grid.'
 )
 
+grid_idx = app.config['GRID']
+
 db_path = app.config['DB_PATH']
 project_records = ProjectRecords(db_path=db_path)
 expt_records = ExperimentRecords(db_path=db_path)
@@ -302,7 +304,7 @@ class Predictions(Resource):
                     project_id=project_id, 
                     expt_id=expt_id
                 )
-                runs = retrieved_expt.pop('relations')['Run']
+                runs = retrieved_expt['relations']['Run']
                 experiments = [retrieved_expt]
 
                 # If specific run was declared, further collapse inference space
@@ -314,7 +316,6 @@ class Predictions(Resource):
                         expt_id=expt_id,
                         run_id=run_id
                     )
-                    retrieved_run.pop('relations')
                     runs = [retrieved_run]
 
             # Retrieve all participants' metadata enrolled for curr project
@@ -325,7 +326,7 @@ class Predictions(Resource):
                 }
             )
             unaligned_grids = rpc_formatter.extract_grids(project_registrations)
-            selected_unaligned_grid = random.choice(unaligned_grids)
+            selected_unaligned_grid = unaligned_grids[grid_idx]
 
             poller = Poller()
             all_metadata = poller.poll(grid=selected_unaligned_grid)
@@ -424,7 +425,7 @@ class Predictions(Resource):
                 }
             )
             aligned_grids = rpc_formatter.extract_grids(updated_registrations)
-            selected_grid = random.choice(aligned_grids)
+            selected_grid = aligned_grids[grid_idx]
 
             logging.debug(
                 "Participant '{}' >|< Collaboration '{}' > Project '{}' > Experiment '{}' > Run '{}' >|< Predictions: Updated project registrations tracked.".format(

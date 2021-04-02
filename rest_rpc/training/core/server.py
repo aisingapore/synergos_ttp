@@ -25,6 +25,7 @@ from pathos.multiprocessing import ProcessingPool
 from syft.generic.pointers.object_pointer import ObjectPointer
 from syft.grid.clients.data_centric_fl_client import DataCentricFLClient
 from syft.workers.websocket_client import WebsocketClientWorker
+from tinydb.database import Document
 
 # Custom
 from rest_rpc import app
@@ -290,7 +291,7 @@ def terminate_connections(ttp, workers):
             )
 
 
-def load_selected_run(run_record):
+def load_selected_run(run_record: dict):
     """ Load in specified federated experimental parameters to be conducted from
         a registered configuration set
 
@@ -300,13 +301,13 @@ def load_selected_run(run_record):
         FL Training run arguments (Arguments)
     """
     # Remove redundant fields & initialise arguments
-    run_params = rpc_formatter.strip_keys(run_record)#, concise=True)
+    run_params = rpc_formatter.strip_keys(run_record, concise=True)
     args = Arguments(**run_params)
 
     return args
 
 
-def load_selected_experiment(expt_record):
+def load_selected_experiment(expt_record: dict) -> Model:
     """ Load in specified federated model architectures to be used for training
         from configuration files
 
@@ -316,7 +317,7 @@ def load_selected_experiment(expt_record):
         Model to be used in FL training (Model)
     """
     # Remove redundant fields & initialise Model
-    structure = rpc_formatter.strip_keys(expt_record)['model']#, concise=True)
+    structure = rpc_formatter.strip_keys(expt_record, concise=True)['model']
     model = Model(structure)
 
     return model
@@ -440,6 +441,7 @@ def start_expt_run_training(
         # Export trained model weights/biases for persistence
         res_dir = os.path.join(
             out_dir, 
+            keys['collab_id'],
             keys['project_id'], 
             keys['expt_id'], 
             keys['run_id']

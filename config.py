@@ -124,6 +124,7 @@ def capture_system_snapshot() -> dict:
         System snapshot (dict)
     """
     return {
+        'GRID': GRID,
         'IS_MASTER': IS_MASTER,
         'IN_DIR': IN_DIR,
         'OUT_DIR': OUT_DIR,
@@ -139,6 +140,19 @@ def capture_system_snapshot() -> dict:
         'SCHEMAS': SCHEMAS,
         'RETRY_INTERVAL': RETRY_INTERVAL
     }
+
+
+def configure_grid(grid: int) -> int:
+    """ Binds the server to a specific grid referenced by its index. This is
+        important when running the SynCluster configuration of Synergos.
+
+    Args:
+        grid (int): Grid to be bounded to
+    Returns:
+        Bounded grid (int)
+    """
+    GRID = grid
+    return GRID
 
 
 def configure_node_logger(**logger_kwargs) -> TTPLogger:
@@ -176,6 +190,9 @@ def configure_sysmetric_logger(**logger_kwargs) -> SysmetricLogger:
 General parameters required for processing inputs & outputs
 """
 
+# State grid server is bounded to
+GRID = 0
+
 # Define server's role: Master or slave
 IS_MASTER = True
 
@@ -209,6 +226,7 @@ DEVICE = th.device('cuda' if USE_GPU else 'cpu')
 # Retry interval for contacting idle workers
 RETRY_INTERVAL = 5  # in seconds
 
+logging.debug(f"Grid linked: {GRID}")
 logging.debug(f"Is master node? {IS_MASTER}")
 logging.debug(f"Input directory detected: {IN_DIR}")
 logging.debug(f"Output directory detected: {OUT_DIR}")
@@ -279,10 +297,11 @@ PAYLOAD_TEMPLATE = {
 Synergos has certain optional components, such as a centrialised logging 
 server, as well as a metadata catalogue. This section governs configuration of 
 the orchestrator node to facilitate such integrations, where applicable. This 
-portion gets configured during runtime.
+portion gets configured during runtime. By default, unconfigured node &
+sysmetric loggers are loaded.
 """
-NODE_LOGGER = None
-SYSMETRIC_LOGGER = None
+NODE_LOGGER = configure_node_logger(logger_name=f"ttp_{GRID}")
+SYSMETRIC_LOGGER = configure_sysmetric_logger(logger_name=f"ttp_{GRID}")
 
 ###################################
 # Synergos REST-RPC Worker Routes #
