@@ -27,7 +27,7 @@ from rest_rpc.training.core.hypertuners.abstract import AbstractTuner
 # Configurations #
 ##################
 
-logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.DEBUG)
+SOURCE_FILE = os.path.abspath(__file__)
 
 src_dir = app.config['SRC_DIR']
 out_dir = app.config['OUT_DIR']
@@ -48,6 +48,7 @@ class NNITuner(AbstractTuner):
     """
 
     def __init__(self, log_dir: str = None):
+        self.platform = "nni"
         self.log_dir = log_dir
 
     ###########    
@@ -107,6 +108,7 @@ class NNITuner(AbstractTuner):
 
     def _generate_tuning_config(
         self,
+        collab_id: str,
         project_id: str,
         expt_id: str,
         search_config_path: str,
@@ -117,7 +119,11 @@ class NNITuner(AbstractTuner):
         max_exec_duration: str = "1h",
         max_trial_num: int = 10,
         is_remote: bool = True,
-        use_annotation: bool = True
+        use_annotation: bool = True,
+        auto_align: bool = True,
+        dockerised: bool = True,
+        verbose: bool = True,
+        log_msgs: bool = True
     ):
         """ Builds configuration YAML file describing current set of experiments
 
@@ -154,8 +160,9 @@ class NNITuner(AbstractTuner):
 
         driver_script_path = "rest_rpc.training.core.hypertuners.nni_driver_script"
         configurations['trial'] = {
-            'command': "python -m {} -pid {} -eid {} -m {} -d -l -v".format(
+            'command': "python -m {} -cid {} -pid {} -eid {} -m {} -d -l -v".format(
                 driver_script_path,
+                collab_id,
                 project_id,
                 expt_id,
                 metric
@@ -178,6 +185,7 @@ class NNITuner(AbstractTuner):
 
     def tune(
         self,
+        collab_id: str,
         project_id: str,
         expt_id: str,
         search_space: Dict[str, Dict[str, Union[str, bool, int, float]]],
@@ -189,6 +197,7 @@ class NNITuner(AbstractTuner):
         max_trial_num: int = 10,
         is_remote: bool = True,
         use_annotation: bool = True,
+        auto_align: bool = True,
         dockerised: bool = True,
         verbose: bool = True,
         log_msgs: bool = True
@@ -198,6 +207,7 @@ class NNITuner(AbstractTuner):
         search_config_path = self._generate_search_config(search_space)
         
         nni_config_path = self._generate_tuning_config(
+            collab_id=collab_id,
             project_id=project_id,
             expt_id=expt_id,
             search_config_path=search_config_path,
@@ -212,6 +222,6 @@ class NNITuner(AbstractTuner):
         )
 
         nnicli.start_nni(config_file=nni_config_path)
-        nnicli.set_endpoint('http://127.0.0.1:8080')
+        nnicli.set_endpoint('http://0.0.0.0:8080')
 
         return nnicli

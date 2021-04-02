@@ -12,9 +12,10 @@
 from .abstract import AbstractTuner
 from .base import BaseTuner
 from .nni_interface import NNITuner
+from .tune_interface import RayTuneTuner
 
 ##################
 # Configurations #
 ##################
 
-from .nni_driver_script import optim_prefix
+from .config import optim_prefix, optim_run_template

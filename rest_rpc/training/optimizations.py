@@ -128,6 +128,7 @@ val_output_model = ns_api.inherit(
                 name='key',
                 model={
                     'participant_id': fields.String(),
+                    'collab_id': fields.String(),
                     'project_id': fields.String(),
                     'expt_id': fields.String(),
                     'run_id': fields.String()
@@ -173,13 +174,13 @@ class Optimizations(Resource):
 
     @ns_api.doc("get_optimizations")
     @ns_api.marshal_with(payload_formatter.plural_model)
-    def get(self, project_id, expt_id):
+    def get(self, collab_id, project_id, expt_id):
         """ Retrieves global model corresponding to experiment and run 
             parameters for a specified project
         """
-        filter_keys = request.view_args
-
-        retrieved_validations = validation_records.read_all(filter=filter_keys)
+        retrieved_validations = validation_records.read_all(
+            filter=request.view_args
+        )
         optim_validations = [
             record 
             for record in retrieved_validations
@@ -196,7 +197,7 @@ class Optimizations(Resource):
             )
 
             logging.info(
-                f"Project '{project_id}' -> Experiment '{expt_id}' -> Optimizations: Record(s) retrieval successful!",
+                f"Collaboration '{collab_id}' > Project '{project_id}' > Experiment '{expt_id}' > Optimizations: Record(s) retrieval successful!",
                 code=200, 
                 description="Optimization(s) specified federated conditions were successfully retrieved!",
                 ID_path=SOURCE_FILE,
@@ -209,7 +210,7 @@ class Optimizations(Resource):
 
         else:
             logging.error(
-                f"Project '{project_id}' -> Experiment '{expt_id}' -> Optimizations:  Record(s) retrieval failed.",
+                f"Collaboration '{collab_id}' > Project '{project_id}' -> Experiment '{expt_id}' -> Optimizations:  Record(s) retrieval failed.",
                 code=404,
                 description="Optimizations do not exist for specified keyword filters!",
                 ID_path=SOURCE_FILE,
@@ -225,7 +226,7 @@ class Optimizations(Resource):
 
     @ns_api.doc("trigger_optimizations")
     @ns_api.marshal_with(payload_formatter.plural_model)
-    def post(self, project_id, expt_id):
+    def post(self, collab_id, project_id, expt_id):
         """ Creates sets of hyperparameters using a specified AutoML algorithm,
             within the scope of a user-specified search space, and conducts a 
             federated cycle for each proposed set. A federated cycle involves:
@@ -261,10 +262,12 @@ class Optimizations(Resource):
         tuning_params = request.json
 
         # Create log directory
-        optim_log_dir = os.path.join(out_dir, project_id, expt_id)
+        optim_log_dir = os.path.join(out_dir, collab_id, project_id, expt_id)
+
 
         nni_tuner = NNITuner(log_dir=optim_log_dir)
         nni_expt = nni_tuner.tune(
+            collab_id=collab_id,
             project_id=project_id, 
             expt_id=expt_id, 
             **tuning_params
