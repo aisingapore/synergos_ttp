@@ -12,6 +12,7 @@ import shlex
 import subprocess
 from collections import OrderedDict
 from pathlib import Path
+from sys import platform
 from typing import Dict, List, Tuple, Union
 
 # Libs
@@ -21,7 +22,7 @@ import nnicli
 
 # Custom
 from rest_rpc import app
-from rest_rpc.training.core.hypertuners.abstract import AbstractTuner
+from rest_rpc.training.core.hypertuners import BaseTuner
 
 ##################
 # Configurations #
@@ -30,7 +31,6 @@ from rest_rpc.training.core.hypertuners.abstract import AbstractTuner
 SOURCE_FILE = os.path.abspath(__file__)
 
 src_dir = app.config['SRC_DIR']
-out_dir = app.config['OUT_DIR']
 cores_used = app.config['CORES_USED']
 gpu_count = app.config['GPU_COUNT']
 
@@ -38,7 +38,7 @@ gpu_count = app.config['GPU_COUNT']
 # Hyperparameter Tuning Interface - NNITuner #
 ##############################################
 
-class NNITuner(AbstractTuner):
+class NNITuner(BaseTuner):
     """
     Interfacing class for performing hyperparameter tuning on NNI.
     
@@ -48,8 +48,21 @@ class NNITuner(AbstractTuner):
     """
 
     def __init__(self, log_dir: str = None):
-        self.platform = "nni"
-        self.log_dir = log_dir
+        super().__init__(platform="nni", log_dir=log_dir)
+        self.__tunable = None
+
+    ############
+    # Checkers #
+    ############
+
+    def is_running(self) -> bool:
+        """ Checks if the execution of current __tunable is still in progress
+
+        Returns:
+            State (bool)
+        """
+        curr_status = self.__tunable.get_experiment_status()['status']
+        return curr_status == "RUNNING"
 
     ###########    
     # Helpers #
@@ -93,11 +106,8 @@ class NNITuner(AbstractTuner):
         Returns:
             Path to search configurations (str)
         """
-        search_config_path = os.path.join(
-            self.log_dir, 
-            "nni", 
-            "search_space.json"
-        )
+        out_dir = self.generate_output_directory()
+        search_config_path = os.path.join(out_dir, "search_space.json")
         os.makedirs(Path(search_config_path).parent, exist_ok=True)
 
         with open(search_config_path, 'w') as scp:
@@ -123,7 +133,8 @@ class NNITuner(AbstractTuner):
         auto_align: bool = True,
         dockerised: bool = True,
         verbose: bool = True,
-        log_msgs: bool = True
+        log_msgs: bool = True,
+        **kwargs
     ):
         """ Builds configuration YAML file describing current set of experiments
 
@@ -141,10 +152,12 @@ class NNITuner(AbstractTuner):
         Returns:
             Path to tuning configuration (str)
         """
+        out_dir = self.generate_output_directory()
+
         configurations = OrderedDict()
         configurations['authorName'] = project_id
         configurations['experimentName'] = expt_id
-        configurations['logDir'] = os.path.join(self.log_dir, "nni")
+        configurations['logDir'] = out_dir
         configurations['trialConcurrency'] = 1#trial_concurrency
         configurations['maxExecDuration'] = max_exec_duration
         configurations['maxTrialNum'] = max_trial_num
@@ -173,7 +186,9 @@ class NNITuner(AbstractTuner):
             # 'memoryMB': psutil.virtual_memory().available # remaining system ram
         }
 
-        nni_config_path = os.path.join(self.log_dir, "nni", "config.yaml")
+        nni_config_path = os.path.join(out_dir, "config.yaml")
+        os.makedirs(Path(nni_config_path).parent, exist_ok=True)
+        
         with open(nni_config_path, 'w') as ncp:
             yaml.dump(configurations, ncp)
 
@@ -200,7 +215,8 @@ class NNITuner(AbstractTuner):
         auto_align: bool = True,
         dockerised: bool = True,
         verbose: bool = True,
-        log_msgs: bool = True
+        log_msgs: bool = True,
+        **kwargs
     ):
         """
         """
@@ -223,5 +239,6 @@ class NNITuner(AbstractTuner):
 
         nnicli.start_nni(config_file=nni_config_path)
         nnicli.set_endpoint('http://0.0.0.0:8080')
+        self.__tunable = nnicli
 
-        return nnicli
+        return self.__tunable

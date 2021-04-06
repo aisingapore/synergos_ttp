@@ -1141,3 +1141,84 @@ class TorchParser(Parser):
             return self.parse_operation(self.MODULE_OF_SCHEDULERS, "LambdaLR")
 
         return self.parse_operation(self.MODULE_OF_SCHEDULERS, scheduler_str)
+
+
+
+###########################################
+# Configuration Parser Class - TuneParser #
+###########################################
+
+class TuneParser(Parser):
+    """ 
+    Dynamically translates string names to Tune API callables
+
+    Attributes:
+        MODULE_OF_HYPERPARAM_TYPES (str): Import string for hyperparam types
+    """
+    
+    def __init__(self):
+        super().__init__()
+        self.MODULE_OF_HYPERPARAM_TYPES = "ray.tune"
+        self.MODULE_OF_HYPERPARAM_SCHEDULERS = "ray.tune.schedulers"
+        self.MODULE_OF_HYPERPARAM_SEARCHERS = "ray.tune.suggest"
+
+
+    def parse_type(self, type_str: str) -> Callable:
+        """ Detects hyperparameter type of a declared hyperparameter from
+            configuration
+
+        Args:
+            type_str (str): Layer type to initialise
+        Returns:
+            Type definition (Callable)
+        """
+        return self.parse_operation(self.MODULE_OF_HYPERPARAM_TYPES, type_str)
+
+
+    def parse_scheduler(self, scheduler_str: str) -> Callable:
+        """ Detects hyperparameter scheduler from configuration. This variant
+            is important as `ray.tune.create_scheduler` requires kwargs to be
+            specified to return a fully instantiated scheduler, whereas this
+            way the scheduler parameter signature can be retrieved.
+
+        Args:
+            scheduler_str (str): Scheduler type to initialise
+        Returns:
+            Scheduler definition (Callable)
+        """
+        return self.parse_operation(
+            self.MODULE_OF_HYPERPARAM_SCHEDULERS, 
+            scheduler_str
+        )
+
+
+    def parse_searcher(self, searcher_str: str) -> Callable:
+        """ Detects hyperparameter searcher from configuration. This variant
+            is important as `ray.tune.create_searcher` requires kwargs to be
+            specified to return a fully instantiated scheduler, whereas this
+            way the scheduler parameter signature can be retrieved.
+
+        Args:
+            searcher_str (str): Searcher type to initialise
+        Returns:
+            Searcher definition (Callable)
+        """
+        SEARCHER_MAPPINGS = {
+            'BasicVariantGenerator': "basic_variant",
+            'AxSearch': "ax",
+            'BayesOptSearch': "bayesopt",
+            'TuneBOHB': "bohb",
+            'DragonflySearch': "dragonfly",
+            'HEBOSearch': "hebo",
+            'HyperOptSearch': "hyperopt",
+            'NevergradSearch': "nevergrad",
+            'OptunaSearch': "optuna",
+            'SigOptSearch': "sigopt",
+            'SkOptSearch': "skopt",
+            'ZOOptSearch': "zoopt"
+        }
+        partial_import_str = SEARCHER_MAPPINGS[searcher_str]
+        return self.parse_operation(
+            '.'.join([self.MODULE_OF_HYPERPARAM_SEARCHERS, partial_import_str]),
+            searcher_str
+        )

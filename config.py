@@ -58,6 +58,22 @@ def seed_everything(seed=42):
         return False
 
 
+def count_available_cpus(safe_mode: bool = False, r_count: int = 1) -> int:
+    """ Counts no. of detected CPUs in the current system. By default, all 
+        CPU cores detected are returned. However, if safe mode is toggled, then
+        a specified number of cores are reserved.
+    
+    Args:
+        safe_mode (bool): Toggles if cores are reserved
+        r_count (int): No. of cores to reserve
+    Return:
+        No. of usable cores (int)
+    """
+    total_cores_available = psutil.cpu_count(logical=True)
+    reserved_cores = safe_mode * r_count
+    return total_cores_available - reserved_cores
+
+
 def count_available_gpus() -> int:
     """ Counts no. of attached GPUs devices in the current system. As GPU 
         support is supplimentary, if any exceptions are caught here, system
@@ -215,7 +231,7 @@ MLFLOW_DIR = os.path.join(SRC_DIR, "mlflow")
 CACHE = infinite_nested_dict()
 
 # Allocate no. of cores for processes
-CORES_USED = psutil.cpu_count(logical=True) - 1
+CORES_USED = count_available_cpus(safe_mode=True)
 
 # Detect no. of GPUs attached to server
 GPU_COUNT = count_available_gpus()

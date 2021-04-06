@@ -14,14 +14,16 @@ import uuid
 from pathlib import Path
 
 # Libs
-
+import ray
 
 # Custom
 from config import (
     capture_system_snapshot,
     configure_grid,
     configure_node_logger, 
-    configure_sysmetric_logger
+    configure_sysmetric_logger,
+    count_available_cpus,
+    count_available_gpus
 )
 
 ##################
@@ -172,27 +174,36 @@ if __name__ == "__main__":
     sysmetric_logger = configure_sysmetric_logger(**logger_kwargs)
     sysmetric_logger.track("/test/path", 'TestClass', 'test_function')
 
+
+    ###########################
+    # Implementation Footnote #
+    ###########################
+
+    # [Cause]
+    # To allow custom Synergos Logging components to permeate the entire
+    # system, these loggers have to be initialised first before the system
+    # performs module loading. 
+
+    # [Problems]
+    # Importing app right at the start of the page causes system modules to
+    # be loaded first, resulting in AttributeErrors, since 
+    # synlogger.general.WorkerLogger has not been intialised, and thus, its
+    # corresponding `synlog` attribute cannot be referenced.
+
+    # [Solution]
+    # Import system modules only after loggers have been intialised.
+
+    from rest_rpc import app
+        
+    ray.init(
+        local_mode=False, 
+        dashboard_host="0.0.0.0", 
+        dashboard_port=8080,
+        num_cpus=count_available_cpus(),
+        # num_gpus=count_available_gpus()
+    )
+
     try:
-
-        ###########################
-        # Implementation Footnote #
-        ###########################
-
-        # [Cause]
-        # To allow custom Synergos Logging components to permeate the entire
-        # system, these loggers have to be initialised first before the system
-        # performs module loading. 
-
-        # [Problems]
-        # Importing app right at the start of the page causes system modules to
-        # be loaded first, resulting in AttributeErrors, since 
-        # synlogger.general.WorkerLogger has not been intialised, and thus, its
-        # corresponding `synlog` attribute cannot be referenced.
-
-        # [Solution]
-        # Import system modules only after loggers have been intialised.
-
-        from rest_rpc import app
 
         # cache = app.config['CACHE']
         # cache.init_app(
@@ -207,3 +218,5 @@ if __name__ == "__main__":
 
     finally:
         sysmetric_logger.terminate()
+
+        ray.shutdown()

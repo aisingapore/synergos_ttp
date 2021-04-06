@@ -32,6 +32,8 @@ SOURCE_FILE = os.path.abspath(__file__)
 
 SUBJECT = "Optimization"
 
+HYPERTUNER_BACKENDS = {'nni': NNITuner, 'tune': RayTuneTuner}
+
 ns_api = Namespace(
     "optimizations", 
     description='API to faciliate hyperparameter tuning in a federated grid.'
@@ -245,6 +247,11 @@ class Optimizations(Resource):
                     "lr":{"_type":"choice","_value":[0.0001, 0.001, 0.01, 0.1]},
                     "momentum":{"_type":"uniform","_value":[0, 1]}
                 },
+
+                # Specify Backend type to use
+                'backend': "nni",
+
+                # Specify backend-related kwargs
                 'tuner': "TPE",
                 'metric': "accuracy",
                 'optimize_mode': "maximize",
@@ -253,6 +260,9 @@ class Optimizations(Resource):
                 'max_trial_num': 10,
                 'is_remote': True,
                 'use_annotation': True,
+
+                # Specify generic kwargs
+                'auto_align': True,
                 'dockerised': True,
                 'verbose': True,
                 'log_msgs': True
@@ -262,50 +272,54 @@ class Optimizations(Resource):
         tuning_params = request.json
 
         # Create log directory
-        optim_log_dir = os.path.join(out_dir, collab_id, project_id, expt_id)
-
-
-        nni_tuner = NNITuner(log_dir=optim_log_dir)
-        nni_expt = nni_tuner.tune(
-            collab_id=collab_id,
-            project_id=project_id, 
-            expt_id=expt_id, 
-            **tuning_params
+        optim_log_dir = os.path.join(
+            out_dir, 
+            collab_id, 
+            project_id, 
+            expt_id,
+            "optimizations"
         )
 
-        curr_status = nni_expt.get_experiment_status()['status']
-        while curr_status == "RUNNING":
-            time.sleep(1)
-            curr_status = nni_expt.get_experiment_status()['status']
+        try:
+            backend = tuning_params.get('backend', "tune")
+            
+            hypertuner = HYPERTUNER_BACKENDS[backend](log_dir=optim_log_dir)
+            hypertuner.tune(
+                collab_id=collab_id,
+                project_id=project_id, 
+                expt_id=expt_id, 
+                **tuning_params
+            )
 
-        filter_keys = request.view_args
-        search_space = tuning_params['search_space']
-        retrieved_validations = validation_records.read_all(filter=filter_keys)
-        optim_validations = []
-        for record in retrieved_validations:
+            while hypertuner.is_running():
+                time.sleep(1)
 
-            # Check if validation record belongs to an optimization run
-            curr_run_id = record['key']['run_id']
-            if optim_prefix in curr_run_id:
-                
-                # Verify that current set of hyperparameters were indeed 
-                # extracted from specified search space
-                hyperparameters = run_records.read(
-                    project_id=project_id,
-                    expt_id=expt_id, 
-                    run_id=curr_run_id
-                )
-                for param, value in hyperparameters.items():
-                    tuning_type = search_space[param]['_type']
-                    tuning_values = search_space[param]['_value']
+        except KeyError:
+            logging.error(
+                "Collaboration '{}' > Project '{}' > Model '{}' > Optimizations: Record(s) creation failed.".format(
+                    collab_id, project_id, expt_id
+                ),
+                code=417, 
+                description="Inappropriate collaboration configurations passed!", 
+                ID_path=SOURCE_FILE,
+                ID_class=Optimizations.__name__, 
+                ID_function=Optimizations.post.__name__,
+                **request.view_args
+            )
+            ns_api.abort(                
+                code=417,
+                message=f"Specified backend '{backend}' is not supported!"
+            )
 
-                    if tuning_type == 'choice':
-                        assert value in tuning_values
+        retrieved_validations = validation_records.read_all(
+            filter=request.view_args
+        )
+        optim_validations = [
+            record 
+            for record in retrieved_validations
+            if optim_prefix in record['key']['run_id']
+        ]
 
-                    elif tuning_type == 'uniform':
-                        assert value >= tuning_values[0]
-                        assert value <= tuning_values[-1]
-                
         if optim_validations:
             
             success_payload = payload_formatter.construct_success_payload(

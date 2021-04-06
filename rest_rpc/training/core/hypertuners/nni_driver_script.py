@@ -8,6 +8,7 @@
 import argparse
 import logging
 import os
+import time
 from string import Template
 from typing import Dict, List, Any
 
@@ -90,6 +91,7 @@ def main(
     registrations = registration_records.read_all(
         filter={'collab_id': collab_id, 'project_id': project_id}
     )
+    logging.warn(f"---> {collab_id} {project_id} registrations: {registrations}")
 
     # Consume a grid for running current federated combination
     all_grids = rpc_formatter.extract_grids(registrations)
@@ -193,6 +195,8 @@ def main(
     # Log to NNI
     nni.report_final_result(avg_statistics)
     logging.debug(f"{collab_id}_{project_id}_{expt_id}_{optim_run_id} - Average validation statistics: {avg_statistics}")
+
+    time.sleep(3)
 
 
 def get_params():

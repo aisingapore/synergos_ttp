@@ -193,7 +193,6 @@ class Arguments:
             from a pool of miscellaneous potential arguments
 
         Args:
-            misc_args (dict): Dictionary of miscellaneous arguments
             callable (callable): Callable object to be analysed
         Returns:
             Argument keys (list(str))
@@ -205,8 +204,6 @@ class Arguments:
             param_value = getattr(self, param, None)
             if param_value:
                 arguments[param] = param_value
-            else:
-                pass
 
         return arguments
         
