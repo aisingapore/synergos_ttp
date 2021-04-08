@@ -550,7 +550,7 @@ class Orchestrator:
 
         Args:
             node_info (dict):
-            auto_align (bool): Toggles if multiple feature alignments will be used
+            auto_align (bool): Toggles if dynamic alignment will be applied
         Returns:
 
         """
@@ -812,7 +812,7 @@ class Governor(Orchestrator):
         project_id (str): Unique identifier of project
         expt_id (str): Unique identifier of experiment
         run_id (str): Unique identifier of run
-        auto_align (bool): Toggles if multiple feature alignments will be used
+        auto_align (bool): Toggles if dynamic alignment will be applied
         dockerised (bool): Defines if the worker nodes are dockerised or not
     """
     def __init__(

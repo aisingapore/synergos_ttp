@@ -250,7 +250,7 @@ def start_expt_run_inference(
     return polled_stats
 
 
-def start_proc(grid: List[Dict[str, Any]], multi_kwargs: dict) -> dict:
+def evaluate_proc(grid: List[Dict[str, Any]], multi_kwargs: dict) -> dict:
     """ Automates the inference of Federated models of different architectures
         and parameter sets
 

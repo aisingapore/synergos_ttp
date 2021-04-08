@@ -18,7 +18,7 @@ from flask_restx import Namespace, Resource, fields
 from rest_rpc import app
 from rest_rpc.connection.core.utils import TopicalPayload
 from rest_rpc.training.core.utils import RPCFormatter
-from rest_rpc.evaluation.core.server import start_proc
+from rest_rpc.evaluation.core.server import evaluate_proc
 from rest_rpc.evaluation.core.utils import MLFlogger
 from synarchive.connection import (
     ProjectRecords,
@@ -311,7 +311,10 @@ class Validations(Resource):
         }
         kwargs.update(init_params)
 
-        completed_validations = start_proc(selected_grid, {project_id: kwargs})
+        completed_validations = evaluate_proc(
+            grid=selected_grid, 
+            multi_kwargs={project_id: kwargs}
+        )
         logging.warn(f"completed_validations: {completed_validations}")
 
         retrieved_validations = []

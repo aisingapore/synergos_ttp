@@ -16,9 +16,9 @@ from flask_restx import Namespace, Resource, fields
 # Custom
 from rest_rpc import app
 from rest_rpc.connection.core.utils import TopicalPayload
-from rest_rpc.training.core.feature_alignment import MultipleFeatureAligner
-from rest_rpc.training.core.utils import Poller, RPCFormatter
-from rest_rpc.evaluation.core.server import start_proc
+from rest_rpc.training.core.server import align_proc
+from rest_rpc.training.core.utils import RPCFormatter
+from rest_rpc.evaluation.core.server import evaluate_proc
 from rest_rpc.evaluation.validations import meta_stats_model
 from synarchive.connection import (
     ProjectRecords,
@@ -125,6 +125,7 @@ payload_formatter = TopicalPayload(
 @ns_api.route('/<project_id>', defaults={'expt_id': None, 'run_id': None})
 @ns_api.route('/<project_id>/<expt_id>', defaults={'run_id': None})
 @ns_api.route('/<project_id>/<expt_id>/<run_id>')
+@ns_api.response(403, 'Feature drift detected')
 @ns_api.response(404, 'Predictions not found')
 @ns_api.response(500, 'Internal failure')
 class Predictions(Resource):
@@ -222,9 +223,12 @@ class Predictions(Resource):
                 }
             }
         """
-        auto_align = request.json['auto_align']
-        is_dockerised = request.json['dockerised']
-        new_pred_tags = request.json['tags']
+        # Populate grid-initialising parameters
+        init_params = request.json
+
+        auto_align = init_params['auto_align']
+        is_dockerised = init_params['dockerised']
+        new_pred_tags = init_params['tags']
 
         logging.debug(
             "Participant '{}' >|< Collaboration '{}' > Project '{}' > Experiment '{}' > Run '{}' >|< Predictions: Input keys tracked.".format(
@@ -328,29 +332,12 @@ class Predictions(Resource):
             unaligned_grids = rpc_formatter.extract_grids(project_registrations)
             selected_unaligned_grid = unaligned_grids[grid_idx]
 
-            poller = Poller()
-            all_metadata = poller.poll(grid=selected_unaligned_grid)
-
-            logging.debug(
-                "Participant '{}' >|< Collaboration '{}' > Project '{}' > Experiment '{}' > Run '{}' >|< Predictions: All polled metadata tracked.".format(
-                    participant_id, collab_id, project_id, expt_id, run_id
-                ),
-                polled_metadata=all_metadata, 
-                ID_path=SOURCE_FILE,
-                ID_class=Predictions.__name__, 
-                ID_function=Predictions.post.__name__,
-                **request.view_args
-            )
-
-            (X_data_headers, y_data_headers, key_sequences,
-             _, _) = rpc_formatter.aggregate_metadata(all_metadata)
-
             ###########################
             # Implementation Footnote #
             ###########################
 
             # [Cause]
-            # Decoupling of MFA from inference should be made more explicit
+            # Decoupling of MFA from inference should be made more explicit.
 
             # [Problems]
             # Auto-alignment is not scalable to datasets that have too many 
@@ -358,30 +345,82 @@ class Predictions(Resource):
             # the container will crash.
 
             # [Solution]
-            # Explicitly declare a new state parameter that allows the alignment
-            # procedure to be skipped when necessary, provided that the declared
-            # model parameters are CORRECT!!! If `auto-align` is true, then MFA 
-            # will be performed to obtain alignment indexes for the newly 
-            # declared prediction data tags in preparation for inference. If 
-            # `auto-align` is false, then MFA is skipped (i.e. inference data is
-            # ASSUMED to have the same structure as that of training & 
-            # validation data)
+            # Explicitly declare new state parameters that allows sections of
+            # alignment procedure to be skipped when necessary, provided that 
+            # the declared model parameters are CORRECT!!! If `auto_align` is 
+            # true, then MFA will be performed to obtain alignment indexes for 
+            # the newly declared prediction data tags in preparation for 
+            # inference. If `auto-align` is false, then MFA is skipped 
+            # (i.e. inference data is ASSUMED to have the same structure as 
+            # that of training & validation data). However, the model should 
+            # not be allowed to mutate, and so `auto_fix` must be de-activated. 
 
-            if auto_align:
-                X_mfa_aligner = MultipleFeatureAligner(headers=X_data_headers)
-                X_mf_alignments = X_mfa_aligner.align()
+            spacer_collection, _, _ = align_proc(
+                grid=selected_unaligned_grid, 
+                kwargs={
+                    'experiments': experiments,
+                    'auto_align': auto_align, # MFA toggled dependent on participant
+                    'auto_fix': False         # model cannot be allowed to mutate
+                }
+            )
 
-                y_mfa_aligner = MultipleFeatureAligner(headers=y_data_headers)
-                y_mf_alignments = y_mfa_aligner.align()
+            for p_id, spacer_idxs in spacer_collection.items():
 
-                spacer_collection = rpc_formatter.alignment_to_spacer_idxs(
-                    X_mf_alignments=X_mf_alignments,
-                    y_mf_alignments=y_mf_alignments,
-                    key_sequences=key_sequences
-                )
+                if p_id != participant_id:
+                    
+                    ###########################
+                    # Implementation Footnote #
+                    ###########################
 
-                for p_id, spacer_idxs in spacer_collection.items():
+                    # [Cause]
+                    # Alignments are dynamically generated based on the
+                    # retrieved state of headers from the workers. When
+                    # declaring new prediction tags, the current state of
+                    # alignments archived have to be re-evaluated for changes
+                    # to accomodate the new dataset(s).
 
+                    # [Problems]
+                    # Auto re-alignment should not affect existing datasets.
+                    # This is because the global model has been calibrated with
+                    # their feature set, and any modification to the feature
+                    # set will render the trained model unusable, as the
+                    # input/output structures of the model architecture will
+                    # become mis-aligned.
+
+                    # [Solution]
+                    # Do NOT allow feature drift. If participant declares a
+                    # prediction tag that contains feature/label classes that
+                    # were unaccounted for in the training of the current 
+                    # model, then reject the inference request.
+
+                    retrieved_alignments = alignment_records.read(
+                        collab_id=collab_id,
+                        project_id=registered_project_id,
+                        participant_id=p_id
+                    )
+                    retrieved_spacer_idxs = rpc_formatter.strip_keys(
+                        record=retrieved_alignments,
+                        concise=True
+                    )
+
+                    if retrieved_spacer_idxs != spacer_idxs:
+                        logging.error(
+                            "Participant '{}' >|< Collaboration '{}' > Project '{}' > Experiment '{}' > Run '{}' >|< Predictions: Feature drift detected!".format(
+                                participant_id, collab_id, project_id, expt_id, run_id
+                            ),
+                            description="Dataset characteristics are incompatible with current model.",
+                            spacer_idxs=spacer_idxs,
+                            ID_path=SOURCE_FILE,
+                            ID_class=Predictions.__name__, 
+                            ID_function=Predictions.post.__name__,
+                            **request.view_args
+                        )
+                        ns_api.abort(
+                            code=403,
+                            message="Feature drift detected! Dataset characteristics are incompatible with current model."
+                        )
+
+                else:
                     logging.debug(
                         "Participant '{}' >|< Collaboration '{}' > Project '{}' > Experiment '{}' > Run '{}' >|< Predictions: Spacer Indexes tracked.".format(
                             participant_id, collab_id, project_id, expt_id, run_id
@@ -399,23 +438,6 @@ class Predictions(Resource):
                         participant_id=p_id,
                         updates=spacer_idxs
                     ) 
-
-                logging.debug(
-                    "Participant '{}' >|< Collaboration '{}' > Project '{}' > Experiment '{}' > Run '{}' >|< Predictions: Updated alignments tracked.".format(
-                        participant_id, collab_id, project_id, expt_id, run_id
-                    ),
-                    updated_alignments=alignment_records.read_all(
-                        filter={
-                            'collab_id': collab_id,
-                            'project_id': registered_project_id, 
-                            'participant_id': participant_id
-                        }
-                    ),
-                    ID_path=SOURCE_FILE,
-                    ID_class=Predictions.__name__, 
-                    ID_function=Predictions.post.__name__,
-                    **request.view_args
-                )
 
             # Retrieve registrations updated with possibly new alignments
             updated_registrations = registration_records.read_all(
@@ -462,7 +484,10 @@ class Predictions(Resource):
             **request.view_args
         )
 
-        completed_inferences = start_proc(selected_grid, project_combinations)
+        completed_inferences = evaluate_proc(
+            grid=selected_grid, 
+            multi_kwargs=project_combinations
+        )
 
         logging.log(
             level=NOTSET,

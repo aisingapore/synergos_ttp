@@ -18,8 +18,8 @@ from flask_restx import Namespace, Resource, fields
 # Custom
 from rest_rpc import app
 from rest_rpc.connection.core.utils import TopicalPayload
-from rest_rpc.training.core.utils import UrlConstructor, Poller, RPCFormatter
-from rest_rpc.training.core.feature_alignment import MultipleFeatureAligner
+from rest_rpc.training.core.server import align_proc
+from rest_rpc.training.core.utils import RPCFormatter
 from synarchive.connection import ExperimentRecords, RegistrationRecords
 from synarchive.training import AlignmentRecords
 
@@ -28,9 +28,6 @@ from synarchive.training import AlignmentRecords
 ##################
 
 SOURCE_FILE = os.path.abspath(__file__)
-
-MODULE_OF_LAYERS = "torch.nn"
-MODULE_OF_ACTIVATIONS = "torch.nn.functional"
 
 ns_api = Namespace(
     "alignments", 
@@ -46,8 +43,6 @@ alignment_records = AlignmentRecords(db_path=db_path)
 
 rpc_formatter = RPCFormatter()
 
-activation_modules = importlib.import_module(MODULE_OF_ACTIVATIONS)
-
 logging = app.config['NODE_LOGGER'].synlog
 logging.debug("training/alignments.py logged", Description="No Changes")
 
@@ -55,6 +50,16 @@ logging.debug("training/alignments.py logged", Description="No Changes")
 # Models - Used for marshalling (i.e. moulding responses) #
 ###########################################################
 
+# Marshalling inputs
+input_model = ns_api.model(
+    name="alignment_input",
+    model={
+        'auto_align': fields.Boolean(default=True, required=True),
+        'auto_fix': fields.Boolean(default=True, required=True)
+    }
+)
+
+# Marshalling Outputs
 xy_alignment_model = ns_api.model(
     name="xy_alignments",
     model={
@@ -105,7 +110,9 @@ payload_formatter = TopicalPayload(
 In connection, there was no need for both TTP and participants to interact with
 alignments. However, during the training phase, preprocessing is of utmost 
 priority. Hence, alignment routes are given to the TTP to allow manual 
-triggering of multiple feature alignment.
+triggering of alignment processes, mainly dataset alignment via Multiple 
+Feature Alignment (MFA), model alignments via input/output detection, and other
+state alignment mechanisms.
 """
 
 @ns_api.route('/')
@@ -164,58 +171,34 @@ class Alignments(Resource):
 
 
     @ns_api.doc("trigger_alignments")
-    #@ns_api.marshal_with(payload_formatter.plural_model)
+    @ns_api.expect(input_model)
+    @ns_api.marshal_with(payload_formatter.plural_model)
     @ns_api.response(201, "New alignments have been created!")
     def post(self, collab_id, project_id):
         """ Searches for all registered participant under project, and uses
             their registered data tags to trigger the RPC for polling 
             participant metadata for alignment
         """
+        # Populate grid-initialising parameters
+        init_params = request.json
+
         try:
             all_relevant_registrations = registration_records.read_all(
-                filter={
-                    'collab_id': collab_id,
-                    'project_id': project_id
-                }
+                filter={'collab_id': collab_id, 'project_id': project_id}
             )
             usable_grids = rpc_formatter.extract_grids(all_relevant_registrations)
             selected_grid = usable_grids[grid_idx]
 
-            poller = Poller()
-            all_metadata = poller.poll(grid=selected_grid)
-
-            (X_data_headers, y_data_headers, key_sequences, 
-            _, descriptors) = rpc_formatter.aggregate_metadata(all_metadata)
-
-            logging.debug(
-                "X data headers to be used for MFA tracked.",
-                X_data_headers=X_data_headers,
-                ID_path=SOURCE_FILE,
-                ID_class=Alignments.__name__, 
-                ID_function=Alignments.post.__name__,
-                **request.view_args
-            )
-            logging.debug(
-                "y data headers to be used for MFA tracked.",
-                y_data_headers=y_data_headers,
-                ID_path=SOURCE_FILE,
-                ID_class=Alignments.__name__, 
-                ID_function=Alignments.post.__name__,
-                **request.view_args
+            all_expts = expt_records.read_all(
+                filter={'collab_id': collab_id, 'project_id': project_id}
             )
 
-            X_mfa_aligner = MultipleFeatureAligner(headers=X_data_headers)
-            X_mf_alignments = X_mfa_aligner.align()
-
-            y_mfa_aligner = MultipleFeatureAligner(headers=y_data_headers)
-            y_mf_alignments = y_mfa_aligner.align()
-
-            spacer_collection = rpc_formatter.alignment_to_spacer_idxs(
-                X_mf_alignments=X_mf_alignments,
-                y_mf_alignments=y_mf_alignments,
-                key_sequences=key_sequences
+            spacer_collection, aligned_experiments, _ = align_proc(
+                grid=selected_grid,
+                kwargs={'experiments': all_expts, **init_params}
             )
 
+            # Store generated alignment indexes for subsequent use
             retrieved_alignments = []
             for p_id, spacer_idxs in spacer_collection.items():
 
@@ -232,116 +215,9 @@ class Alignments(Resource):
                 )
                 retrieved_alignments.append(retrieved_alignment)
 
-            logging.debug(
-                f"Alignment X Superset generated tracked.",
-                feature_superset=X_mfa_aligner.superset,
-                length=len(X_mfa_aligner.superset), 
-                ID_path=SOURCE_FILE,
-                ID_class=Alignments.__name__, 
-                ID_function=Alignments.post.__name__,
-                **request.view_args
-            )
-            logging.debug(
-                f"Alignment y Superset generated tracked.",
-                feature_superset=y_mfa_aligner.superset,
-                length=len(y_mfa_aligner.superset), 
-                ID_path=SOURCE_FILE,
-                ID_class=Alignments.__name__, 
-                ID_function=Alignments.post.__name__,
-                **request.view_args
-            )
-
-            #############################################
-            # Auto-alignment of global inputs & outputs #
-            #############################################
-
-            layer_modules = importlib.import_module(MODULE_OF_LAYERS)
-
-            all_expts = expt_records.read_all(
-                filter={'collab_id': collab_id, 'project_id': project_id}
-            )
-            for curr_expt in all_expts:
-            
-                expt_id = curr_expt['key']['expt_id']
-                expt_model = curr_expt['model']
-
-                # Check if input layer needs alignment
-                input_config = expt_model.pop(0)
-                input_layer = getattr(layer_modules, input_config['l_type'])
-                input_params = list(inspect.signature(input_layer.__init__).parameters)
-                input_key = input_params[1] # from [self, input, output, ...]
-                
-                # Only modify model inputs if handling non-image data! An 
-                # assumption for now is that all collaborating parties have 
-                # images of the same type of color scale (eg. grayscale, RGBA) 
-                if "in_channels" not in input_key:
-                    aligned_input_size = len(X_mfa_aligner.superset)
-                    input_config['structure'][input_key] = aligned_input_size
-
-                expt_model.insert(0, input_config)
-
-                logging.debug(
-                    f"Collaboration '{collab_id}' > Project: '{project_id}' > Experiment '{expt_id}': Modified input structure tracked",
-                    modified_input_structure=input_config, 
-                    ID_path=SOURCE_FILE,
-                    ID_class=Alignments.__name__, 
-                    ID_function=Alignments.post.__name__,
-                    **request.view_args
-                )
-
-                # Check if output layer needs alignment
-                output_config = expt_model.pop(-1)
-                output_layer = getattr(layer_modules, output_config['l_type'])
-                output_params = list(inspect.signature(output_layer.__init__).parameters)
-                output_key = output_params[2] # from [self, input, output, ...]
-                aligned_output_size = len(y_mfa_aligner.superset)
-                if aligned_output_size <= 2:
-                    # Case 1: Regression or Binary classification
-                    output_config['structure'][output_key] = 1
-                else:
-                    # Case 2: Multiclass classification
-                    output_config['structure'][output_key] = aligned_output_size
-                    
-                    # If the no. of class labels has expanded, switch from 
-                    # linear activations to softmax variants
-                    output_config['activation'] = "softmax"
-
-                expt_model.append(output_config)
-
-                logging.debug(
-                    f"Collaboration '{collab_id}' > Project '{project_id}' > Experiment '{expt_id}': Modified output structure tracked.", 
-                    description=output_config, 
-                    ID_path=SOURCE_FILE,
-                    ID_class=Alignments.__name__, 
-                    ID_function=Alignments.post.__name__,
-                    **request.view_args
-                )
-                logging.info(
-                    f"Collaboration '{collab_id}' > Project: '{project_id}' > Experiment '{expt_id}': Self-correction with MFA successfully applied!",
-                    modified_expt_model=expt_model, 
-                    ID_path=SOURCE_FILE,
-                    ID_class=Alignments.__name__, 
-                    ID_function=Alignments.post.__name__,
-                    **request.view_args
-                )
-
-                expt_records.update(
-                    **curr_expt['key'], 
-                    updates={'model': expt_model}
-                )
-
-                logging.debug(
-                    "Updated experiment records tracked.", 
-                    description=expt_records.read(**curr_expt['key']), 
-                    ID_path=SOURCE_FILE,
-                    ID_class=Alignments.__name__, 
-                    ID_function=Alignments.post.__name__,
-                    **request.view_args
-                )
-
-            ###############################
-            # Updating Neo4J for Amundsen #
-            ###############################
+            # Apply alignment updates to existing model architecture
+            for expt_updates in aligned_experiments:
+                expt_records.update(**expt_updates)
 
             success_payload = payload_formatter.construct_success_payload(
                 status=201, 

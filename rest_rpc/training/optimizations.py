@@ -39,6 +39,8 @@ ns_api = Namespace(
     description='API to faciliate hyperparameter tuning in a federated grid.'
 )
 
+is_master = app.config['IS_MASTER']
+
 out_dir = app.config['OUT_DIR']
 
 db_path = app.config['DB_PATH']
@@ -143,29 +145,13 @@ val_output_model = ns_api.inherit(
 
 payload_formatter = TopicalPayload(SUBJECT, ns_api, val_output_model)
 
-#####################
-# Wrapper Functions #
-#####################
-
-def run_hypertuner(project_id, expt_id, tuning_params):
-    '''
-        Wrapper function to run ray_tuner to avoid process conflict 
-        when called within optimizations API
-    '''
-    ray_tuner = RayTuneTuner()
-    ray_tuner.tune(
-        project_id=project_id,
-        expt_id=expt_id,
-        search_space=tuning_params['search_space'],
-        n_samples=tuning_params['n_samples']
-    )
-
 #############
 # Resources #
 #############
 
 @ns_api.route('/')
-@ns_api.response(404, 'Alignment not found')
+@ns_api.response(403, 'Optimizations not active')
+@ns_api.response(404, 'Optimizations not found')
 @ns_api.response(500, 'Internal failure')
 class Optimizations(Resource):
     """ Handles hyperparameter tuning  within the PySyft grid. This targets the
@@ -180,6 +166,39 @@ class Optimizations(Resource):
         """ Retrieves global model corresponding to experiment and run 
             parameters for a specified project
         """
+        ###########################
+        # Implementation Footnote #
+        ###########################
+
+        # [Cause]
+        # Optimizations trigger hyperparameter tuning, which requires running
+        # multiple federated combinations concurrently. However, in Synergos
+        # Basic, there exists only 1 grid.
+
+        # [Problems]
+        # When trying to run multiple federated combinations on a single grid,
+        # Ray.Tune's parallelization causes problems in termination of an
+        # existing grid (based on current implementation).
+
+        # [Solution]
+        # Limit hyperparameter tuning to only Synergos' SynCluster 
+        # configuration, which supports multiple nodes, until further notice.
+        logging.warn(f"---> {is_master}")
+        if is_master:
+            logging.error(
+                "Optimization operations only exist in SynCluster!",
+                code=403,
+                description="Optimization is only active in a Synergos cluster, and is unsupported in Synergos Basic.",
+                ID_path=SOURCE_FILE,
+                ID_class=Optimizations.__name__, 
+                ID_function=Optimizations.get.__name__,
+                **request.view_args
+            )
+            ns_api.abort(
+                code=403, 
+                message=f"Optimization is only active in a Synergos cluster, and is unsupported in Synergos Basic."
+            )
+
         retrieved_validations = validation_records.read_all(
             filter=request.view_args
         )
@@ -268,6 +287,39 @@ class Optimizations(Resource):
                 'log_msgs': True
             }
         """
+        ###########################
+        # Implementation Footnote #
+        ###########################
+
+        # [Cause]
+        # Optimizations trigger hyperparameter tuning, which requires running
+        # multiple federated combinations concurrently. However, in Synergos
+        # Basic, there exists only 1 grid.
+
+        # [Problems]
+        # When trying to run multiple federated combinations on a single grid,
+        # Ray.Tune's parallelization causes problems in termination of an
+        # existing grid (based on current implementation).
+
+        # [Solution]
+        # Limit hyperparameter tuning to only Synergos' SynCluster 
+        # configuration, which supports multiple nodes, until further notice.
+        logging.warn(f"---> {is_master}")
+        if is_master:
+            logging.error(
+                "Optimization operations only exist in SynCluster!",
+                code=403,
+                description="Optimization is only active in a Synergos cluster, and is unsupported in Synergos Basic.",
+                ID_path=SOURCE_FILE,
+                ID_class=Optimizations.__name__, 
+                ID_function=Optimizations.get.__name__,
+                **request.view_args
+            )
+            ns_api.abort(
+                code=403, 
+                message="Optimization is only active in a Synergos cluster, and is unsupported in Synergos Basic."
+            )
+
         # Populate hyperparameter tuning parameters
         tuning_params = request.json
 

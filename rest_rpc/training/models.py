@@ -16,7 +16,7 @@ from flask_restx import Namespace, Resource, fields
 from rest_rpc import app
 from rest_rpc.connection.core.utils import TopicalPayload
 from rest_rpc.training.core.utils import Poller, RPCFormatter
-from rest_rpc.training.core.server import start_proc
+from rest_rpc.training.core.server import train_proc
 from synarchive.connection import (
     ProjectRecords,
     ExperimentRecords,
@@ -246,29 +246,6 @@ class Models(Resource):
         usable_grids = rpc_formatter.extract_grids(registrations)
         selected_grid = usable_grids[grid_idx]
 
-        ###########################
-        # Implementation Footnote #
-        ###########################
-
-        # [Cause]
-        # Decoupling of MFA from training cycle is required. With this, polling is
-        # skipped since alignment is not triggered
-
-        # [Problems]
-        # When alignment is not triggered, workers are not polled for their headers
-        # and schemas. Since project logs are generated via polling, not doing so
-        # results in an error for subsequent operations
-
-        # [Solution]
-        # Poll irregardless of alignment. Modify Worker's Poll endpoint to be able 
-        # to handle repeated initiialisations (i.e. create project logs if it does
-        # not exist, otherwise retrieve)
-
-        auto_align = init_params['auto_align']
-        if not auto_align:
-            poller = Poller()
-            poller.poll(grid=selected_grid)
-
         # Template for starting FL grid and initialising training
         kwargs = {
             'action': project_action,
@@ -277,7 +254,7 @@ class Models(Resource):
         }
         kwargs.update(init_params)
 
-        completed_trainings = start_proc(selected_grid, kwargs)
+        completed_trainings = train_proc(selected_grid, kwargs)
 
         # Store output metadata into database
         retrieved_models = []

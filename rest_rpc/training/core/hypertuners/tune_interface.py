@@ -166,10 +166,7 @@ class RayTuneTuner(BaseTuner):
     def _initialize_trial_executor(self):
         """
         """
-        self.__executor = RayTrialExecutor(queue_trials=True)
-        # self.__executor.set_max_pending_trials(
-        #     max_pending=0   # IMPT! Restricts concurrency in SynBasic
-        # ) 
+        self.__executor = RayTrialExecutor(queue_trials=False)
         return self.__executor
 
     

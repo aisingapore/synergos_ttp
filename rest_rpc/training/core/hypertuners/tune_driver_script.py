@@ -30,6 +30,9 @@ from synarchive.connection import (
 )
 from synarchive.training import ModelRecords
 from synarchive.evaluation import ValidationRecords
+# from synmanager.train import TrainProducerOperator
+# from synmanager.evaluate import EvaluateProducerOperator
+# from synmanager.completed import CompletedConsumerOperator
 
 ##################
 # Configurations #
@@ -194,15 +197,11 @@ def run_basic_federated_cycle(
 
     import logging
     logging.warn(f"---> avg_statistics: {avg_statistics}")
+
+    import time, random
+    time.sleep(random.randint(0,5))
+
     tune.report(**avg_statistics)
-
-
-def tune_proc(config: dict, checkpoint_dir: str):
-    """
-    """
-
-    if is_master:
-        return run_basic_federated_cycle(**config)
 
 
 # def start_hp_training(project_id, expt_id, run_id):
@@ -283,7 +282,101 @@ def tune_proc(config: dict, checkpoint_dir: str):
 
 #         #return IDs of runs submitted
 #         resp_data = {"run_ids": result}
-#         print("resp_data: ", resp_data)    
+#         print("resp_data: ", resp_data)  
+
+
+def run_cluster_federated_cycle(
+    collab_id: str,
+    project_id: str,
+    expt_id: str,
+    metric: str,
+    auto_align: bool = True,
+    dockerised: bool = True, 
+    log_msgs: bool = True, 
+    verbose: bool = True,
+    **params
+):
+    """
+    """
+
+    def start_hp_training():
+        """
+        """
+        # Retrieve registered participants' metadata under specified project
+        registrations = registration_records.read_all(
+            filter={'collab_id': collab_id, 'project_id': project_id}
+        )
+
+        # Consume a grid for running current federated combination
+        all_grids = rpc_formatter.extract_grids(registrations)
+        allocated_grid = all_grids[grid_idx]
+
+        # Retrieve specific project
+        retrieved_project = project_records.read(
+            collab_id=collab_id,
+            project_id=project_id
+        )
+        project_action = retrieved_project['action']
+
+        # Retrieve specific experiment 
+        retrieved_expt = expt_records.read(
+            collab_id=collab_id,
+            project_id=project_id, 
+            expt_id=expt_id
+        )
+
+        # Create an optimisation run under specified experiment for current project
+        optim_run_id = optim_run_template.safe_substitute(
+            {'id': optim_prefix + str(uuid.uuid4())}
+        )
+        
+        keys = {
+            'collab_id': collab_id,
+            'project_id': project_id, 
+            'expt_id': expt_id, 
+            'run_id': optim_run_id
+        }
+        
+        run_records.create(**keys, details=params)
+        new_optim_run = run_records.read(**keys)
+
+        # Train on experiment-run combination
+        results = start_expt_run_training(
+            keys=keys,
+            action=project_action,
+            grid=allocated_grid,
+            experiment=retrieved_expt,
+            run=new_optim_run,
+            auto_align=auto_align,
+            dockerised=dockerised,
+            log_msgs=log_msgs,
+            verbose=verbose
+        )
+
+        # Archive results in database
+        model_records.create(**keys, details=results)
+
+
+    def start_hp_validation():
+        """
+        """
+        pass
+
+
+
+
+
+def tune_proc(config: dict, checkpoint_dir: str):
+    """
+    """
+
+    if is_master:
+        return run_basic_federated_cycle(**config)
+
+    else:
+        return run_cluster_federated_cycle(**config)
+
+  
 
 
 # def send_evaluate_msg(project_id, expt_id, run_id, participant_id=None):

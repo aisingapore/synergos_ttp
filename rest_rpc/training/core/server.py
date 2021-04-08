@@ -8,6 +8,7 @@
 import argparse
 import asyncio
 import concurrent.futures
+import importlib
 import inspect
 import multiprocessing as mp
 import os
@@ -31,8 +32,15 @@ from tinydb.database import Document
 from rest_rpc import app
 from rest_rpc.training.core.arguments import Arguments
 from rest_rpc.training.core.model import Model, ModelPlan
+from rest_rpc.training.core.feature_alignment import MultipleFeatureAligner
 from rest_rpc.training.core.federated_learning import FederatedLearning
-from rest_rpc.training.core.utils import Orchestrator, Governor, RPCFormatter
+from rest_rpc.training.core.utils import (
+    RPCFormatter,
+    Orchestrator, 
+    Poller,
+    Governor,
+    TorchParser
+)
 from rest_rpc.training.core.custom import CustomClientWorker, CustomWSClient
 
 ##################
@@ -43,10 +51,9 @@ SOURCE_FILE = os.path.abspath(__file__)
 
 out_dir = app.config['OUT_DIR']
 
-cache = mp.Queue()#app.config['CACHE']
-
 rpc_formatter = RPCFormatter()
 orchestrator = Orchestrator()
+torch_parser = TorchParser()
 
 # Instantiate a local hook for coordinating clients
 # Note: `is_client=True` ensures that all objects are deleted once WS 
@@ -621,16 +628,135 @@ def start_expt_run_training(
 def align_proc(
     grid: List[Dict[str, Any]], 
     kwargs: Dict[str, Any]
-):
+) -> Dict[str, Any]:
+    """ Automates the execution of alignment processes performed pre-training.
+        Headers & dataset metadata is collected from all participants and used
+        to extract alignment indexes for automatic data augmentation. 
+        Alignments are also used to dynamically reconfigure experiment models,
+        specifically input & output layers declared under a specific project.
+        Note: This is a process that runs on a single grid! Hence, grid 
+        assignment needs to be handled prior to this. Similarly, load balancing
+        of federated combinations should be handled outside of this functional
+        context, as all combinations detected here will be assumed to be
+        assigned to the same grid.
+
+    Args:
+        grid (list(dict))): Registry of participants' node information
+        kwargs (dict): Experiments & models to be tested
+    Returns:
+        Path-to-trained-models (list(str))
     """
-    """
-    pass
+    experiments = kwargs['experiments']
+    auto_align = kwargs['auto_align']
+    auto_fix = kwargs['auto_fix']
+
+    ###########################
+    # Implementation Footnote #
+    ###########################
+
+    # [Cause]
+    # Decoupling of MFA from training cycle is required. This is because 
+    # polling is an essential step in the initialisation & caching of all
+    # datasets across all participants of the grid
+
+    # [Problems]
+    # If workers are not polled for their headers and schemas, since project 
+    # logs are generated via polling, not doing so results in an error for 
+    # subsequent operations
+
+    # [Solution]
+    # Poll irregardless of alignment. Modify Worker's Poll endpoint to be able 
+    # to handle repeated initiialisations (i.e. create project logs if it does
+    # not exist, otherwise retrieve)
+
+    poller = Poller()
+    all_metadata = poller.poll(grid=grid)
+
+    (X_data_headers, y_data_headers, key_sequences, _, descriptors
+    ) = rpc_formatter.aggregate_metadata(all_metadata)
+
+    spacer_collection = {}      # no spacers generated
+    aligned_experiments = []    # no model augmentations generated
+
+    if auto_align:
+
+        ##############################
+        # Auto-alignment of datasets #
+        ##############################
+
+        X_mfa_aligner = MultipleFeatureAligner(headers=X_data_headers)
+        X_mf_alignments = X_mfa_aligner.align()
+
+        y_mfa_aligner = MultipleFeatureAligner(headers=y_data_headers)
+        y_mf_alignments = y_mfa_aligner.align()
+
+        spacer_collection = rpc_formatter.alignment_to_spacer_idxs(
+            X_mf_alignments=X_mf_alignments,
+            y_mf_alignments=y_mf_alignments,
+            key_sequences=key_sequences
+        )
+
+    if auto_fix:
+
+        #############################################
+        # Auto-alignment of global inputs & outputs #
+        #############################################
+        
+        for curr_expt in experiments:
+
+            expt_model = curr_expt['model']
+
+            # Check if input layer needs alignment
+            input_config = expt_model.pop(0)
+            input_layer = torch_parser.parse_layer(input_config['l_type'])
+            input_params = list(inspect.signature(input_layer.__init__).parameters)
+            input_key = input_params[1] # from [self, input, output, ...]
+            
+            # Only modify model inputs if handling non-image data! An 
+            # assumption for now is that all collaborating parties have 
+            # images of the same type of color scale (eg. grayscale, RGBA) 
+            if "in_channels" not in input_key:
+                aligned_input_size = len(X_mfa_aligner.superset)
+                input_config['structure'][input_key] = aligned_input_size
+
+            expt_model.insert(0, input_config)
+
+            # Check if output layer needs alignment
+            output_config = expt_model.pop(-1)
+            output_layer = torch_parser.parse_layer(output_config['l_type'])
+            output_params = list(inspect.signature(output_layer.__init__).parameters)
+            output_key = output_params[2] # from [self, input, output, ...]
+            aligned_output_size = len(y_mfa_aligner.superset)
+            if aligned_output_size <= 2:
+                # Case 1: Regression or Binary classification
+                output_config['structure'][output_key] = 1
+            else:
+                # Case 2: Multiclass classification
+                output_config['structure'][output_key] = aligned_output_size
+                
+                # If the no. of class labels has expanded, switch from 
+                # linear activations to softmax variants
+                output_config['activation'] = "softmax"
+
+            expt_model.append(output_config)
+
+            expt_updates = {
+                **curr_expt['key'],
+                'updates': {'model': expt_model}
+            }
+            aligned_experiments.append(expt_updates)
+
+    #####################################
+    # Updating Neo4J for Amundsen (TBC) #
+    #####################################
+
+    return spacer_collection, aligned_experiments, descriptors
 
 
-def start_proc(
+def train_proc(
     grid: List[Dict[str, Any]], 
     kwargs: Dict[str, Any]
-):
+) -> Dict[str, Any]:
     """ Automates the execution of Federated learning experiments on different
         hyperparameter sets & model architectures.
         Note: This is a process that runs on a single grid! Hence, grid 
@@ -684,7 +810,7 @@ def start_proc(
         "Training combinations loaded!",
         training_combinations=f"{training_combinations}",
         ID_path=SOURCE_FILE,
-        ID_function=start_proc.__name__
+        ID_function=train_proc.__name__
     )
 
     # """
