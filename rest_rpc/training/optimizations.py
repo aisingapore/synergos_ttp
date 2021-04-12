@@ -183,7 +183,7 @@ class Optimizations(Resource):
         # [Solution]
         # Limit hyperparameter tuning to only Synergos' SynCluster 
         # configuration, which supports multiple nodes, until further notice.
-        logging.warn(f"---> {is_master}")
+
         if is_master:
             logging.error(
                 "Optimization operations only exist in SynCluster!",
@@ -304,7 +304,7 @@ class Optimizations(Resource):
         # [Solution]
         # Limit hyperparameter tuning to only Synergos' SynCluster 
         # configuration, which supports multiple nodes, until further notice.
-        logging.warn(f"---> {is_master}")
+
         if is_master:
             logging.error(
                 "Optimization operations only exist in SynCluster!",
@@ -382,7 +382,9 @@ class Optimizations(Resource):
             )
 
             logging.info(
-                f"Project '{project_id}' -> Experiment '{expt_id}' -> Optimizations: Record(s) creation successful!",
+                "Collaboration '{}' > Project '{}' > Model '{}' > Optimizations: Record(s) creation successful!".format(
+                    collab_id, project_id, expt_id
+                ),
                 code=200, 
                 description="Optimization(s) specified federated conditions were successfully retrieved!",
                 ID_path=SOURCE_FILE,
@@ -395,7 +397,9 @@ class Optimizations(Resource):
 
         else:
             logging.error(
-                f"Project '{project_id}' -> Experiment '{expt_id}' -> Optimizations: Record(s) creation failed.",
+                "Collaboration '{}' > Project '{}' > Model '{}' > Optimizations: Record(s) creation failed.".format(
+                    collab_id, project_id, expt_id
+                ),
                 code=404,
                 description="Optimizations do not exist for specified keyword filters!",
                 ID_path=SOURCE_FILE,

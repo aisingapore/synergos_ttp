@@ -18,9 +18,9 @@ from ray import tune
 # Custom
 import synmanager
 from rest_rpc import app
-from rest_rpc.training.core.server import start_expt_run_training
+from rest_rpc.training.core.server import execute_combination_training
 from rest_rpc.training.core.utils import RPCFormatter, Poller
-from rest_rpc.evaluation.core.server import start_expt_run_inference
+from rest_rpc.evaluation.core.server import execute_combination_inference
 from rest_rpc.evaluation.core.utils import MLFlogger
 from synarchive.connection import (
     ProjectRecords,
@@ -131,7 +131,7 @@ def run_basic_federated_cycle(
     new_optim_run = run_records.read(**keys)
 
     # Train on experiment-run combination
-    results = start_expt_run_training(
+    results = execute_combination_training(
         keys=keys,
         action=project_action,
         grid=allocated_grid,
@@ -148,7 +148,7 @@ def run_basic_federated_cycle(
 
     # Calculate validation statistics for experiment-run combination
     participants = [record['participant']['id'] for record in registrations]
-    validation_stats = start_expt_run_inference(
+    validation_stats = execute_combination_inference(
         keys=keys,
         action=project_action,
         grid=allocated_grid,
@@ -341,7 +341,7 @@ def run_cluster_federated_cycle(
         new_optim_run = run_records.read(**keys)
 
         # Train on experiment-run combination
-        results = start_expt_run_training(
+        results = execute_combination_training(
             keys=keys,
             action=project_action,
             grid=allocated_grid,

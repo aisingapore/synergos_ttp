@@ -30,10 +30,7 @@ from tinydb.database import Document
 
 # Custom
 from rest_rpc import app
-from rest_rpc.training.core.arguments import Arguments
-from rest_rpc.training.core.model import Model, ModelPlan
 from rest_rpc.training.core.feature_alignment import MultipleFeatureAligner
-from rest_rpc.training.core.federated_learning import FederatedLearning
 from rest_rpc.training.core.utils import (
     RPCFormatter,
     Orchestrator, 
@@ -42,6 +39,8 @@ from rest_rpc.training.core.utils import (
     TorchParser
 )
 from rest_rpc.training.core.custom import CustomClientWorker, CustomWSClient
+from synalgo import FederatedLearning
+from synalgo.interfaces import Arguments, EarlyStopping, Model
 
 ##################
 # Configurations #
@@ -67,16 +66,6 @@ sy.workers.websocket_client.TIMEOUT_INTERVAL = 3600
 
 #sy.workers.websocket_client.websocket.enableTrace(True)
 REF_WORKER = sy.local_worker
-
-"""
-[Redacted - Multiprocessing]
-core_count = mp.cpu_count()
-
-# Configure dill to recursively serialise dependencies
-dill.settings['recurse'] = True
-
-[Redacted - Asynchronised FL Grid Training]
-"""
 
 # GPU customisations
 gpu_count = app.config['GPU_COUNT']
@@ -729,3 +718,17 @@ def execute_combination_training(
     governor.terminate(grid=grid)
 
     return results
+
+############
+# Redacted #
+############
+
+"""
+[Redacted - Multiprocessing]
+core_count = mp.cpu_count()
+
+# Configure dill to recursively serialise dependencies
+dill.settings['recurse'] = True
+
+[Redacted - Asynchronised FL Grid Training]
+"""

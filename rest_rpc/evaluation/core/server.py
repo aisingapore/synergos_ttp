@@ -24,7 +24,6 @@ from syft.workers.websocket_client import WebsocketClientWorker
 
 # Custom
 from rest_rpc import app
-from rest_rpc.training.core.federated_learning import FederatedLearning
 from rest_rpc.training.core.utils import Governor, RPCFormatter
 from rest_rpc.training.core.server import (
     connect_to_ttp, 
@@ -34,6 +33,7 @@ from rest_rpc.training.core.server import (
     terminate_connections
 )
 from rest_rpc.evaluation.core.utils import Analyser
+from synalgo import FederatedLearning
 from synarchive.training import ModelRecords
 
 ##################
@@ -41,8 +41,6 @@ from synarchive.training import ModelRecords
 ##################
 
 SOURCE_FILE = os.path.abspath(__file__)
-
-out_dir = app.config['OUT_DIR']
 
 db_path = app.config['DB_PATH']
 model_records = ModelRecords(db_path=db_path)
