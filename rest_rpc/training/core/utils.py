@@ -154,7 +154,9 @@ class RPCFormatter:
     """
     Automates the formatting of structured data stored within the TTP into a
     form compatible with the interfaces defined by the worker node's REST-RPC 
-    service.
+    service. This class stores all core formatting operations that are used
+    throughout the system as a consolidated point of reference for easy 
+    maintanence.
     """
     def strip_keys(self, record, concise: bool = False):
         """ Remove db-specific keys and descriptors
@@ -460,6 +462,64 @@ class RPCFormatter:
                 
         return grids
 
+
+    def enumerate_federated_conbinations(
+        self,
+        action: str,
+        experiments: list,
+        runs: list,
+        auto_align: bool = True,
+        dockerised: bool = True,
+        log_msgs: bool = True,
+        verbose: bool = True,
+        **kwargs
+    ) -> dict:
+        """ Enumerates all registered combinations of experiment models and run
+            configurations for a SINGLE project in preparation for bulk operations.
+
+        Args:
+            action (str): Type of machine learning operation to be executed
+            experiments (list): All experimental models to be reconstructed
+            runs (dict): All hyperparameter sets to be used during grid FL inference
+            auto_align (bool): Toggles if multiple feature alignments will be used
+            dockerised (bool): Toggles if current FL grid is containerised or not. 
+                If true (default), hosts & ports of all participants are locked at
+                "0.0.0.0" & 8020 respectively. Otherwise, participant specified
+                configurations will be used (grid architecture has to be finalised).
+            log_msgs (bool): Toggles if messages are to be logged
+            verbose (bool): Toggles verbosity of logs for WSCW objects
+            **kwargs: Miscellaneous keyword argmuments to 
+        Returns:
+            Combinations (dict)
+        """
+        combinations = {}
+        for expt_record in experiments:
+            curr_expt_id = expt_record['key']['expt_id']
+
+            for run_record in runs:
+                run_key = run_record['key']
+                collab_id = run_key['collab_id']
+                project_id = run_key['project_id']
+                expt_id = run_key['expt_id']
+                run_id = run_key['run_id']
+
+                if expt_id == curr_expt_id:
+
+                    combination_key = (collab_id, project_id, expt_id, run_id)
+                    combination_params = {
+                        'keys': run_key,
+                        'action': action,
+                        'experiment': expt_record,
+                        'run': run_record,
+                        'auto_align': auto_align,
+                        'dockerised': dockerised, 
+                        'log_msgs': log_msgs, 
+                        'verbose': verbose,
+                        **kwargs
+                    }
+                    combinations[combination_key] = combination_params
+
+        return combinations
 
 
 ##########################################

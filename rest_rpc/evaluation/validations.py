@@ -6,21 +6,22 @@
 
 # Generic/Built-in
 import os
-import random
 from logging import NOTSET
-from pathlib import Path
+from typing import Dict, List, Union, Any
 
 # Libs
 from flask import request
 from flask_restx import Namespace, Resource, fields
+from tinydb.database import Document
 
 # Custom
 from rest_rpc import app
 from rest_rpc.connection.core.utils import TopicalPayload
 from rest_rpc.training.core.utils import RPCFormatter
-from rest_rpc.evaluation.core.server import evaluate_proc
+from rest_rpc.evaluation.core.server import execute_combination_inference
 from rest_rpc.evaluation.core.utils import MLFlogger
 from synarchive.connection import (
+    CollaborationRecords,
     ProjectRecords,
     ExperimentRecords,
     RunRecords,
@@ -30,6 +31,7 @@ from synarchive.connection import (
 )
 from synarchive.training import AlignmentRecords, ModelRecords
 from synarchive.evaluation import ValidationRecords, MLFRecords
+from synmanager.evaluate_operations import EvaluateProducerOperator
 
 ##################
 # Configurations #
@@ -45,6 +47,7 @@ ns_api = Namespace(
 grid_idx = app.config['GRID']
 
 db_path = app.config['DB_PATH']
+collab_records = CollaborationRecords(db_path=db_path)
 project_records = ProjectRecords(db_path=db_path)
 expt_records = ExperimentRecords(db_path=db_path)
 run_records = RunRecords(db_path=db_path)
@@ -147,6 +150,53 @@ payload_formatter = TopicalPayload(
     namespace=ns_api, 
     model=val_output_model
 )
+
+########
+# Jobs #
+########
+
+def execute_validation_job(
+    combination_key: List[str],
+    combination_params: Dict[str, Union[str, int, float, list, dict]]
+) -> List[Document]:
+    """ Encapsulated job function to be compatible for queue integrations.
+        Executes model validation for a specified federated cycle, and stores
+        all outputs for subsequent use.
+
+    Args:
+        combination_key (dict): Composite IDs of a federated combination
+        combination_params (dict): Initializing parameters for a validation job
+    Returns:
+        Validation statistics (list(Document))    
+    """
+    collab_id, project_id, _, _ = combination_key
+
+    # Retrieve all participants' metadata
+    registrations = registration_records.read_all(
+        filter={'collab_id': collab_id, 'project_id': project_id}
+    )
+    usable_grids = rpc_formatter.extract_grids(registrations)
+    selected_grid = usable_grids[grid_idx]
+
+    completed_validations = execute_combination_inference(
+        grid=selected_grid,
+        **combination_params
+    ) 
+
+    # Store output metadata into database
+    retrieved_validations = []
+    for participant_id, inference_stats in completed_validations.items():
+        
+        # Log the inference stats
+        worker_keys = (participant_id,) + combination_key
+        validation_records.create(*worker_keys, details=inference_stats)
+        retrieved_validation = validation_records.read(*worker_keys)
+        retrieved_validations.append(retrieved_validation)
+
+    # Log all statistics to MLFlow
+    mlf_logger.log(accumulations={combination_key: completed_validations})
+
+    return retrieved_validations
 
 #############
 # Resources #
@@ -252,8 +302,10 @@ class Validations(Resource):
                 "dockerised": true
             }
         """
-        # Populate grid-initialising parameters
         init_params = request.json
+
+        # Retrieve all connectivity settings for all Synergos components
+        retrieved_collaboration = collab_records.read(collab_id=collab_id)
 
         # Retrieves expt-run supersets (i.e. before filtering for relevancy)
         retrieved_project = project_records.read(
@@ -286,61 +338,68 @@ class Validations(Resource):
                 )
                 runs = [retrieved_run]
 
-        # Retrieve all participants' metadata
+        # Retrieve all relevant participant IDs, collapsing evaluation space if
+        # a specific participant was declared
         registrations = registration_records.read_all(
             filter={'collab_id': collab_id, 'project_id': project_id}
         )
-        usable_grids = rpc_formatter.extract_grids(registrations)
-        selected_grid = usable_grids[grid_idx]
-
-        # Retrieve all relevant participant IDs, collapsing evaluation space if
-        # a specific participant was declared
         participants = [
             record['participant']['id'] 
             for record in registrations
         ] if not participant_id else [participant_id]
 
-        # Template for starting FL grid and initialising validation
-        kwargs = {
-            'action': project_action,
-            'experiments': experiments,
-            'runs': runs,
-            'participants': participants,
-            'metas': ['evaluate'],
-            'version': None # defaults to final state of federated grid
-        }
-        kwargs.update(init_params)
-
-        completed_validations = evaluate_proc(
-            grid=selected_grid, 
-            multi_kwargs={project_id: kwargs}
+        # Extract all possible federated combinations given specified keys
+        valid_combinations = rpc_formatter.enumerate_federated_conbinations(
+            action=project_action,
+            experiments=experiments,
+            runs=runs,
+            participants=participants,
+            metas=['evaluate'],
+            version=None, # defaults to final state of federated grid
+            **init_params
         )
-        logging.warn(f"completed_validations: {completed_validations}")
 
-        retrieved_validations = []
-        for combination_key, validation_stats in completed_validations.items():
-
-            # Store output metadata into database
-            for participant_id, inference_stats in validation_stats.items():
+        is_cluster = False
+        if is_cluster:
+            # Submit parameters of federated combinations to job queue
+            queue_host = retrieved_collaboration['mq_host']
+            queue_port = retrieved_collaboration['mq_port']
+            valid_producer = EvaluateProducerOperator(
+                host=queue_host, 
+                port=queue_port
+            )
+            for valid_key, valid_kwargs in valid_combinations.items():
+                valid_producer.process({
+                    'process': 'validate',  # operations filter for MQ consumer
+                    'combination_key': valid_key,
+                    'combination_params': valid_kwargs
+                })
+            all_validations = []
+        
+        else:
+            # Run federated combinations sequentially using selected grid
+            all_validations = []
+            for valid_key, valid_kwargs in valid_combinations.items():
                 
-                # Log the inference stats
-                worker_key = (participant_id,) + combination_key
-                validation_records.create(*worker_key, details=inference_stats)
-                retrieved_validation = validation_records.read(*worker_key)
-                retrieved_validations.append(retrieved_validation)
+                retrieved_combination_validations = execute_validation_job(
+                    combination_key=valid_key, 
+                    combination_params=valid_kwargs
+                )
 
-        # Log all statistics to MLFlow
-        mlf_logger.log(accumulations=completed_validations)
+                # Flatten out list of predictions
+                all_validations += retrieved_combination_validations
 
         success_payload = payload_formatter.construct_success_payload(
             status=200,
             method="validations.post",
             params=request.view_args,
-            data=retrieved_validations
+            data=all_validations
         )
 
         logging.info(
-            f"Participant '{participant_id}' >|< Project '{project_id}' -> Experiment '{expt_id}' -> Run '{run_id}' >|< Validations: Record creation successful!", 
+            "Participant '{}' >|< Collaboration '{}' > Project '{}' > Experiment '{}' > Run '{}' >|< Validations: Record creation successful!".format(
+                participant_id, collab_id, project_id, expt_id, run_id
+            ),
             description=f"Validations for participant '{participant_id}' under project '{project_id}' using experiment '{expt_id}' and run '{run_id}' was successfully collected!",
             code=201, 
             ID_path=SOURCE_FILE,

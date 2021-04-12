@@ -10,8 +10,11 @@
 # Generic/Built-in
 import argparse
 import logging
+from random import randint
+from rest_rpc.evaluation.core.server import evaluate_proc
+import time
 import uuid
-from pathlib import Path
+from typing import Callable
 
 # Libs
 import ray
@@ -25,7 +28,9 @@ from config import (
     count_available_cpus,
     count_available_gpus
 )
-from synmanager.train import 
+from synmanager.preprocess_operations import PreprocessConsumerOperator
+from synmanager.train_operations import TrainConsumerOperator
+from synmanager.evaluate_operations import EvaluateConsumerOperator
 
 ##################
 # Configurations #
@@ -64,7 +69,7 @@ def construct_logger_kwargs(**kwargs) -> dict:
     logging_variant = logging_config[0]
     if logging_variant not in ["basic", "graylog"]:
         raise argparse.ArgumentTypeError(
-            f"Specified variant '{logging_variant}' is not supported!"
+            f"Specified logging variant '{logging_variant}' is not supported!"
         )
 
     server = (logging_config[1] if len(logging_config) > 1 else None)
@@ -95,60 +100,100 @@ def construct_logger_kwargs(**kwargs) -> dict:
         'censor_keys': censor_keys
     }
 
-# def str2bool(v):
-#     if isinstance(v, bool):
-#        return v
-#     if v.lower() in ('yes', 'true', 't', 'y', '1'):
-#         return True
-#     elif v.lower() in ('no', 'false', 'f', 'n', '0'):
-#         return False
-#     else:
-#         raise argparse.ArgumentTypeError('Boolean value expected.')
 
-# def poll_cycle(host):
-#     '''
-#     Run endless loop to poll messages across different queues and run respective callback operations.
-#     The hierachy of priority between queues, starting from the highest: Preprocess -> Train -> Evaluate
-#     '''
-#     i = 1
-#     preprocess_consume = PreprocessConsumerOperator(host)
-#     train_consume = TrainConsumerOperator(host)
-#     evaluate_consume = EvaluateConsumerOperator(host)
-    
-#     while True:
+def construct_queue_kwargs(**kwargs):
+    """ Extracts queue configuration values for linking server to said queue
 
-#         if (i%3 == 1):
-#             # Primary priority - preprocess queue
-#             preprocess_consume.poll_message(start_alignment)
+    Args:
+        kwargs: Any user input captured 
+    Returns:
+        Queue configurations (dict)
+    """
+    queue_config = kwargs['queue']
 
-#         elif (i%3 == 2):
-#             # Secondary priority - train queue
+    queue_variant = queue_config[0]
+    if queue_variant not in ["rabbitmq"]:
+        raise argparse.ArgumentTypeError(
+            f"Specified queue variant '{queue_variant}' is not supported!"
+        )
 
-#             # Check message count in higher priority queue
-#             preprocess_messages = preprocess_consume.check_message_count()
-#             if ( preprocess_messages > 0 ):
-#                 i = 1
-#                 sleep(3)
-#                 continue
-#             else:
-#                 train_consume.poll_message(start_training)
+    server = queue_config[1]
+    port = int(queue_config[2])
 
-#         else:
-#             # Tertiary priority - tertiary queue
+    return {'host': server, 'port': port}
 
-#             # Check message count in higher priority queues
-#             preprocess_messages = preprocess_consume.check_message_count()
-#             train_messages = train_consume.check_message_count()
-            
-#             if (preprocess_messages > 0) or (train_messages > 0):
-#                 i = 1
-#                 sleep(3)
-#                 continue
-#             else:
-#                 evaluate_consume.poll_message(start_evaluation)
 
-#         sleep(3)
-#         i += 1
+def poll_cycle(
+    host: str,
+    port: int,
+    preprocess_job: Callable,
+    train_job: Callable,
+    validate_job: Callable,
+    predict_job: Callable
+):
+    """ Run endless loop to poll messages across different queues and run 
+        respective callback operations. The hierachy of priority between queues, 
+        starting from the highest is as follows: 
+            Preprocess -> Train -> Evaluate
+    """
+    def executable_job(process, combination_key, combination_params):
+        """
+        """
+        JOB_MAPPINGS = {
+            'preprocess': preprocess_job,
+            'train': train_job,
+            'validate': validate_job,
+            'predict': predict_job
+        }
+
+        selected_job = JOB_MAPPINGS[process]
+        return selected_job(combination_key, combination_params)
+
+    preprocess_consumer = PreprocessConsumerOperator(host=host, port=port)
+    train_consumer = TrainConsumerOperator(host=host, port=port)
+    evaluate_consumer = EvaluateConsumerOperator(host=host, port=port)
+
+    ###########################
+    # Implementation Footnote #
+    ###########################
+
+    # [Cause]
+    # When running Synergos in SynCluster mode, TTPs, while still 
+    # commanding single grids, are no longer master orchestration nodes,
+    # and will receive orchestration instructions from the Director 
+
+    # [Problems]
+    # There should be no active REST interface on any TTP.
+
+    # [Solution]
+    # Replace REST interface with queue listeners for the Preprocess, Train
+    # & Evaluate queues in Synergos MQ to allow TTPs to retrieve jobs to 
+    # run in their respective local grids
+
+    while True:
+
+        # Check message count in higher priority queues
+        preprocess_messages = preprocess_consumer.check_message_count()
+        train_messages = train_consumer.check_message_count()
+        evaluate_messages = evaluate_consumer.check_message_count()
+
+        try:
+            if preprocess_messages > 0:
+                preprocess_consumer.poll_message(executable_job)
+
+            elif train_messages > 0:
+                train_consumer.poll_message(executable_job)
+
+            elif evaluate_messages > 0:
+                evaluate_consumer.poll_message(executable_job)
+
+            else:
+                print("No jobs in queue! Waiting for 1 second...")
+        
+        except Exception:
+            pass
+
+        time.sleep(1)
 
 ###########
 # Scripts #
@@ -180,9 +225,18 @@ if __name__ == "__main__":
         "--logging_variant",
         "-l",
         type=str,
-        default="basic",
+        default=["basic"],
         nargs="+",
         help="Type of logging framework to use. eg. --logging_variant graylog 127.0.0.1 9400"
+    )
+
+    parser.add_argument(
+        "--queue",
+        "-mq",
+        type=str,
+        default=["rabbitmq"],
+        nargs="+",
+        help="Type of queue framework to use. eg. --queue rabbitmq 127.0.0.1 5672"
     )
 
     parser.add_argument(
@@ -226,9 +280,15 @@ if __name__ == "__main__":
         **system_kwargs
     )
 
-    # Set up sysmetric logger
-    sysmetric_logger = configure_sysmetric_logger(**logger_kwargs)
-    sysmetric_logger.track("/test/path", 'TestClass', 'test_function')
+    mq_kwargs = construct_queue_kwargs(**input_kwargs)
+    node_logger.synlog.info(
+        f"Orchestrator `{server_id}` -> Snapshot of Queue Parameters",
+        **mq_kwargs
+    )
+
+    # # Set up sysmetric logger
+    # sysmetric_logger = configure_sysmetric_logger(**logger_kwargs)
+    # sysmetric_logger.track("/test/path", 'TestClass', 'test_function')
 
 
     ###########################
@@ -249,28 +309,19 @@ if __name__ == "__main__":
     # [Solution]
     # Import system modules only after loggers have been intialised.
 
-    from rest_rpc.training.core.server import align_proc, train_proc
-    from rest_rpc.evaluation.core.server import evaluate_proc
+    from rest_rpc.training.alignments import execute_alignment_job
+    from rest_rpc.training.models import execute_training_job
+    # from rest_rpc.evaluation.validations import execute_validation
+    # from rest_rpc.evaluation.predictions import execute_prediction
         
     try:
-        ###########################
-        # Implementation Footnote #
-        ###########################
-
-        # [Cause]
-        # When running Synergos in SynCluster mode, TTPs, while still 
-        # commanding single grids, are no longer master orchestration nodes,
-        # and will receive orchestration instructions from the Director 
-
-        # [Problems]
-        # There should be no active REST interface on any TTP.
-
-        # [Solution]
-        # Replace REST interface with queue listeners for the Preprocess, Train
-        # & Evaluate queues in Synergos MQ to allow TTPs to retrieve jobs to 
-        # run in their respective local grids
-        
-        pass
+        poll_cycle(
+            **mq_kwargs,
+            preprocess_job=execute_alignment_job,
+            train_job=execute_training_job,
+            evaluate_job=evaluate_inference_job
+        )
 
     finally:
-        sysmetric_logger.terminate()
+        # sysmetric_logger.terminate()
+        pass

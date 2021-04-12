@@ -330,10 +330,136 @@ def load_selected_experiment(expt_record: dict) -> Model:
     return model
 
 
-def start_expt_run_training(
+def execute_combination_alignment(
+    grid: List[Dict[str, Any]], 
+    experiments: List[Document],
+    auto_align: bool = True,
+    auto_fix: bool = True
+) -> Dict[str, Any]:
+    """ Automates the execution of alignment processes performed pre-training.
+        Headers & dataset metadata is collected from all participants and used
+        to extract alignment indexes for automatic data augmentation. 
+        Alignments are also used to dynamically reconfigure experiment models,
+        specifically input & output layers declared under a specific project.
+        Note: This is a process that runs on a single grid! Hence, grid 
+        assignment needs to be handled prior to this. Similarly, load balancing
+        of federated combinations should be handled outside of this functional
+        context, as all combinations detected here will be assumed to be
+        assigned to the same grid.
+
+    Args:
+        grid (list(dict))): Registry of participants' node information
+        kwargs (dict): Experiments & models to be tested
+    Returns:
+        Path-to-trained-models (list(str))
+    """
+    ###########################
+    # Implementation Footnote #
+    ###########################
+
+    # [Cause]
+    # Decoupling of MFA from training cycle is required. This is because 
+    # polling is an essential step in the initialisation & caching of all
+    # datasets across all participants of the grid
+
+    # [Problems]
+    # If workers are not polled for their headers and schemas, since project 
+    # logs are generated via polling, not doing so results in an error for 
+    # subsequent operations
+
+    # [Solution]
+    # Poll irregardless of alignment. Modify Worker's Poll endpoint to be able 
+    # to handle repeated initiialisations (i.e. create project logs if it does
+    # not exist, otherwise retrieve)
+
+    poller = Poller()
+    all_metadata = poller.poll(grid=grid)
+
+    (X_data_headers, y_data_headers, key_sequences, _, descriptors
+    ) = rpc_formatter.aggregate_metadata(all_metadata)
+
+    spacer_collection = {}      # no spacers generated
+    aligned_experiments = []    # no model augmentations generated
+
+    if auto_align:
+
+        ##############################
+        # Auto-alignment of datasets #
+        ##############################
+
+        X_mfa_aligner = MultipleFeatureAligner(headers=X_data_headers)
+        X_mf_alignments = X_mfa_aligner.align()
+
+        y_mfa_aligner = MultipleFeatureAligner(headers=y_data_headers)
+        y_mf_alignments = y_mfa_aligner.align()
+
+        spacer_collection = rpc_formatter.alignment_to_spacer_idxs(
+            X_mf_alignments=X_mf_alignments,
+            y_mf_alignments=y_mf_alignments,
+            key_sequences=key_sequences
+        )
+
+    if auto_fix:
+
+        #############################################
+        # Auto-alignment of global inputs & outputs #
+        #############################################
+        
+        for curr_expt in experiments:
+
+            expt_model = curr_expt['model']
+
+            # Check if input layer needs alignment
+            input_config = expt_model.pop(0)
+            input_layer = torch_parser.parse_layer(input_config['l_type'])
+            input_params = list(inspect.signature(input_layer.__init__).parameters)
+            input_key = input_params[1] # from [self, input, output, ...]
+            
+            # Only modify model inputs if handling non-image data! An 
+            # assumption for now is that all collaborating parties have 
+            # images of the same type of color scale (eg. grayscale, RGBA) 
+            if "in_channels" not in input_key:
+                aligned_input_size = len(X_mfa_aligner.superset)
+                input_config['structure'][input_key] = aligned_input_size
+
+            expt_model.insert(0, input_config)
+
+            # Check if output layer needs alignment
+            output_config = expt_model.pop(-1)
+            output_layer = torch_parser.parse_layer(output_config['l_type'])
+            output_params = list(inspect.signature(output_layer.__init__).parameters)
+            output_key = output_params[2] # from [self, input, output, ...]
+            aligned_output_size = len(y_mfa_aligner.superset)
+            if aligned_output_size <= 2:
+                # Case 1: Regression or Binary classification
+                output_config['structure'][output_key] = 1
+            else:
+                # Case 2: Multiclass classification
+                output_config['structure'][output_key] = aligned_output_size
+                
+                # If the no. of class labels has expanded, switch from 
+                # linear activations to softmax variants
+                output_config['activation'] = "softmax"
+
+            expt_model.append(output_config)
+
+            expt_updates = {
+                **curr_expt['key'],
+                'updates': {'model': expt_model}
+            }
+            aligned_experiments.append(expt_updates)
+
+    #####################################
+    # Updating Neo4J for Amundsen (TBC) #
+    #####################################
+
+    return spacer_collection, aligned_experiments, descriptors
+
+
+def execute_combination_training(
+    grid: List[Dict[str, Any]], 
     keys: dict, 
     action: str,
-    grid: List[Dict[str, Any]], 
     experiment: dict, 
     run: dict, 
     auto_align: bool,
@@ -344,9 +470,9 @@ def start_expt_run_training(
     """ Trains a model corresponding to a SINGLE experiment-run combination
 
     Args:
+        grid (list(dict))): Registry of participants' node information
         keys (dict): Relevant Project ID, Expt ID & Run ID
         action (str): Type of machine learning operation to be executed
-        grid (list(dict))): Registry of participants' node information
         experiment (dict): Parameters for reconstructing experimental model
         run (dict): Hyperparameters to be used during grid FL training
         auto_align (bool): Toggles if multiple feature alignments will be used
@@ -433,7 +559,7 @@ def start_expt_run_training(
         # Implementation FootNote #
         ###########################
         
-        # Mode customisation will be left here for now. But might be migrated
+        # Model customisation will be left here for now. But might be migrated
         # into federated_learning.py if more gpu customisation parameters need
         # to be forwarded into FederatedDataloader. This will localise all GPU
         # integrations into a single file which is easier to maintain
@@ -550,7 +676,7 @@ def start_expt_run_training(
         f"Current training combination: {keys}",
         keys=keys,
         ID_path=SOURCE_FILE,
-        ID_function=start_expt_run_training.__name__
+        ID_function=execute_combination_training.__name__
     )
 
     # Send initialisation signal to all remote worker WSSW objects
@@ -582,13 +708,13 @@ def start_expt_run_training(
             "All remaining ObjectPointers un-collected tracked.",
             uncollected_pointers=track_object_references(ObjectPointer),
             ID_path=SOURCE_FILE,
-            ID_function=start_expt_run_training.__name__
+            ID_function=execute_combination_training.__name__
         )
 
         logging.info(
             f"Objects left in env: {sy.local_worker._objects}, {sy.local_worker._known_workers}",
             ID_path=SOURCE_FILE,
-            ID_function=start_expt_run_training.__name__       
+            ID_function=execute_combination_training.__name__       
         )
     
     except OSError as o:
@@ -596,282 +722,10 @@ def start_expt_run_training(
             "Caught an OS problem...",
             description=f"{o}",
             ID_path=SOURCE_FILE,
-            ID_function=start_expt_run_training.__name__
+            ID_function=execute_combination_training.__name__
         )
 
     # Send terminate signal to all participants' worker nodes
     governor.terminate(grid=grid)
 
     return results
-
-
-# async def train_on_combinations(combinations):
-#     """ Asynchroneous function to perform FL grid training over all registered
-#         participants over a series of experiment-run combinations
-
-#     Args:
-#         combinations (dict(tuple, dict)): All TTP registered combinations
-#     Returns:
-#         Results of FL grid training from enumerated combinations (dict)
-#     """
-#     # Apply asynchronous training to each batch
-#     futures = [
-#         start_expt_run_training(kwargs) 
-#         for kwargs in combinations.values()
-#     ]
-#     all_outpaths = await asyncio.gather(*futures)
-
-#     results = dict(zip(combinations.keys(), all_outpaths))
-#     return results
-
-
-def align_proc(
-    grid: List[Dict[str, Any]], 
-    kwargs: Dict[str, Any]
-) -> Dict[str, Any]:
-    """ Automates the execution of alignment processes performed pre-training.
-        Headers & dataset metadata is collected from all participants and used
-        to extract alignment indexes for automatic data augmentation. 
-        Alignments are also used to dynamically reconfigure experiment models,
-        specifically input & output layers declared under a specific project.
-        Note: This is a process that runs on a single grid! Hence, grid 
-        assignment needs to be handled prior to this. Similarly, load balancing
-        of federated combinations should be handled outside of this functional
-        context, as all combinations detected here will be assumed to be
-        assigned to the same grid.
-
-    Args:
-        grid (list(dict))): Registry of participants' node information
-        kwargs (dict): Experiments & models to be tested
-    Returns:
-        Path-to-trained-models (list(str))
-    """
-    experiments = kwargs['experiments']
-    auto_align = kwargs['auto_align']
-    auto_fix = kwargs['auto_fix']
-
-    ###########################
-    # Implementation Footnote #
-    ###########################
-
-    # [Cause]
-    # Decoupling of MFA from training cycle is required. This is because 
-    # polling is an essential step in the initialisation & caching of all
-    # datasets across all participants of the grid
-
-    # [Problems]
-    # If workers are not polled for their headers and schemas, since project 
-    # logs are generated via polling, not doing so results in an error for 
-    # subsequent operations
-
-    # [Solution]
-    # Poll irregardless of alignment. Modify Worker's Poll endpoint to be able 
-    # to handle repeated initiialisations (i.e. create project logs if it does
-    # not exist, otherwise retrieve)
-
-    poller = Poller()
-    all_metadata = poller.poll(grid=grid)
-
-    (X_data_headers, y_data_headers, key_sequences, _, descriptors
-    ) = rpc_formatter.aggregate_metadata(all_metadata)
-
-    spacer_collection = {}      # no spacers generated
-    aligned_experiments = []    # no model augmentations generated
-
-    if auto_align:
-
-        ##############################
-        # Auto-alignment of datasets #
-        ##############################
-
-        X_mfa_aligner = MultipleFeatureAligner(headers=X_data_headers)
-        X_mf_alignments = X_mfa_aligner.align()
-
-        y_mfa_aligner = MultipleFeatureAligner(headers=y_data_headers)
-        y_mf_alignments = y_mfa_aligner.align()
-
-        spacer_collection = rpc_formatter.alignment_to_spacer_idxs(
-            X_mf_alignments=X_mf_alignments,
-            y_mf_alignments=y_mf_alignments,
-            key_sequences=key_sequences
-        )
-
-    if auto_fix:
-
-        #############################################
-        # Auto-alignment of global inputs & outputs #
-        #############################################
-        
-        for curr_expt in experiments:
-
-            expt_model = curr_expt['model']
-
-            # Check if input layer needs alignment
-            input_config = expt_model.pop(0)
-            input_layer = torch_parser.parse_layer(input_config['l_type'])
-            input_params = list(inspect.signature(input_layer.__init__).parameters)
-            input_key = input_params[1] # from [self, input, output, ...]
-            
-            # Only modify model inputs if handling non-image data! An 
-            # assumption for now is that all collaborating parties have 
-            # images of the same type of color scale (eg. grayscale, RGBA) 
-            if "in_channels" not in input_key:
-                aligned_input_size = len(X_mfa_aligner.superset)
-                input_config['structure'][input_key] = aligned_input_size
-
-            expt_model.insert(0, input_config)
-
-            # Check if output layer needs alignment
-            output_config = expt_model.pop(-1)
-            output_layer = torch_parser.parse_layer(output_config['l_type'])
-            output_params = list(inspect.signature(output_layer.__init__).parameters)
-            output_key = output_params[2] # from [self, input, output, ...]
-            aligned_output_size = len(y_mfa_aligner.superset)
-            if aligned_output_size <= 2:
-                # Case 1: Regression or Binary classification
-                output_config['structure'][output_key] = 1
-            else:
-                # Case 2: Multiclass classification
-                output_config['structure'][output_key] = aligned_output_size
-                
-                # If the no. of class labels has expanded, switch from 
-                # linear activations to softmax variants
-                output_config['activation'] = "softmax"
-
-            expt_model.append(output_config)
-
-            expt_updates = {
-                **curr_expt['key'],
-                'updates': {'model': expt_model}
-            }
-            aligned_experiments.append(expt_updates)
-
-    #####################################
-    # Updating Neo4J for Amundsen (TBC) #
-    #####################################
-
-    return spacer_collection, aligned_experiments, descriptors
-
-
-def train_proc(
-    grid: List[Dict[str, Any]], 
-    kwargs: Dict[str, Any]
-) -> Dict[str, Any]:
-    """ Automates the execution of Federated learning experiments on different
-        hyperparameter sets & model architectures.
-        Note: This is a process that runs on a single grid! Hence, grid 
-        assignment needs to be handled prior to this. Similarly, load balancing
-        of federated combinations should be handled outside of this functional
-        context, as all combinations detected here will be assumed to be
-        assigned to the same grid.
-
-    Args:
-        grid (list(dict))): Registry of participants' node information
-        kwargs (dict): Experiments & models to be tested
-    Returns:
-        Path-to-trained-models (list(str))
-    """
-    action = kwargs['action']
-    experiments = kwargs['experiments']
-    runs = kwargs['runs']
-    is_verbose = kwargs['verbose']
-    log_msgs = kwargs['log_msgs']
-    is_dockerised = kwargs['dockerised']
-    auto_align = kwargs['auto_align']
-
-    training_combinations = {}
-    for expt_record in experiments:
-        curr_expt_id = expt_record['key']['expt_id']
-
-        for run_record in runs:
-            run_key = run_record['key']
-            collab_id = run_key['collab_id']
-            project_id = run_key['project_id']
-            expt_id = run_key['expt_id']
-            run_id = run_key['run_id']
-
-            if expt_id == curr_expt_id:
-
-                combination_key = (collab_id, project_id, expt_id, run_id)
-                project_expt_run_params = {
-                    'keys': run_key,
-                    'action': action,
-                    'grid': grid,
-                    'experiment': expt_record,
-                    'run': run_record,
-                    'auto_align': auto_align,
-                    'dockerised': is_dockerised, 
-                    'log_msgs': log_msgs, 
-                    'verbose': is_verbose
-                }
-                training_combinations[combination_key] = project_expt_run_params
-
-    logging.info(
-        "Training combinations loaded!",
-        training_combinations=f"{training_combinations}",
-        ID_path=SOURCE_FILE,
-        ID_function=train_proc.__name__
-    )
-
-    # """
-    # ##########################################################
-    # # Multiprocessing - Run each process on an isolated core #
-    # ##########################################################
-    # [Redacted - Due to PySyft objects being unserialisable, this feature has
-    #             been frozen until further notice
-    # ]
-
-    # pool = ProcessingPool(nodes=core_count)
-
-    # results = pool.amap(start_expt_run_training, training_combinations.values())
-
-    # while not results.ready():
-    #     time.sleep(1)
-        
-    # results = results.get()
-
-    # # Clean up Pathos multiprocessing pool
-    # pool.close()
-    # pool.join()
-    # pool.terminate()
-
-    # completed_trainings = dict(zip(training_combinations.keys(), results))
-    # return completed_trainings
-    # """
-
-    # """
-    # #############################################################
-    # # Optimisation Alternative - Asynchronised FL grid Training #
-    # #############################################################
-    # [Redacted - Due to _recv stuck listening in a circular loop, this feature 
-    #             has been frozen until further notice
-    # ]
-
-    # loop = asyncio.new_event_loop()
-    # asyncio.set_event_loop(loop)
-
-    # try:
-    #     completed_trainings = loop.run_until_complete(
-    #         train_on_combinations(combinations=training_combinations)
-    #     )
-    # finally:
-    #     loop.close()
-
-    # return completed_trainings
-    # """
-    
-    # #######################################################################
-    # # Default Implementation - Synchroneous execution of FL grid training #
-    # #######################################################################
-
-    # # results = map(
-    # #     lambda kwargs: start_expt_run_training(**kwargs), 
-    # #     training_combinations.values()
-    # # )
-
-    completed_trainings = {
-        combination_key: start_expt_run_training(**kwargs) 
-        for combination_key, kwargs in training_combinations.items()
-    }
-
-    return completed_trainings

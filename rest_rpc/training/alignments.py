@@ -5,23 +5,27 @@
 ####################
 
 # Generic/Built-in
-import importlib
-import inspect
 import os
-import random
 from logging import NOTSET
+from typing import Dict, List, Union, Any
 
 # Libs
 from flask import request
 from flask_restx import Namespace, Resource, fields
+from tinydb.database import Document
 
 # Custom
 from rest_rpc import app
 from rest_rpc.connection.core.utils import TopicalPayload
-from rest_rpc.training.core.server import align_proc
+from rest_rpc.training.core.server import execute_combination_alignment
 from rest_rpc.training.core.utils import RPCFormatter
-from synarchive.connection import ExperimentRecords, RegistrationRecords
+from synarchive.connection import (
+    CollaborationRecords, 
+    ExperimentRecords, 
+    RegistrationRecords
+)
 from synarchive.training import AlignmentRecords
+from synmanager.preprocess_operations import PreprocessProducerOperator
 
 ##################
 # Configurations #
@@ -37,6 +41,7 @@ ns_api = Namespace(
 grid_idx = app.config['GRID']
 
 db_path = app.config['DB_PATH']
+collab_records = CollaborationRecords(db_path=db_path)
 expt_records = ExperimentRecords(db_path=db_path)
 registration_records = RegistrationRecords(db_path=db_path)
 alignment_records = AlignmentRecords(db_path=db_path)
@@ -103,6 +108,60 @@ payload_formatter = TopicalPayload(
     model=alignment_output_model
 )
 
+########
+# Jobs #
+########
+
+def execute_alignment_job(
+    combination_key: List[str],
+    combination_params: Dict[str, Union[str, int, float, list, dict]]
+) -> List[Document]:
+    """ Encapsulated job function to be compatible for queue integrations.
+        Executes alignment process, and stores all outputs for subsequent use.
+
+    Args:
+        combination_key (dict): Composite IDs of a federated combination
+        combination_params (dict): Initializing parameters for an alignment job
+    Returns:
+        Generated alignments (list(Document))   
+    """
+    collab_id, project_id = combination_key
+
+    # Retrieve all participants' metadata
+    registrations = registration_records.read_all(
+        filter={'collab_id': collab_id, 'project_id': project_id}
+    )
+    usable_grids = rpc_formatter.extract_grids(registrations)
+    selected_grid = usable_grids[grid_idx]
+
+    spacer_collection, aligned_experiments, _ = execute_combination_alignment(
+        grid=selected_grid,
+        **combination_params
+    )
+
+    # Store generated alignment indexes for subsequent use
+    retrieved_alignments = []
+    for p_id, spacer_idxs in spacer_collection.items():
+
+        alignment_records.create(
+            collab_id=collab_id,
+            project_id=project_id,
+            participant_id=p_id,
+            details=spacer_idxs
+        ) 
+        retrieved_alignment = alignment_records.read(
+            collab_id=collab_id,
+            project_id=project_id,
+            participant_id=p_id
+        )
+        retrieved_alignments.append(retrieved_alignment)
+
+    # Apply alignment updates to existing model architecture
+    for expt_updates in aligned_experiments:
+        expt_records.update(**expt_updates)
+
+    return retrieved_alignments
+
 #############
 # Resources #
 #############
@@ -128,10 +187,7 @@ class Alignments(Resource):
     def get(self, collab_id, project_id):
         """ Retrieves all alignments for all registered data under a project """
         retrieved_alignments = alignment_records.read_all(
-            filter={
-                'collab_id': collab_id,
-                'project_id': project_id
-            }
+            filter={'collab_id': collab_id, 'project_id': project_id}
         )
 
         if retrieved_alignments:
@@ -179,45 +235,37 @@ class Alignments(Resource):
             their registered data tags to trigger the RPC for polling 
             participant metadata for alignment
         """
-        # Populate grid-initialising parameters
-        init_params = request.json
+        # Retrieve all connectivity settings for all Synergos components
+        retrieved_collaboration = collab_records.read(collab_id=collab_id)
+
+        # Retrieve all relevant experimental model architectures
+        experiments = expt_records.read_all(filter=request.view_args)
 
         try:
-            all_relevant_registrations = registration_records.read_all(
-                filter={'collab_id': collab_id, 'project_id': project_id}
-            )
-            usable_grids = rpc_formatter.extract_grids(all_relevant_registrations)
-            selected_grid = usable_grids[grid_idx]
+            combination_key = (collab_id, project_id)
+            combination_params = {'experiments': experiments, **request.json}
 
-            all_expts = expt_records.read_all(
-                filter={'collab_id': collab_id, 'project_id': project_id}
-            )
-
-            spacer_collection, aligned_experiments, _ = align_proc(
-                grid=selected_grid,
-                kwargs={'experiments': all_expts, **init_params}
-            )
-
-            # Store generated alignment indexes for subsequent use
-            retrieved_alignments = []
-            for p_id, spacer_idxs in spacer_collection.items():
-
-                alignment_records.create(
-                    collab_id=collab_id,
-                    project_id=project_id,
-                    participant_id=p_id,
-                    details=spacer_idxs
-                ) 
-                retrieved_alignment = alignment_records.read(
-                    collab_id=collab_id,
-                    project_id=project_id,
-                    participant_id=p_id
+            is_cluster = False
+            if is_cluster:
+                # Submit parameters of federated combinations to job queue
+                queue_host = retrieved_collaboration['mq_host']
+                queue_port = retrieved_collaboration['mq_port']
+                preprocess_producer = PreprocessProducerOperator(
+                    host=queue_host, 
+                    port=queue_port
                 )
-                retrieved_alignments.append(retrieved_alignment)
-
-            # Apply alignment updates to existing model architecture
-            for expt_updates in aligned_experiments:
-                expt_records.update(**expt_updates)
+                preprocess_producer.process({
+                    'process': 'preprocess',  # operations filter for MQ consumer
+                    'combination_key': combination_key,
+                    'combination_params': combination_params
+                })
+            
+            else:
+                # Run federated combinations sequentially using selected grid
+                retrieved_alignments = execute_alignment_job(
+                    combination_key=combination_key, 
+                    combination_params=combination_params
+                )
 
             success_payload = payload_formatter.construct_success_payload(
                 status=201, 

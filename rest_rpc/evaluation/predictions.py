@@ -6,21 +6,23 @@
 
 # Generic/Built-in
 import os
-import random
 from logging import NOTSET
+from typing import Dict, List, Union, Any
 
 # Libs
 from flask import request
 from flask_restx import Namespace, Resource, fields
+from tinydb.database import Document
 
 # Custom
 from rest_rpc import app
 from rest_rpc.connection.core.utils import TopicalPayload
-from rest_rpc.training.core.server import align_proc
+from rest_rpc.training.core.server import execute_combination_alignment
 from rest_rpc.training.core.utils import RPCFormatter
-from rest_rpc.evaluation.core.server import evaluate_proc
+from rest_rpc.evaluation.core.server import execute_combination_inference
 from rest_rpc.evaluation.validations import meta_stats_model
 from synarchive.connection import (
+    CollaborationRecords,
     ProjectRecords,
     ExperimentRecords,
     RunRecords,
@@ -30,6 +32,7 @@ from synarchive.connection import (
 )
 from synarchive.training import AlignmentRecords, ModelRecords
 from synarchive.evaluation import PredictionRecords
+from synmanager.evaluate_operations import EvaluateProducerOperator
 
 ##################
 # Configurations #
@@ -45,6 +48,7 @@ ns_api = Namespace(
 grid_idx = app.config['GRID']
 
 db_path = app.config['DB_PATH']
+collab_records = CollaborationRecords(db_path=db_path)
 project_records = ProjectRecords(db_path=db_path)
 expt_records = ExperimentRecords(db_path=db_path)
 run_records = RunRecords(db_path=db_path)
@@ -116,6 +120,195 @@ payload_formatter = TopicalPayload(
     namespace=ns_api, 
     model=pred_output_model
 )
+
+########
+# Jobs #
+########
+
+def execute_prediction_job(
+    combination_key: List[str],
+    combination_params: Dict[str, Union[str, int, float, list, dict]]
+) -> List[Document]:
+    """ Encapsulated job function to be compatible for queue integrations.
+        Executes model inference/usage for a specified federated cycle, and 
+        stores all outputs for subsequent use.
+
+    Args:
+        combination_key (dict): Composite IDs of a federated combination
+        combination_params (dict): Initializing parameters for a prediction job
+    Returns:
+        Validation statistics (list(Document))    
+    """
+    collab_id, project_id, expt_id, run_id = combination_key
+    participant_id = combination_params['participants'][0]  # participant's POV
+
+    new_pred_tags = combination_params.pop('tags')
+
+    # Update prediction tags for all queried projects
+    for queried_project_id, tags in new_pred_tags.items():
+        tag_records.update(
+            collab_id=collab_id,
+            project_id=queried_project_id, 
+            participant_id=participant_id,
+            updates={'predict': tags}
+        )
+
+    # Retrieve all participants' metadata enrolled for curr project
+    project_registrations = registration_records.read_all(
+        filter={'collab_id': collab_id, 'project_id': project_id}
+    )
+    unaligned_grids = rpc_formatter.extract_grids(project_registrations)
+    selected_unaligned_grid = unaligned_grids[grid_idx]
+
+    ###########################
+    # Implementation Footnote #
+    ###########################
+
+    # [Cause]
+    # Decoupling of MFA from inference should be made more explicit.
+
+    # [Problems]
+    # Auto-alignment is not scalable to datasets that have too many 
+    # features and can consume too much computation resources such that 
+    # the container will crash.
+
+    # [Solution]
+    # Explicitly declare new state parameters that allows sections of
+    # alignment procedure to be skipped when necessary, provided that 
+    # the declared model parameters are CORRECT!!! If `auto_align` is 
+    # true, then MFA will be performed to obtain alignment indexes for 
+    # the newly declared prediction data tags in preparation for 
+    # inference. If `auto-align` is false, then MFA is skipped 
+    # (i.e. inference data is ASSUMED to have the same structure as 
+    # that of training & validation data). However, the model should 
+    # not be allowed to mutate, and so `auto_fix` must be de-activated. 
+
+    experiments = [combination_params['experiment']]
+    auto_align = combination_params['auto_align']
+
+    spacer_collection, _, _ = execute_combination_alignment(
+        grid=selected_unaligned_grid, 
+        experiments=experiments,
+        auto_align=auto_align,   # MFA toggled dependent on participant
+        auto_fix=False           # model cannot be allowed to mutate
+    )
+
+    for p_id, spacer_idxs in spacer_collection.items():
+
+        if p_id != participant_id:
+            
+            ###########################
+            # Implementation Footnote #
+            ###########################
+
+            # [Cause]
+            # Alignments are dynamically generated based on the
+            # retrieved state of headers from the workers. When
+            # declaring new prediction tags, the current state of
+            # alignments archived have to be re-evaluated for changes
+            # to accomodate the new dataset(s).
+
+            # [Problems]
+            # Auto re-alignment should not affect existing datasets.
+            # This is because the global model has been calibrated with
+            # their feature set, and any modification to the feature
+            # set will render the trained model unusable, as the
+            # input/output structures of the model architecture will
+            # become mis-aligned.
+
+            # [Solution]
+            # Do NOT allow feature drift. If participant declares a
+            # prediction tag that contains feature/label classes that
+            # were unaccounted for in the training of the current 
+            # model, then reject the inference request.
+
+            retrieved_alignments = alignment_records.read(
+                collab_id=collab_id,
+                project_id=project_id,
+                participant_id=p_id
+            )
+            retrieved_spacer_idxs = rpc_formatter.strip_keys(
+                record=retrieved_alignments,
+                concise=True
+            )
+
+            if retrieved_spacer_idxs != spacer_idxs:
+                logging.error(
+                    "Participant '{}' >|< Collaboration '{}' > Project '{}' > Experiment '{}' > Run '{}' >|< Predictions: Feature drift detected!".format(
+                        participant_id, collab_id, project_id, expt_id, run_id
+                    ),
+                    description="Dataset characteristics are incompatible with current model.",
+                    spacer_idxs=spacer_idxs,
+                    ID_path=SOURCE_FILE,
+                    ID_class=Predictions.__name__, 
+                    ID_function=Predictions.post.__name__,
+                    **request.view_args
+                )
+                ns_api.abort(
+                    code=403,
+                    message="Feature drift detected! Dataset characteristics are incompatible with current model."
+                )
+
+        else:
+            logging.debug(
+                "Participant '{}' >|< Collaboration '{}' > Project '{}' > Experiment '{}' > Run '{}' >|< Predictions: Spacer Indexes tracked.".format(
+                    participant_id, collab_id, project_id, expt_id, run_id
+                ),
+                spacer_idxs=spacer_idxs,
+                ID_path=SOURCE_FILE,
+                ID_class=Predictions.__name__, 
+                ID_function=Predictions.post.__name__,
+                **request.view_args
+            )
+
+            alignment_records.update(
+                collab_id=collab_id,
+                project_id=project_id,
+                participant_id=p_id,
+                updates=spacer_idxs
+            ) 
+
+    # Retrieve registrations updated with possibly new alignments
+    updated_registrations = registration_records.read_all(
+        filter={'collab_id': collab_id, 'project_id': project_id}
+    )
+    aligned_grids = rpc_formatter.extract_grids(updated_registrations)
+    selected_grid = aligned_grids[grid_idx]
+
+    logging.debug(
+        "Participant '{}' >|< Collaboration '{}' > Project '{}' > Experiment '{}' > Run '{}' >|< Predictions: Updated project registrations tracked.".format(
+            participant_id, collab_id, project_id, expt_id, run_id
+        ),
+        updated_registrations=updated_registrations, 
+        ID_path=SOURCE_FILE,
+        ID_function=execute_prediction_job.__name__
+    )
+
+    completed_predictions = execute_combination_inference(
+        grid=selected_grid,
+        **combination_params
+    ) 
+
+    logging.debug(
+        "Participant '{}' >|< Collaboration '{}' > Project '{}' > Experiment '{}' > Run '{}' >|< Predictions: Inference stats tracked.".format(
+            participant_id, collab_id, project_id, expt_id, run_id
+        ),
+        completed_predictions=completed_predictions, 
+        ID_path=SOURCE_FILE,
+        ID_function=execute_prediction_job.__name__
+    )
+
+    # Store output metadata into database
+    retrieved_predictions = []
+    for participant_id, inference_stats in completed_predictions.items():
+        
+        worker_key = (participant_id,) + combination_key
+        prediction_records.create(*worker_key, details=inference_stats)
+        retrieved_prediction = prediction_records.read(*worker_key)
+        
+        retrieved_predictions.append(retrieved_prediction)
+
+    return retrieved_predictions
 
 #############
 # Resources #
@@ -223,32 +416,10 @@ class Predictions(Resource):
                 }
             }
         """
-        # Populate grid-initialising parameters
         init_params = request.json
 
-        auto_align = init_params['auto_align']
-        is_dockerised = init_params['dockerised']
-        new_pred_tags = init_params['tags']
-
-        logging.debug(
-            "Participant '{}' >|< Collaboration '{}' > Project '{}' > Experiment '{}' > Run '{}' >|< Predictions: Input keys tracked.".format(
-                participant_id, collab_id, project_id, expt_id, run_id
-            ),
-            keys=request.view_args, 
-            ID_path=SOURCE_FILE,
-            ID_class=Predictions.__name__, 
-            ID_function=Predictions.post.__name__,
-            **request.view_args
-        )
-
-        # Update prediction tags for all queried projects
-        for queried_project_id, tags in new_pred_tags.items():
-            tag_records.update(
-                collab_id=collab_id,
-                project_id=queried_project_id, 
-                participant_id=participant_id,
-                updates={'predict': tags}
-            )
+        # Retrieve all connectivity settings for all Synergos components
+        retrieved_collaboration = collab_records.read(collab_id=collab_id)
 
         # Participant's POV: Retrieve all projects within collaborations
         # registered under participant. If specific project was declared, 
@@ -286,7 +457,7 @@ class Predictions(Resource):
             **request.view_args
         )
 
-        project_combinations = {}
+        predict_combinations = {}
         for registration in participant_registrations:
 
             registered_project_id = registration['project']['key']['project_id']
@@ -322,217 +493,54 @@ class Predictions(Resource):
                     )
                     runs = [retrieved_run]
 
-            # Retrieve all participants' metadata enrolled for curr project
-            project_registrations = registration_records.read_all(
-                filter={
-                    'collab_id': collab_id,
-                    'project_id': registered_project_id
-                }
-            )
-            unaligned_grids = rpc_formatter.extract_grids(project_registrations)
-            selected_unaligned_grid = unaligned_grids[grid_idx]
-
-            ###########################
-            # Implementation Footnote #
-            ###########################
-
-            # [Cause]
-            # Decoupling of MFA from inference should be made more explicit.
-
-            # [Problems]
-            # Auto-alignment is not scalable to datasets that have too many 
-            # features and can consume too much computation resources such that 
-            # the container will crash.
-
-            # [Solution]
-            # Explicitly declare new state parameters that allows sections of
-            # alignment procedure to be skipped when necessary, provided that 
-            # the declared model parameters are CORRECT!!! If `auto_align` is 
-            # true, then MFA will be performed to obtain alignment indexes for 
-            # the newly declared prediction data tags in preparation for 
-            # inference. If `auto-align` is false, then MFA is skipped 
-            # (i.e. inference data is ASSUMED to have the same structure as 
-            # that of training & validation data). However, the model should 
-            # not be allowed to mutate, and so `auto_fix` must be de-activated. 
-
-            spacer_collection, _, _ = align_proc(
-                grid=selected_unaligned_grid, 
-                kwargs={
-                    'experiments': experiments,
-                    'auto_align': auto_align, # MFA toggled dependent on participant
-                    'auto_fix': False         # model cannot be allowed to mutate
-                }
+            # Extract all possible federated combinations given specified keys
+            project_combinations = rpc_formatter.enumerate_federated_conbinations(
+                action=project_action,
+                experiments=experiments,
+                runs=runs,
+                participants=[participant_id],
+                metas=['predict'],
+                version=None, # defaults to final state of federated grid
+                **init_params
             )
 
-            for p_id, spacer_idxs in spacer_collection.items():
+            predict_combinations.update(project_combinations)
 
-                if p_id != participant_id:
-                    
-                    ###########################
-                    # Implementation Footnote #
-                    ###########################
-
-                    # [Cause]
-                    # Alignments are dynamically generated based on the
-                    # retrieved state of headers from the workers. When
-                    # declaring new prediction tags, the current state of
-                    # alignments archived have to be re-evaluated for changes
-                    # to accomodate the new dataset(s).
-
-                    # [Problems]
-                    # Auto re-alignment should not affect existing datasets.
-                    # This is because the global model has been calibrated with
-                    # their feature set, and any modification to the feature
-                    # set will render the trained model unusable, as the
-                    # input/output structures of the model architecture will
-                    # become mis-aligned.
-
-                    # [Solution]
-                    # Do NOT allow feature drift. If participant declares a
-                    # prediction tag that contains feature/label classes that
-                    # were unaccounted for in the training of the current 
-                    # model, then reject the inference request.
-
-                    retrieved_alignments = alignment_records.read(
-                        collab_id=collab_id,
-                        project_id=registered_project_id,
-                        participant_id=p_id
-                    )
-                    retrieved_spacer_idxs = rpc_formatter.strip_keys(
-                        record=retrieved_alignments,
-                        concise=True
-                    )
-
-                    if retrieved_spacer_idxs != spacer_idxs:
-                        logging.error(
-                            "Participant '{}' >|< Collaboration '{}' > Project '{}' > Experiment '{}' > Run '{}' >|< Predictions: Feature drift detected!".format(
-                                participant_id, collab_id, project_id, expt_id, run_id
-                            ),
-                            description="Dataset characteristics are incompatible with current model.",
-                            spacer_idxs=spacer_idxs,
-                            ID_path=SOURCE_FILE,
-                            ID_class=Predictions.__name__, 
-                            ID_function=Predictions.post.__name__,
-                            **request.view_args
-                        )
-                        ns_api.abort(
-                            code=403,
-                            message="Feature drift detected! Dataset characteristics are incompatible with current model."
-                        )
-
-                else:
-                    logging.debug(
-                        "Participant '{}' >|< Collaboration '{}' > Project '{}' > Experiment '{}' > Run '{}' >|< Predictions: Spacer Indexes tracked.".format(
-                            participant_id, collab_id, project_id, expt_id, run_id
-                        ),
-                        spacer_idxs=spacer_idxs,
-                        ID_path=SOURCE_FILE,
-                        ID_class=Predictions.__name__, 
-                        ID_function=Predictions.post.__name__,
-                        **request.view_args
-                    )
-
-                    alignment_records.update(
-                        collab_id=collab_id,
-                        project_id=registered_project_id,
-                        participant_id=p_id,
-                        updates=spacer_idxs
-                    ) 
-
-            # Retrieve registrations updated with possibly new alignments
-            updated_registrations = registration_records.read_all(
-                filter={
-                    'collab_id': collab_id,
-                    'project_id': registered_project_id
-                }
+        is_cluster = False
+        if is_cluster:
+            # Submit parameters of federated combinations to job queue
+            queue_host = retrieved_collaboration['mq_host']
+            queue_port = retrieved_collaboration['mq_port']
+            predict_producer = EvaluateProducerOperator(
+                host=queue_host, 
+                port=queue_port
             )
-            aligned_grids = rpc_formatter.extract_grids(updated_registrations)
-            selected_grid = aligned_grids[grid_idx]
-
-            logging.debug(
-                "Participant '{}' >|< Collaboration '{}' > Project '{}' > Experiment '{}' > Run '{}' >|< Predictions: Updated project registrations tracked.".format(
-                    participant_id, collab_id, project_id, expt_id, run_id
-                ),
-                updated_registrations=updated_registrations, 
-                ID_path=SOURCE_FILE,
-                ID_class=Predictions.__name__, 
-                ID_function=Predictions.post.__name__,
-                **request.view_args
-            )
-
-            # Template for initialising FL grid
-            kwargs = {
-                'action': project_action,
-                'auto_align': auto_align,
-                'dockerised': is_dockerised,
-                'experiments': experiments,
-                'runs': runs,
-                'participants': [participant_id],
-                'metas': ['predict'],
-                'version': None # defaults to final state of federated grid
-            }
-            project_combinations[registered_project_id] = kwargs
-
-        logging.debug(
-            "Participant '{}' >|< Collaboration '{}' > Project '{}' > Experiment '{}' > Run '{}' >|< Predictions: Project combinations tracked.".format(
-                participant_id, collab_id, project_id, expt_id, run_id
-            ),
-            project_combinations=project_combinations, 
-            ID_path=SOURCE_FILE,
-            ID_class=Predictions.__name__, 
-            ID_function=Predictions.post.__name__,
-            **request.view_args
-        )
-
-        completed_inferences = evaluate_proc(
-            grid=selected_grid, 
-            multi_kwargs=project_combinations
-        )
-
-        logging.log(
-            level=NOTSET,
-            event="Participant '{}' >|< Collaboration '{}' > Project '{}' > Experiment '{}' > Run '{}' >|< Predictions: Completed Inferences tracked.".format(
-                participant_id, collab_id, project_id, expt_id, run_id
-            ),
-            completed_inferences=completed_inferences,
-            ID_path=SOURCE_FILE,
-            ID_class=Predictions.__name__, 
-            ID_function=Predictions.post.__name__,
-            **request.view_args
-        )
+            for predict_key, predict_kwargs in predict_combinations.items():
+                predict_producer.process({
+                    'process': 'predict',   # operations filter for MQ consumer
+                    'combination_key': predict_key,
+                    'combination_params': predict_kwargs
+                })
+            all_predictions = []
         
-        # Store output metadata into database
-        retrieved_predictions = []
-        for combination_key, inference_stats in completed_inferences.items():
+        else:
+            # Run federated combinations sequentially using selected grid
+            all_predictions = []
+            for predict_key, predict_kwargs in predict_combinations.items():
+                
+                retrieved_combination_predictions = execute_prediction_job(
+                    combination_key=predict_key, 
+                    combination_params=predict_kwargs
+                )
 
-            logging.debug(
-                "Participant '{}' >|< Collaboration '{}' > Project '{}' > Experiment '{}' > Run '{}' >|< Predictions: Inference stats tracked.".format(
-                    participant_id, collab_id, project_id, expt_id, run_id
-                ),
-                inference_stats=inference_stats, 
-                ID_path=SOURCE_FILE,
-                ID_class=Predictions.__name__, 
-                ID_function=Predictions.post.__name__,
-                **request.view_args
-            )
-
-            combination_key = (participant_id,) + combination_key
-
-            new_prediction = prediction_records.create(
-                *combination_key,
-                details=inference_stats[participant_id]
-            )
-
-            retrieved_prediction = prediction_records.read(*combination_key)
-
-            assert new_prediction.doc_id == retrieved_prediction.doc_id
-            retrieved_predictions.append(retrieved_prediction)
-
+                # Flatten out list of predictions
+                all_predictions += retrieved_combination_predictions
+        
         success_payload = payload_formatter.construct_success_payload(
             status=200,
             method="predictions.post",
             params=request.view_args,
-            data=retrieved_predictions
+            data=all_predictions
         )
 
         logging.info(

@@ -6,18 +6,20 @@
 
 # Generic/Built-in
 import os
-import random
+from typing import Dict, List, Union, Any
 
 # Libs
 from flask import request
 from flask_restx import Namespace, Resource, fields
+from tinydb.database import Document
 
 # Custom
 from rest_rpc import app
 from rest_rpc.connection.core.utils import TopicalPayload
 from rest_rpc.training.core.utils import Poller, RPCFormatter
-from rest_rpc.training.core.server import train_proc
+from rest_rpc.training.core.server import execute_combination_training
 from synarchive.connection import (
+    CollaborationRecords,
     ProjectRecords,
     ExperimentRecords,
     RunRecords,
@@ -26,6 +28,7 @@ from synarchive.connection import (
     TagRecords
 )
 from synarchive.training import AlignmentRecords, ModelRecords
+from synmanager.train_operations import TrainProducerOperator
 
 ##################
 # Configurations #
@@ -41,6 +44,7 @@ ns_api = Namespace(
 grid_idx = app.config['GRID']
 
 db_path = app.config['DB_PATH']
+collab_records = CollaborationRecords(db_path=db_path)
 project_records = ProjectRecords(db_path=db_path)
 expt_records = ExperimentRecords(db_path=db_path)
 run_records = RunRecords(db_path=db_path)
@@ -131,6 +135,45 @@ payload_formatter = TopicalPayload(
     model=model_output_model
 )
 
+########
+# Jobs #
+########
+
+def execute_training_job(
+    combination_key: List[str],
+    combination_params: Dict[str, Union[str, int, float, list, dict]]
+) -> List[Document]:
+    """ Encapsulated job function to be compatible for queue integrations.
+        Executes model training for a speciifed federated cycle, and stores all
+        outputs for subsequent use.
+
+    Args:
+        grid (list(dict))): Registry of participants' node information
+        combination_key (dict): Composite IDs of a federated combination
+        combination_params (dict): Initializing parameters for a training job
+    Returns:
+        Trained models (list(Document))    
+    """
+    collab_id, project_id, _, _ = combination_key
+
+    # Retrieve all participants' metadata
+    registrations = registration_records.read_all(
+        filter={'collab_id': collab_id, 'project_id': project_id}
+    )
+    usable_grids = rpc_formatter.extract_grids(registrations)
+    selected_grid = usable_grids[grid_idx]
+
+    training_data = execute_combination_training(
+        grid=selected_grid,
+        **combination_params
+    ) 
+
+    # Store output metadata into database
+    model_records.create(*combination_key, details=training_data)
+    retrieved_model = model_records.read(*combination_key)
+
+    return retrieved_model
+
 #############
 # Resources #
 #############
@@ -168,7 +211,9 @@ class Models(Resource):
             )
 
             logging.info(
-                f"Collaboration '{collab_id}' > Project '{project_id}' > Experiment '{expt_id}' > Run '{run_id}' -> Models: Record(s) retrieval successful!",
+                "Collaboration '{}' > Project '{}' > Experiment '{}' > Run '{}' > Models: Record(s) retrieval successful!".format(
+                    collab_id, project_id, expt_id, run_id
+                ),
                 code=200, 
                 description="Model(s) for specified federated combination(s) successfully retrieved!",
                 ID_path=SOURCE_FILE,
@@ -181,7 +226,9 @@ class Models(Resource):
 
         else:
             logging.error(
-                f"Collaboration '{collab_id}' > Project '{project_id}' -> Experiment '{expt_id}' -> Run '{run_id}' -> Models: Record(s) retrieval failed.",
+                "Collaboration '{}' > Project '{}' > Experiment '{}' > Run '{}' > Models: Record(s) retrieval failed.".format(
+                    collab_id, project_id, expt_id, run_id
+                ),
                 code=404,
                 description="Model(s) does not exist for specified keyword filters!",
                 ID_path=SOURCE_FILE,
@@ -202,10 +249,12 @@ class Models(Resource):
         """ Triggers FL training for specified experiment & run parameters by
             initialising a PySyft FL grid
         """
-        # Populate grid-initialising parameters
         init_params = request.json
 
-        # Retrieves expt-run supersets (i.e. before filtering for relevancy)
+        # Retrieve all connectivity settings for all Synergos components
+        retrieved_collaboration = collab_records.read(collab_id=collab_id)
+
+        # Retrieve expt-run supersets (i.e. before filtering for relevancy)
         retrieved_project = project_records.read(
             collab_id=collab_id,
             project_id=project_id
@@ -236,45 +285,40 @@ class Models(Resource):
                 )
                 runs = [retrieved_run]
 
-        # Retrieve all participants' metadata
-        registrations = registration_records.read_all(
-            filter={
-                'collab_id': collab_id,
-                'project_id': project_id
-            }
+        # Extract all possible federated combinations given specified keys
+        training_combinations = rpc_formatter.enumerate_federated_conbinations(
+            action=project_action,
+            experiments=experiments,
+            runs=runs,
+            **init_params
         )
-        usable_grids = rpc_formatter.extract_grids(registrations)
-        selected_grid = usable_grids[grid_idx]
 
-        # Template for starting FL grid and initialising training
-        kwargs = {
-            'action': project_action,
-            'experiments': experiments,
-            'runs': runs
-        }
-        kwargs.update(init_params)
-
-        completed_trainings = train_proc(selected_grid, kwargs)
-
-        # Store output metadata into database
-        retrieved_models = []
-        for fl_combination, data in completed_trainings.items():
-
-            collab_id, project_id, expt_id, run_id = fl_combination
-            model_records.create(
-                collab_id=collab_id,
-                project_id=project_id,
-                expt_id=expt_id,
-                run_id=run_id,
-                details=data
+        is_cluster = False
+        if is_cluster:
+            # Submit parameters of federated combinations to job queue
+            queue_host = retrieved_collaboration['mq_host']
+            queue_port = retrieved_collaboration['mq_port']
+            train_producer = TrainProducerOperator(
+                host=queue_host, 
+                port=queue_port
             )
-            retrieved_model = model_records.read(
-                collab_id=collab_id,
-                project_id=project_id,
-                expt_id=expt_id,
-                run_id=run_id
-            )
-            retrieved_models.append(retrieved_model)
+            for train_key, train_kwargs in training_combinations.items():
+                train_producer.process({
+                    'process': 'train',  # operations filter for MQ consumer
+                    'combination_key': train_key,
+                    'combination_params': train_kwargs
+                })
+            retrieved_models = []
+
+        else:
+            # Run federated combinations sequentially using selected grid
+            retrieved_models = [
+                execute_training_job(
+                    combination_key=train_key, 
+                    combination_params=train_kwargs
+                )
+                for train_key, train_kwargs in training_combinations.items()
+            ]
 
         success_payload = payload_formatter.construct_success_payload(
             status=200,
@@ -283,7 +327,9 @@ class Models(Resource):
             data=retrieved_models
         )
         logging.info(
-            f"Collaboration '{collab_id}' > Project '{project_id}' > Experiment '{expt_id}' > Run '{run_id}' > Models: Record(s) creation successful!", 
+            "Collaboration '{}' > Project '{}' > Experiment '{}' > Run '{}' > Models: Record(s) creation successful!.".format(
+                collab_id, project_id, expt_id, run_id
+            ),
             description="Model(s) for specified federated conditions were successfully created!",
             code=201, 
             ID_path=SOURCE_FILE,

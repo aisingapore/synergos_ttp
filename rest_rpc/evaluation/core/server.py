@@ -56,62 +56,10 @@ logging.debug("evaluation/core/server.py logged", Description="No Changes")
 # Functions #
 #############
 
-def enumerate_expt_run_conbinations(
-    experiments: list,
-    runs: list,
-    auto_align: bool = True,
-    dockerised: bool = True,
-    log_msgs: bool = True,
-    verbose: bool = True,
-) -> dict:
-    """ Enumerates all registered combinations of experiment models and run
-        configurations for a SINGLE project in preparation for bulk operations.
-
-    Args:
-        experiments (list): All experimental models to be reconstructed
-        runs (dict): All hyperparameter sets to be used during grid FL inference
-        auto_align (bool): Toggles if multiple feature alignments will be used
-        dockerised (bool): Toggles if current FL grid is containerised or not. 
-            If true (default), hosts & ports of all participants are locked at
-            "0.0.0.0" & 8020 respectively. Otherwise, participant specified
-            configurations will be used (grid architecture has to be finalised).
-        log_msgs (bool): Toggles if messages are to be logged
-        verbose (bool): Toggles verbosity of logs for WSCW objects
-    Returns:
-        Combinations (dict)
-    """
-    combinations = {}
-    for expt_record in experiments:
-        curr_expt_id = expt_record['key']['expt_id']
-
-        for run_record in runs:
-            run_key = run_record['key']
-            collab_id = run_key['collab_id']
-            project_id = run_key['project_id']
-            expt_id = run_key['expt_id']
-            run_id = run_key['run_id']
-
-            if expt_id == curr_expt_id:
-
-                combination_key = (collab_id, project_id, expt_id, run_id)
-                collab_project_expt_run_params = {
-                    'keys': run_key,
-                    'experiment': expt_record,
-                    'run': run_record,
-                    'auto_align': auto_align,
-                    'dockerised': dockerised, 
-                    'log_msgs': log_msgs, 
-                    'verbose': verbose
-                }
-                combinations[combination_key] = collab_project_expt_run_params
-
-    return combinations
-
-
-def start_expt_run_inference(
+def execute_combination_inference(
+    grid: List[Dict[str, Any]],
     keys: dict, 
     action: str,
-    grid: List[Dict[str, Any]],
     participants: list, 
     experiment: dict, 
     run: dict, 
@@ -209,7 +157,7 @@ def start_expt_run_inference(
         f"Evaluation - Federated combination tracked.",
         keys=keys,
         ID_path=SOURCE_FILE,
-        ID_function=start_expt_run_inference.__name__
+        ID_function=execute_combination_inference.__name__
     )
 
     # Send initialisation signal to all remote worker WSSW objects
@@ -223,7 +171,7 @@ def start_expt_run_inference(
         event=f"Evaluation - Aggregated predictions tracked.",
         participants_inferences=participants_inferences,
         ID_path=SOURCE_FILE,
-        ID_function=start_expt_run_inference.__name__
+        ID_function=execute_combination_inference.__name__
     )
 
     # Stats will only be computed for relevant participants
@@ -241,47 +189,10 @@ def start_expt_run_inference(
         f"Evaluation - Polled statistics tracked.", 
         polled_stats=polled_stats,
         ID_path=SOURCE_FILE,
-        ID_function=start_expt_run_inference.__name__
+        ID_function=execute_combination_inference.__name__
     )
 
     # Send terminate signal to all participants' worker nodes
     governor.terminate(grid=grid)
     
     return polled_stats
-
-
-def evaluate_proc(grid: List[Dict[str, Any]], multi_kwargs: dict) -> dict:
-    """ Automates the inference of Federated models of different architectures
-        and parameter sets
-
-    Args:
-        grid (list(dict))): Registry of participants' node information
-        multi_kwargs (dict): Experiments & models to be tested
-    Returns:
-        Statistics of each specified project-expt-run configuration (dict)
-    """
-    all_statistics = {}
-    for _, kwargs in multi_kwargs.items():
-        action = kwargs.pop('action')
-        participants = kwargs.pop('participants')
-        metas = kwargs.pop('metas')
-        version = kwargs.pop('version')
-        project_combinations = enumerate_expt_run_conbinations(**kwargs)
-
-        for _, combination in project_combinations.items(): 
-            combination.update({
-                'action': action,
-                'grid': grid,
-                'participants': participants, 
-                'metas': metas,
-                'version': version
-            })
-
-        completed_project_inferences = {
-            combination_key: start_expt_run_inference(**kwargs) 
-            for combination_key, kwargs in project_combinations.items()
-        }
-
-        all_statistics.update(completed_project_inferences)
-
-    return all_statistics
