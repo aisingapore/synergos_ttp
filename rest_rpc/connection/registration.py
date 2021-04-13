@@ -29,7 +29,6 @@ ns_api = Namespace(
     description='API to faciliate registation management in a PySyft Grid.'
 )
 
-schemas = app.config['SCHEMAS']
 db_path = app.config['DB_PATH']
 registration_records = RegistrationRecords(db_path=db_path)
 

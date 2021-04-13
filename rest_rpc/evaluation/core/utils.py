@@ -34,7 +34,6 @@ from synarchive.evaluation import MLFRecords
 
 SOURCE_FILE = os.path.abspath(__file__)
 
-schemas = app.config['SCHEMAS']
 db_path = app.config['DB_PATH']
 mlflow_dir = app.config['MLFLOW_DIR']
 

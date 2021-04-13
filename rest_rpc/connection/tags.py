@@ -28,7 +28,6 @@ ns_api = Namespace(
     description='API to faciliate tag registration in in a PySyft Grid.'
 )
 
-schemas = app.config['SCHEMAS']
 db_path = app.config['DB_PATH']
 tag_records = TagRecords(db_path=db_path)
 

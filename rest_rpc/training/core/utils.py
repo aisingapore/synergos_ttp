@@ -27,8 +27,6 @@ from rest_rpc import app
 
 SOURCE_FILE = os.path.abspath(__file__)
 
-schemas = app.config['SCHEMAS']
-
 retry_interval = app.config['RETRY_INTERVAL']
 worker_poll_template = app.config['WORKER_ROUTE_TEMPLATES']['poll']
 worker_align_template = app.config['WORKER_ROUTE_TEMPLATES']['align']

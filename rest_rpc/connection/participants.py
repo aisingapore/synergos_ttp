@@ -34,7 +34,6 @@ ns_api = Namespace(
     description='API to faciliate participant management in a PySyft Grid.'
 )
 
-schemas = app.config['SCHEMAS']
 db_path = app.config['DB_PATH']
 participant_records = ParticipantRecords(db_path=db_path)
 

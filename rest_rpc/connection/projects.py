@@ -39,7 +39,6 @@ ns_api = Namespace(
     description='API to faciliate project management in a PySyft Grid.'
 )
 
-schemas = app.config['SCHEMAS']
 db_path = app.config['DB_PATH']
 project_records = ProjectRecords(db_path=db_path)
 

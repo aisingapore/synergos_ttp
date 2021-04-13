@@ -40,7 +40,6 @@ ns_api = Namespace(
     description='API to faciliate collaboration management in a Synergos Grid.'
 )
 
-schemas = app.config['SCHEMAS']
 db_path = app.config['DB_PATH']
 collab_records = CollaborationRecords(db_path=db_path)
 

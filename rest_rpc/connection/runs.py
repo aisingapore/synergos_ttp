@@ -31,7 +31,6 @@ ns_api = Namespace(
     description='API to faciliate run management in in a PySyft Grid.'
 )
 
-schemas = app.config['SCHEMAS']
 db_path = app.config['DB_PATH']
 run_records = RunRecords(db_path=db_path)
 

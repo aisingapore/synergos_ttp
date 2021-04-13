@@ -35,8 +35,6 @@ ns_api = Namespace(
 db_path = app.config['DB_PATH']
 expt_records = ExperimentRecords(db_path=db_path)
 
-expt_schema = app.config['SCHEMAS']['experiment_schema']
-
 logging = app.config['NODE_LOGGER'].synlog
 logging.debug("connection/experiments.py logged", Description="No Changes")
 
@@ -52,6 +50,7 @@ logging.debug("connection/experiments.py logged", Description="No Changes")
 # Mitigation   -> Manually implement schema model until bug is fixed
 """ 
 [REDACTED in Flask-restx==0.2.0]
+expt_schema = app.config['SCHEMAS']['experiment_schema']
 structure_model = ns_api.schema_model(name='structure', schema=expt_schema)
 """
 class ListableInteger():
