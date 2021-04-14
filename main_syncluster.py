@@ -10,17 +10,18 @@
 # Generic/Built-in
 import argparse
 import logging
-from random import randint
-from rest_rpc.evaluation.core.server import evaluate_proc
+import os
 import time
 import uuid
-from typing import Callable
+from typing import Dict, Tuple, Callable, Any
 
 # Libs
 import ray
 
 # Custom
+import config
 from config import (
+    SRC_DIR, RETRY_INTERVAL,
     capture_system_snapshot,
     configure_grid,
     configure_node_logger, 
@@ -129,15 +130,37 @@ def poll_cycle(
     preprocess_job: Callable,
     train_job: Callable,
     validate_job: Callable,
-    predict_job: Callable
+    predict_job: Callable,
+    **kwargs
 ):
     """ Run endless loop to poll messages across different queues and run 
         respective callback operations. The hierachy of priority between queues, 
         starting from the highest is as follows: 
-            Preprocess -> Train -> Evaluate
+            Preprocess -> Train -> Evaluate (Validation or Prediction)
+
+    Args:
+        host (str): IP of server where queue is hosted on
+        port (int): Port of server allocated to queue
+        preprocess_job (Callable): Function to execute when handling a polled
+            preprocessing job from the "Preprocess" queue
+        train_job (Callable): Function to execute when handling a polled
+            training job from the "Train" queue
+        validate_job (Callable): Function to execute when handling a polled
+            validation job from the "Evaluate" queue
+        predict_job (Callable): Function to execute when handling a polled
+            prediction job from the "Evaluate" queue
     """
-    def executable_job(process, combination_key, combination_params):
+    def executable_job(
+        process: str, 
+        combination_key: Tuple[str], 
+        combination_params: Dict[str, Any]
+    ) -> Callable:
         """
+        
+        Args:
+            process (str):
+            combination_key (tuple):
+            combination_params (dict):
         """
         JOB_MAPPINGS = {
             'preprocess': preprocess_job,
@@ -150,50 +173,78 @@ def poll_cycle(
         return selected_job(combination_key, combination_params)
 
     preprocess_consumer = PreprocessConsumerOperator(host=host, port=port)
+    preprocess_consumer.connect()
+
     train_consumer = TrainConsumerOperator(host=host, port=port)
+    train_consumer.connect()
+
     evaluate_consumer = EvaluateConsumerOperator(host=host, port=port)
+    evaluate_consumer.connect()
 
-    ###########################
-    # Implementation Footnote #
-    ###########################
+    logger = kwargs.get('logger', logging)
 
-    # [Cause]
-    # When running Synergos in SynCluster mode, TTPs, while still 
-    # commanding single grids, are no longer master orchestration nodes,
-    # and will receive orchestration instructions from the Director 
+    try:
+        ###########################
+        # Implementation Footnote #
+        ###########################
 
-    # [Problems]
-    # There should be no active REST interface on any TTP.
+        # [Cause]
+        # When running Synergos in SynCluster mode, TTPs, while still 
+        # commanding single grids, are no longer master orchestration nodes,
+        # and will receive orchestration instructions from the Director 
 
-    # [Solution]
-    # Replace REST interface with queue listeners for the Preprocess, Train
-    # & Evaluate queues in Synergos MQ to allow TTPs to retrieve jobs to 
-    # run in their respective local grids
+        # [Problems]
+        # There should be no active REST interface on any TTP.
 
-    while True:
+        # [Solution]
+        # Replace REST interface with queue listeners for the Preprocess, Train
+        # & Evaluate queues in Synergos MQ to allow TTPs to retrieve jobs to 
+        # run in their respective local grids
 
-        # Check message count in higher priority queues
-        preprocess_messages = preprocess_consumer.check_message_count()
-        train_messages = train_consumer.check_message_count()
-        evaluate_messages = evaluate_consumer.check_message_count()
+        while True:
 
-        try:
-            if preprocess_messages > 0:
-                preprocess_consumer.poll_message(executable_job)
+            # Check message count in higher priority queues
+            preprocess_messages = preprocess_consumer.check_message_count()
+            train_messages = train_consumer.check_message_count()
+            evaluate_messages = evaluate_consumer.check_message_count()
 
-            elif train_messages > 0:
-                train_consumer.poll_message(executable_job)
+            try:
+                if preprocess_messages > 0:
+                    preprocess_consumer.poll_message(executable_job)
 
-            elif evaluate_messages > 0:
-                evaluate_consumer.poll_message(executable_job)
+                elif train_messages > 0:
+                    train_consumer.poll_message(executable_job)
 
-            else:
-                print("No jobs in queue! Waiting for 1 second...")
-        
-        except Exception:
-            pass
+                elif evaluate_messages > 0:
+                    evaluate_consumer.poll_message(executable_job)
 
-        time.sleep(1)
+                else:
+                    logger.synlog.info(
+                        f"No jobs in queue! Waiting for {RETRY_INTERVAL} second...",
+                        ID_path=os.path.join(SRC_DIR, "config.py"), 
+                        ID_function=poll_cycle.__name__
+                    )
+            
+            except Exception as e:
+                logger.synlog.error(
+                    "Something went wrong while running a job! Error: {e}",
+                    ID_path=os.path.join(SRC_DIR, "config.py"), 
+                    ID_function=poll_cycle.__name__
+                )
+
+            time.sleep(RETRY_INTERVAL)
+    
+    except KeyboardInterrupt:
+        logger.synlog.info(
+            "[Ctrl-C] recieved! Job polling terminated.",
+            ID_path=os.path.join(SRC_DIR, "config.py"), 
+            ID_function=poll_cycle.__name__
+        )
+
+    finally:
+        preprocess_consumer.disconnect()
+        train_consumer.disconnect()
+        evaluate_consumer.disconnect()
 
 ###########
 # Scripts #
@@ -286,10 +337,9 @@ if __name__ == "__main__":
         **mq_kwargs
     )
 
-    # # Set up sysmetric logger
-    # sysmetric_logger = configure_sysmetric_logger(**logger_kwargs)
-    # sysmetric_logger.track("/test/path", 'TestClass', 'test_function')
-
+    # Set up sysmetric logger
+    sysmetric_logger = configure_sysmetric_logger(**logger_kwargs)
+    sysmetric_logger.track("/test/path", 'TestClass', 'test_function')
 
     ###########################
     # Implementation Footnote #
@@ -309,19 +359,27 @@ if __name__ == "__main__":
     # [Solution]
     # Import system modules only after loggers have been intialised.
 
+    # Apply custom configurations on server
+    from rest_rpc import initialize_app   
+    initialize_app(settings=config)
+
     from rest_rpc.training.alignments import execute_alignment_job
     from rest_rpc.training.models import execute_training_job
-    # from rest_rpc.evaluation.validations import execute_validation
-    # from rest_rpc.evaluation.predictions import execute_prediction
+    from rest_rpc.evaluation.validations import execute_validation_job
+    from rest_rpc.evaluation.predictions import execute_prediction_job
         
     try:
+
+
+        # Commence job polling cycle 
         poll_cycle(
             **mq_kwargs,
             preprocess_job=execute_alignment_job,
             train_job=execute_training_job,
-            evaluate_job=evaluate_inference_job
+            validate_job=execute_validation_job,
+            predict_job=execute_prediction_job,
+            logger=node_logger
         )
 
     finally:
-        # sysmetric_logger.terminate()
-        pass
+        sysmetric_logger.terminate()

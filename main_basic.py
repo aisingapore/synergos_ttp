@@ -17,6 +17,7 @@ from pathlib import Path
 import ray
 
 # Custom
+import config
 from config import (
     capture_system_snapshot,
     configure_grid,
@@ -193,7 +194,7 @@ if __name__ == "__main__":
     # [Solution]
     # Import system modules only after loggers have been intialised.
 
-    from rest_rpc import app
+    from rest_rpc import initialize_app
         
     ray.init(
         local_mode=False, 
@@ -213,7 +214,8 @@ if __name__ == "__main__":
         #         'CACHE_DIR': Path('/worker/tmp')
         #     }
         # )
-        
+
+        app = initialize_app(settings=config)
         app.run(host="0.0.0.0", port=5000)
 
     finally:

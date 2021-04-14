@@ -10,3 +10,6 @@
 [submodule "synergos_algorithm"]
 	path = synergos_algorithm
 	url = https://gitlab.int.aisingapore.org/aims/federatedlearning/synergos_algorithm.git
+[submodule "synergos_rest"]
+	path = synergos_rest
+	url = https://gitlab.int.aisingapore.org/aims/federatedlearning/synergos_rest.git
