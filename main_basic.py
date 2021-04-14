@@ -10,6 +10,7 @@
 # Generic/Built-in
 import argparse
 import logging
+import os
 import uuid
 from pathlib import Path
 
@@ -20,7 +21,6 @@ import ray
 import config
 from config import (
     capture_system_snapshot,
-    configure_grid,
     configure_node_logger, 
     configure_sysmetric_logger,
     count_available_cpus,
@@ -31,22 +31,13 @@ from config import (
 # Configurations #
 ##################
 
+SOURCE_FILE = os.path.abspath(__file__)
+
 SECRET_KEY = "synergos_ttp" #os.urandom(24) # secret key
 
 #############
 # Functions #
 #############
-
-def construct_grid_kwargs(**kwargs) -> dict:
-    """ Extracts grid configuration values for linking server to said grid
-
-    Args:
-        kwargs: Any user input captured 
-    Returns:
-        Grid configurations (dict)
-    """
-    return {'grid': kwargs['grid']}
-
 
 def construct_logger_kwargs(**kwargs) -> dict:
     """ Extracts user-parsed values and re-mapping them into parameters 
@@ -114,14 +105,6 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
-        "--grid",
-        "-g",
-        type=int,
-        default=0,
-        help="Grid index that this Synergos TTP node is bounded on."
-    )
-
-    parser.add_argument(
         "--logging_variant",
         "-l",
         type=str,
@@ -148,9 +131,9 @@ if __name__ == "__main__":
 
     input_kwargs = vars(parser.parse_args())
 
-    # Bind node to grid
-    grid_kwargs = construct_grid_kwargs(**input_kwargs)
-    configure_grid(**grid_kwargs)
+    ### No need to configure Synergos variant since Basic is default ###
+
+    ### No need to configure grid since only 1 grid -> Grid Idx is 0 ###
 
     # Set up core logger
     server_id = input_kwargs['id']
@@ -173,8 +156,11 @@ if __name__ == "__main__":
 
     # Set up sysmetric logger
     sysmetric_logger = configure_sysmetric_logger(**logger_kwargs)
-    sysmetric_logger.track("/test/path", 'TestClass', 'test_function')
-
+    sysmetric_logger.track(
+        file_path=SOURCE_FILE,
+        class_name="",
+        function_name=""
+    )
 
     ###########################
     # Implementation Footnote #

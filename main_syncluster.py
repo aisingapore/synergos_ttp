@@ -24,6 +24,7 @@ from config import (
     SRC_DIR, RETRY_INTERVAL,
     capture_system_snapshot,
     configure_grid,
+    configure_synergos_variant,
     configure_node_logger, 
     configure_sysmetric_logger,
     count_available_cpus,
@@ -36,6 +37,8 @@ from synmanager.evaluate_operations import EvaluateConsumerOperator
 ##################
 # Configurations #
 ##################
+
+SOURCE_FILE = os.path.abspath(__file__)
 
 SECRET_KEY = "synergos_ttp" #os.urandom(24) # secret key
 
@@ -273,21 +276,21 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
-        "--logging_variant",
-        "-l",
-        type=str,
-        default=["basic"],
-        nargs="+",
-        help="Type of logging framework to use. eg. --logging_variant graylog 127.0.0.1 9400"
-    )
-
-    parser.add_argument(
         "--queue",
         "-mq",
         type=str,
         default=["rabbitmq"],
         nargs="+",
         help="Type of queue framework to use. eg. --queue rabbitmq 127.0.0.1 5672"
+    )
+
+    parser.add_argument(
+        "--logging_variant",
+        "-l",
+        type=str,
+        default=["basic"],
+        nargs="+",
+        help="Type of logging framework to use. eg. --logging_variant graylog 127.0.0.1 9400"
     )
 
     parser.add_argument(
@@ -307,6 +310,9 @@ if __name__ == "__main__":
     )
 
     input_kwargs = vars(parser.parse_args())
+
+    # Activate Synergos SynCluster variant
+    configure_synergos_variant(is_cluster=True)
 
     # Bind node to grid
     grid_kwargs = construct_grid_kwargs(**input_kwargs)
@@ -331,6 +337,7 @@ if __name__ == "__main__":
         **system_kwargs
     )
 
+    # Bind node to queue
     mq_kwargs = construct_queue_kwargs(**input_kwargs)
     node_logger.synlog.info(
         f"Orchestrator `{server_id}` -> Snapshot of Queue Parameters",
@@ -339,7 +346,11 @@ if __name__ == "__main__":
 
     # Set up sysmetric logger
     sysmetric_logger = configure_sysmetric_logger(**logger_kwargs)
-    sysmetric_logger.track("/test/path", 'TestClass', 'test_function')
+    sysmetric_logger.track(
+        file_path=SOURCE_FILE,
+        class_name="",
+        function_name=""        
+    )
 
     ###########################
     # Implementation Footnote #
@@ -369,8 +380,6 @@ if __name__ == "__main__":
     from rest_rpc.evaluation.predictions import execute_prediction_job
         
     try:
-
-
         # Commence job polling cycle 
         poll_cycle(
             **mq_kwargs,

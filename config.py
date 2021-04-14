@@ -140,8 +140,9 @@ def capture_system_snapshot() -> dict:
         System snapshot (dict)
     """
     return {
-        'GRID': GRID,
+        'IS_CLUSTER': IS_CLUSTER,
         'IS_MASTER': IS_MASTER,
+        'GRID': GRID,
         'IN_DIR': IN_DIR,
         'OUT_DIR': OUT_DIR,
         'DATA_DIR': DATA_DIR,
@@ -169,6 +170,24 @@ def configure_grid(grid: int) -> int:
     """
     GRID = grid
     return GRID
+
+
+def configure_synergos_variant(is_cluster: bool) -> int:
+    """ Defines which configuration of Synergos to run (i.e. Basic/SynCluster).
+        This is important because this toggles the usage of queues for 
+        parallellized workflows
+
+    Args:
+        is_cluster (bool): Toggles if TTP is in Basic or SynCluster mode
+    Returns:
+        TTP state (bool)
+    """
+    IS_CLUSTER = is_cluster
+
+    if is_cluster:
+        IS_MASTER = False
+
+    return IS_CLUSTER 
 
 
 def configure_node_logger(**logger_kwargs) -> TTPLogger:
@@ -206,11 +225,14 @@ def configure_sysmetric_logger(**logger_kwargs) -> SysmetricLogger:
 General parameters required for processing inputs & outputs
 """
 
-# State grid server is bounded to
-GRID = 0
+# Define deployment configuration
+IS_CLUSTER = False  # default: Synergos Basic
 
 # Define server's role: Master or slave
-IS_MASTER = True
+IS_MASTER = True    # default: Synergos Basic -> non-cluster mode -> Orchestrator
+
+# State grid server is bounded to
+GRID = 0            # default: Synergos Basic -> only 1 grid -> grid idx is 0
 
 # State input directory
 IN_DIR = os.path.join(SRC_DIR, "inputs")
