@@ -13,14 +13,23 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get install -y \
 RUN pip install --upgrade pip \
  && pip install --upgrade setuptools wheel
 
-ADD . /ttp
-WORKDIR /ttp
+ADD ./synergos_algorithm /ttp/synergos_algorithm
+RUN pip install /ttp/synergos_algorithm
 
-RUN pip install ./synergos_algorithm
-RUN pip install ./synergos_archive
-RUN pip install ./synergos_logger
-RUN pip install ./synergos_manager
-RUN pip install ./synergos_rest
+ADD ./synergos_archive /ttp/synergos_archive
+RUN pip install /ttp/synergos_archive
+
+ADD ./synergos_logger /ttp/synergos_logger
+RUN pip install /ttp/synergos_logger
+
+ADD ./synergos_manager /ttp/synergos_manager
+RUN pip install /ttp/synergos_manager
+
+ADD ./synergos_rest /ttp/synergos_rest
+RUN pip install /ttp/synergos_rest
+
+WORKDIR /ttp
+ADD . /ttp
 
 EXPOSE 5000
 EXPOSE 8020

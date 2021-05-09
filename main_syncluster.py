@@ -175,16 +175,11 @@ def poll_cycle(
         selected_job = JOB_MAPPINGS[process]
         return selected_job(combination_key, combination_params)
 
-    preprocess_consumer = PreprocessConsumerOperator(host=host, port=port)
-    preprocess_consumer.connect()
-
-    train_consumer = TrainConsumerOperator(host=host, port=port)
-    train_consumer.connect()
-
-    evaluate_consumer = EvaluateConsumerOperator(host=host, port=port)
-    evaluate_consumer.connect()
-
     logger = kwargs.get('logger', logging)
+
+    preprocess_consumer = PreprocessConsumerOperator(host=host, port=port)
+    train_consumer = TrainConsumerOperator(host=host, port=port)
+    evaluate_consumer = EvaluateConsumerOperator(host=host, port=port)
 
     try:
         ###########################
@@ -204,14 +199,18 @@ def poll_cycle(
         # & Evaluate queues in Synergos MQ to allow TTPs to retrieve jobs to 
         # run in their respective local grids
 
+        preprocess_consumer.connect()
+        train_consumer.connect()
+        evaluate_consumer.connect()
+
         while True:
 
-            # Check message count in higher priority queues
-            preprocess_messages = preprocess_consumer.check_message_count()
-            train_messages = train_consumer.check_message_count()
-            evaluate_messages = evaluate_consumer.check_message_count()
-
             try:
+                # Check message count in higher priority queues
+                preprocess_messages = preprocess_consumer.check_message_count()
+                train_messages = train_consumer.check_message_count()
+                evaluate_messages = evaluate_consumer.check_message_count()
+
                 if preprocess_messages > 0:
                     preprocess_consumer.poll_message(executable_job)
 
@@ -230,7 +229,7 @@ def poll_cycle(
             
             except Exception as e:
                 logger.synlog.error(
-                    "Something went wrong while running a job! Error: {e}",
+                    f"Something went wrong while running a job! Error: {e}",
                     ID_path=os.path.join(SRC_DIR, "config.py"), 
                     ID_function=poll_cycle.__name__
                 )
@@ -357,6 +356,25 @@ if __name__ == "__main__":
     ###########################
 
     # [Cause]
+    # In SynCluster mode, all processes are inducted as jobs. All jobs are sent
+    # to Synergos MQ to be linearized for parallel distributed computing.
+
+    # [Problems]
+    # 
+
+    # [Solution]
+    # Start director as a ray head node, with all other TTPs as child nodes 
+    # connecting to it. Tuning parameters will be reported directly to the head
+    # node, bypassing the queue
+
+    ray.init()
+    assert ray.is_initialized() == True
+
+    ###########################
+    # Implementation Footnote #
+    ###########################
+
+    # [Cause]
     # To allow custom Synergos Logging components to permeate the entire
     # system, these loggers have to be initialised first before the system
     # performs module loading. 
@@ -392,3 +410,6 @@ if __name__ == "__main__":
 
     finally:
         sysmetric_logger.terminate()
+
+        ray.shutdown()
+        assert ray.is_initialized() == False

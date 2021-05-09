@@ -168,6 +168,7 @@ def configure_grid(grid: int) -> int:
     Returns:
         Bounded grid (int)
     """
+    global GRID 
     GRID = grid
     return GRID
 
@@ -182,6 +183,7 @@ def configure_synergos_variant(is_cluster: bool) -> int:
     Returns:
         TTP state (bool)
     """
+    global IS_CLUSTER, IS_MASTER
     IS_CLUSTER = is_cluster
 
     if is_cluster:
