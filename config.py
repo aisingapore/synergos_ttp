@@ -94,8 +94,9 @@ def count_available_gpus() -> int:
         gpus = [
             device 
             for device in all_detected_devices 
-            if (('VGA' in device) or ('Display' in device)) and
-            'Integrated Graphics' not in device # exclude integrated graphics
+            if (('VGA' in device) or ('Display' in device)) 
+            and 'Integrated Graphics' not in device # exclude integrated graphics
+            and 'Intel' not in device               # Catch edge cases (hack)
         ]
         logging.debug(f"Detected GPUs: {gpus}")
         return len(gpus)

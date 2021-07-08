@@ -13,6 +13,8 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get install -y \
 RUN pip install --upgrade pip \
  && pip install --upgrade setuptools wheel
 
+RUN pip install --upgrade setuptools wheel
+
 ADD ./synergos_algorithm /ttp/synergos_algorithm
 RUN pip install /ttp/synergos_algorithm
 
