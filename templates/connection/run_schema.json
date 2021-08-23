@@ -9,16 +9,6 @@
             "description": "Unique Identifier for an experiment run",
             "type": "string"
         },
-
-        "input_size": {
-            "description": "No. of nodes in the input layer (i.e. features) AFTER MFA",
-            "type": "integer"
-        },
-        
-        "output_size": {
-            "description": "No. of nodes in the output layer (i.e. targets) AFTER MFA",
-            "type": "integer"
-        },
         
         "batch_size": {
             "description": "Size of each minibatch",
