@@ -250,7 +250,7 @@ DATA_DIR = os.path.join(SRC_DIR, "data")
 TEST_DIR = os.path.join(SRC_DIR, "tests")
 
 # State MLFlow local directory
-MLFLOW_DIR = os.path.join(SRC_DIR, "mlflow")
+MLFLOW_DIR = "/mlflow" #os.path.join(SRC_DIR, "mlflow")
 
 # Initialise Cache
 CACHE = infinite_nested_dict()
