@@ -10,9 +10,6 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get install -y \
     git\
     pciutils
 
-RUN pip install --upgrade pip \
- && pip install --upgrade setuptools wheel
-
 RUN pip install --upgrade setuptools wheel
 
 ADD ./synergos_algorithm /ttp/synergos_algorithm

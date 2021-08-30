@@ -33,6 +33,7 @@ from config import (
 from synmanager.preprocess_operations import PreprocessConsumerOperator
 from synmanager.train_operations import TrainConsumerOperator
 from synmanager.evaluate_operations import EvaluateConsumerOperator
+from synmanager.completed_operations import CompletedProducerOperator
 
 ##################
 # Configurations #
@@ -132,6 +133,7 @@ def poll_cycle(
     port: int,
     preprocess_job: Callable,
     train_job: Callable,
+    optimize_job: Callable,
     validate_job: Callable,
     predict_job: Callable,
     **kwargs
@@ -168,6 +170,7 @@ def poll_cycle(
         JOB_MAPPINGS = {
             'preprocess': preprocess_job,
             'train': train_job,
+            'optimize': optimize_job,
             'validate': validate_job,
             'predict': predict_job
         }
@@ -180,6 +183,8 @@ def poll_cycle(
     preprocess_consumer = PreprocessConsumerOperator(host=host, port=port)
     train_consumer = TrainConsumerOperator(host=host, port=port)
     evaluate_consumer = EvaluateConsumerOperator(host=host, port=port)
+
+    completed_producer = CompletedProducerOperator(host=host, port=port)
 
     try:
         ###########################
@@ -205,34 +210,38 @@ def poll_cycle(
 
         while True:
 
-            try:
-                # Check message count in higher priority queues
-                preprocess_messages = preprocess_consumer.check_message_count()
-                train_messages = train_consumer.check_message_count()
-                evaluate_messages = evaluate_consumer.check_message_count()
+            # try:
+            # Check message count in higher priority queues
+            preprocess_messages = preprocess_consumer.check_message_count()
+            train_messages = train_consumer.check_message_count()
+            evaluate_messages = evaluate_consumer.check_message_count()
 
-                if preprocess_messages > 0:
-                    preprocess_consumer.poll_message(executable_job)
+            if preprocess_messages > 0:
+                completed_info = preprocess_consumer.poll_message(executable_job)
 
-                elif train_messages > 0:
-                    train_consumer.poll_message(executable_job)
+            elif train_messages > 0:
+                completed_info = train_consumer.poll_message(executable_job)
 
-                elif evaluate_messages > 0:
-                    evaluate_consumer.poll_message(executable_job)
+            elif evaluate_messages > 0:
+                completed_info = evaluate_consumer.poll_message(executable_job)
 
-                else:
-                    logger.synlog.info(
-                        f"No jobs in queue! Waiting for {RETRY_INTERVAL} second...",
-                        ID_path=os.path.join(SRC_DIR, "config.py"), 
-                        ID_function=poll_cycle.__name__
-                    )
-            
-            except Exception as e:
-                logger.synlog.error(
-                    f"Something went wrong while running a job! Error: {e}",
+            else:
+                logger.synlog.info(
+                    f"No jobs in queue! Waiting for {RETRY_INTERVAL} second...",
                     ID_path=os.path.join(SRC_DIR, "config.py"), 
                     ID_function=poll_cycle.__name__
                 )
+                completed_info = None
+
+            if completed_info:
+                logging.warning(f"--->>> Completed info: {completed_info}") 
+            
+            # except Exception as e:
+            #     logger.synlog.error(
+            #         f"Something went wrong while running a job! Error: {e}",
+            #         ID_path=os.path.join(SRC_DIR, "config.py"), 
+            #         ID_function=poll_cycle.__name__
+            #     )
 
             time.sleep(RETRY_INTERVAL)
     
@@ -394,6 +403,7 @@ if __name__ == "__main__":
 
     from rest_rpc.training.alignments import execute_alignment_job
     from rest_rpc.training.models import execute_training_job
+    from rest_rpc.training.optimizations import execute_optimization_job
     from rest_rpc.evaluation.validations import execute_validation_job
     from rest_rpc.evaluation.predictions import execute_prediction_job
         
@@ -403,6 +413,7 @@ if __name__ == "__main__":
             **mq_kwargs,
             preprocess_job=execute_alignment_job,
             train_job=execute_training_job,
+            optimize_job=execute_optimization_job,
             validate_job=execute_validation_job,
             predict_job=execute_prediction_job,
             logger=node_logger
