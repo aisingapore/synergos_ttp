@@ -13,7 +13,7 @@ import logging
 import os
 import time
 import uuid
-from typing import Dict, Tuple, Callable, Any
+from typing import Dict, List, Tuple, Callable, Union, Any
 
 # Libs
 import ray
@@ -157,8 +157,9 @@ def poll_cycle(
     """
     def executable_job(
         process: str, 
-        combination_key: Tuple[str], 
-        combination_params: Dict[str, Any]
+        keys: List[str],
+        grids: List[Dict[str, Any]],
+        parameters: Dict[str, Union[str, int, float, list, dict]]
     ) -> Callable:
         """
         
@@ -176,7 +177,8 @@ def poll_cycle(
         }
 
         selected_job = JOB_MAPPINGS[process]
-        return selected_job(combination_key, combination_params)
+        info = selected_job(keys, grids, parameters)
+        return {'process': process, **info}
 
     logger = kwargs.get('logger', logging)
 
@@ -207,6 +209,7 @@ def poll_cycle(
         preprocess_consumer.connect()
         train_consumer.connect()
         evaluate_consumer.connect()
+        completed_producer.connect()
 
         while True:
 
@@ -217,13 +220,13 @@ def poll_cycle(
             evaluate_messages = evaluate_consumer.check_message_count()
 
             if preprocess_messages > 0:
-                completed_info = preprocess_consumer.poll_message(executable_job)
+                job_info = preprocess_consumer.poll_message(executable_job)
 
             elif train_messages > 0:
-                completed_info = train_consumer.poll_message(executable_job)
+                job_info = train_consumer.poll_message(executable_job)
 
             elif evaluate_messages > 0:
-                completed_info = evaluate_consumer.poll_message(executable_job)
+                job_info = evaluate_consumer.poll_message(executable_job)
 
             else:
                 logger.synlog.info(
@@ -231,10 +234,11 @@ def poll_cycle(
                     ID_path=os.path.join(SRC_DIR, "config.py"), 
                     ID_function=poll_cycle.__name__
                 )
-                completed_info = None
+                job_info = None
 
-            if completed_info:
-                logging.warning(f"--->>> Completed info: {completed_info}") 
+            if job_info:
+                logging.warning(f"--->>> Completed info: {job_info}") 
+                completed_producer.process(**job_info)
             
             # except Exception as e:
             #     logger.synlog.error(
@@ -256,6 +260,7 @@ def poll_cycle(
         preprocess_consumer.disconnect()
         train_consumer.disconnect()
         evaluate_consumer.disconnect()
+        completed_producer.disconnect()
 
 ###########
 # Scripts #

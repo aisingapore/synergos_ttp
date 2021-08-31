@@ -12,23 +12,23 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get install -y \
 
 RUN pip install --upgrade setuptools wheel
 
-ADD ./synergos_algorithm /ttp/synergos_algorithm
-RUN pip install /ttp/synergos_algorithm
+ADD ./synergos_algorithm /orchestrator/synergos_algorithm
+RUN pip install /orchestrator/synergos_algorithm
 
-ADD ./synergos_archive /ttp/synergos_archive
-RUN pip install /ttp/synergos_archive
+ADD ./synergos_archive /orchestrator/synergos_archive
+RUN pip install /orchestrator/synergos_archive
 
-ADD ./synergos_logger /ttp/synergos_logger
-RUN pip install /ttp/synergos_logger
+ADD ./synergos_logger /orchestrator/synergos_logger
+RUN pip install /orchestrator/synergos_logger
 
-ADD ./synergos_manager /ttp/synergos_manager
-RUN pip install /ttp/synergos_manager
+ADD ./synergos_manager /orchestrator/synergos_manager
+RUN pip install /orchestrator/synergos_manager
 
-ADD ./synergos_rest /ttp/synergos_rest
-RUN pip install /ttp/synergos_rest
+ADD ./synergos_rest /orchestrator/synergos_rest
+RUN pip install /orchestrator/synergos_rest
 
-WORKDIR /ttp
-ADD . /ttp
+WORKDIR /orchestrator
+ADD . /orchestrator
 
 EXPOSE 5000
 EXPOSE 8020
@@ -41,7 +41,7 @@ EXPOSE 8080
 FROM base as debug_basic
 RUN pip install ptvsd
 
-WORKDIR /ttp
+WORKDIR /orchestrator
 EXPOSE 5678
 CMD python -m ptvsd --host 0.0.0.0 --port 5678 --wait main_basic.py
 
@@ -51,7 +51,7 @@ CMD python -m ptvsd --host 0.0.0.0 --port 5678 --wait main_basic.py
 
 FROM base as basic_ttp
 
-WORKDIR /ttp
+WORKDIR /orchestrator
 ENTRYPOINT ["python", "./main_basic.py"]
 CMD ["--help"]
 
@@ -62,7 +62,7 @@ CMD ["--help"]
 FROM base as debug_syncluster
 RUN pip install ptvsd
 
-WORKDIR /ttp
+WORKDIR /orchestrator
 EXPOSE 5678
 CMD python -m ptvsd --host 0.0.0.0 --port 5678 --wait main_syncluster.py
 
@@ -72,6 +72,6 @@ CMD python -m ptvsd --host 0.0.0.0 --port 5678 --wait main_syncluster.py
 
 FROM base as syncluster_ttp
 
-WORKDIR /ttp
+WORKDIR /orchestrator
 ENTRYPOINT ["python", "./main_syncluster.py"]
 CMD ["--help"]
