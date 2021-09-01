@@ -1,15 +1,15 @@
 [submodule "synergos_logger"]
 	path = synergos_logger
-	url = https://gitlab.int.aisingapore.org/aims/federatedlearning/synergos_logger.git
+	url = ../synergos_logger.git
 [submodule "synergos_manager"]
 	path = synergos_manager
-	url = https://gitlab.int.aisingapore.org/aims/federatedlearning/synergos_manager.git
+	url = ../synergos_manager.git
 [submodule "synergos_archive"]
 	path = synergos_archive
-	url = https://gitlab.int.aisingapore.org/aims/federatedlearning/synergos_archive.git
+	url = ../synergos_archive.git
 [submodule "synergos_algorithm"]
 	path = synergos_algorithm
-	url = https://gitlab.int.aisingapore.org/aims/federatedlearning/synergos_algorithm.git
+	url = ../synergos_algorithm.git
 [submodule "synergos_rest"]
 	path = synergos_rest
-	url = https://gitlab.int.aisingapore.org/aims/federatedlearning/synergos_rest.git
+	url = ../synergos_rest.git
