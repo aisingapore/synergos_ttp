@@ -21,10 +21,10 @@ import ray
 import config
 from config import (
     capture_system_snapshot,
+    configure_cpu_allocation,
+    configure_gpu_allocation,
     configure_node_logger, 
-    configure_sysmetric_logger,
-    count_available_cpus,
-    count_available_gpus
+    configure_sysmetric_logger
 )
 
 ##################
@@ -86,6 +86,20 @@ def construct_logger_kwargs(**kwargs) -> dict:
         'censor_keys': censor_keys
     }
 
+
+def construct_resource_kwargs(**kwargs) -> dict:
+    """ Extracts user-parsed values and re-mapping them into parameters 
+        corresponding to resource allocations
+
+    Args:
+        kwargs: Any user input captured 
+    Returns:
+        Resource configurations (dict)
+    """
+    cpus = kwargs['cpus']
+    gpus = kwargs['gpus']
+    return {'cpus': cpus, 'gpus': gpus}
+
 ###########
 # Scripts #
 ###########
@@ -114,6 +128,26 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
+        "--logging_resolution",
+        "-r",
+        type=int,
+        default=5,
+        help="Interval to wait before system usage is logged again (in seconds)"
+    )   
+
+    parser.add_argument(
+        "--cpus",
+        type=int,
+        help="No. of CPU cores to allocate for this service. If not specified, auto-detect CPU count"
+    )    
+
+    parser.add_argument(
+        "--gpus",
+        type=int,
+        help="No. of GPU cores to allocate for this service. If not specified, auto-detect GPU count"
+    )   
+
+    parser.add_argument(
         '--censored',
         "-c",
         action='store_true',
@@ -134,6 +168,11 @@ if __name__ == "__main__":
     ### No need to configure Synergos variant since Basic is default ###
 
     ### No need to configure grid since only 1 grid -> Grid Idx is 0 ###
+
+    # Parse resource allocations
+    res_kwargs = construct_resource_kwargs(**input_kwargs)
+    cpus_allocated = configure_cpu_allocation(**res_kwargs)
+    gpus_allocated = configure_gpu_allocation(**res_kwargs)
 
     # Set up core logger
     server_id = input_kwargs['id']
@@ -159,7 +198,8 @@ if __name__ == "__main__":
     sysmetric_logger.track(
         file_path=SOURCE_FILE,
         class_name="",
-        function_name=""
+        function_name="",
+        resolution=input_kwargs['logging_resolution']
     )
 
     ###########################
@@ -182,29 +222,9 @@ if __name__ == "__main__":
 
     from rest_rpc import initialize_app
         
-    ray.init(
-        local_mode=False, 
-        dashboard_host="0.0.0.0", 
-        dashboard_port=8080,
-        num_cpus=count_available_cpus(),
-        # num_gpus=count_available_gpus()
-    )
-
     try:
-
-        # cache = app.config['CACHE']
-        # cache.init_app(
-        #     app=app, 
-        #     config={
-        #         "CACHE_TYPE": "filesystem",
-        #         'CACHE_DIR': Path('/worker/tmp')
-        #     }
-        # )
-
         app = initialize_app(settings=config)
         app.run(host="0.0.0.0", port=5000)
 
     finally:
         sysmetric_logger.terminate()
-
-        ray.shutdown()

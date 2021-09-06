@@ -193,6 +193,35 @@ def configure_synergos_variant(is_cluster: bool) -> int:
     return IS_CLUSTER 
 
 
+def configure_cpu_allocation(**res_kwargs) -> int:
+    """ Configures no. of CPU cores available to the system. By default, all
+        CPU cores will be allocated.
+
+    Args:
+        res_kwargs: Any custom resource allocations declared by user
+    Returns:
+        CPU cores used (int) 
+    """
+    global CORES_USED
+    cpu_count = res_kwargs.get('cpus')
+    CORES_USED = min(cpu_count, CORES_USED) if cpu_count else CORES_USED
+    return CORES_USED
+
+
+def configure_gpu_allocation(**res_kwargs):
+    """ Configures no. of GPU cores available to the system.
+
+    Args:
+        res_kwargs: Any custom resource allocations declared by user
+    Returns:
+        GPU cores used (int) 
+    """
+    global GPU_COUNT
+    gpu_count = res_kwargs.get('gpus')
+    GPU_COUNT = min(gpu_count, GPU_COUNT) if gpu_count else GPU_COUNT
+    return GPU_COUNT
+
+
 def configure_node_logger(**logger_kwargs) -> TTPLogger:
     """ Initialises the synergos logger corresponding to the current node type.
         In this case, a TTPLogger is initialised.
@@ -250,7 +279,7 @@ DATA_DIR = os.path.join(SRC_DIR, "data")
 TEST_DIR = os.path.join(SRC_DIR, "tests")
 
 # State MLFlow local directory
-MLFLOW_DIR = "/mlflow" #os.path.join(SRC_DIR, "mlflow")
+MLFLOW_DIR = "/mlflow"
 
 # Initialise Cache
 CACHE = infinite_nested_dict()

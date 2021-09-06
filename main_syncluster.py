@@ -25,10 +25,10 @@ from config import (
     capture_system_snapshot,
     configure_grid,
     configure_synergos_variant,
+    configure_cpu_allocation,
+    configure_gpu_allocation,
     configure_node_logger, 
-    configure_sysmetric_logger,
-    count_available_cpus,
-    count_available_gpus
+    configure_sysmetric_logger
 )
 from synmanager.preprocess_operations import PreprocessConsumerOperator
 from synmanager.train_operations import TrainConsumerOperator
@@ -104,6 +104,20 @@ def construct_logger_kwargs(**kwargs) -> dict:
         'debugging_fields': debugging_fields,
         'censor_keys': censor_keys
     }
+
+
+def construct_resource_kwargs(**kwargs) -> dict:
+    """ Extracts user-parsed values and re-mapping them into parameters 
+        corresponding to resource allocations
+
+    Args:
+        kwargs: Any user input captured 
+    Returns:
+        Resource configurations (dict)
+    """
+    cpus = kwargs['cpus']
+    gpus = kwargs['gpus']
+    return {'cpus': cpus, 'gpus': gpus}
 
 
 def construct_queue_kwargs(**kwargs):
@@ -307,6 +321,25 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
+        "--logging_resolution",
+        "-r",
+        type=int,
+        help="Interval to wait before system usage is logged again"
+    )   
+
+    parser.add_argument(
+        "--cpus",
+        type=int,
+        help="No. of CPU cores to allocate for this service. If not specified, auto-detect CPU count"
+    )    
+
+    parser.add_argument(
+        "--gpus",
+        type=int,
+        help="No. of GPU cores to allocate for this service. If not specified, auto-detect GPU count"
+    )   
+
+    parser.add_argument(
         '--censored',
         "-c",
         action='store_true',
@@ -330,6 +363,11 @@ if __name__ == "__main__":
     # Bind node to grid
     grid_kwargs = construct_grid_kwargs(**input_kwargs)
     configure_grid(**grid_kwargs)
+
+    # Parse resource allocations
+    res_kwargs = construct_resource_kwargs(**input_kwargs)
+    configure_cpu_allocation(**res_kwargs)
+    configure_gpu_allocation(**res_kwargs)
 
     # Set up core logger
     server_id = input_kwargs['id']
@@ -362,7 +400,8 @@ if __name__ == "__main__":
     sysmetric_logger.track(
         file_path=SOURCE_FILE,
         class_name="",
-        function_name=""        
+        function_name="",
+        resolution=input_kwargs['logging_resolution']   
     )
 
     ###########################
@@ -374,14 +413,15 @@ if __name__ == "__main__":
     # to Synergos MQ to be linearized for parallel distributed computing.
 
     # [Problems]
-    # 
+    # While Ray is required for hyperparameter tuning, it is not the one that
+    # executes the actual federated processes. Hence, if left by itself, it 
+    # will auto-detect & allocate all resources to itself, causing system lag
+    # or even service crashes/malfunctions.
 
     # [Solution]
-    # Start director as a ray head node, with all other TTPs as child nodes 
-    # connecting to it. Tuning parameters will be reported directly to the head
-    # node, bypassing the queue
+    # Only allocate 1 cpu to Ray itself for hyperparameter set generation.
 
-    ray.init()
+    ray.init(num_cpus=1)
     assert ray.is_initialized() == True
 
     ###########################
