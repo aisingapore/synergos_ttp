@@ -16,6 +16,7 @@ from pathlib import Path
 
 # Libs
 import ray
+from waitress import serve
 
 # Custom
 import config
@@ -224,7 +225,7 @@ if __name__ == "__main__":
         
     try:
         app = initialize_app(settings=config)
-        app.run(host="0.0.0.0", port=5000)
+        serve(app, host='0.0.0.0', port=5000)
 
     finally:
         sysmetric_logger.terminate()
