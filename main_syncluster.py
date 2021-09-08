@@ -227,39 +227,50 @@ def poll_cycle(
 
         while True:
 
-            # try:
-            # Check message count in higher priority queues
-            preprocess_messages = preprocess_consumer.check_message_count()
-            train_messages = train_consumer.check_message_count()
-            evaluate_messages = evaluate_consumer.check_message_count()
+            try:
+                # Check message count in higher priority queues
+                preprocess_messages = preprocess_consumer.check_message_count()
+                train_messages = train_consumer.check_message_count()
+                evaluate_messages = evaluate_consumer.check_message_count()
 
-            if preprocess_messages > 0:
-                job_info = preprocess_consumer.poll_message(executable_job)
+                if preprocess_messages > 0:
+                    job_info = preprocess_consumer.poll_message(executable_job)
 
-            elif train_messages > 0:
-                job_info = train_consumer.poll_message(executable_job)
+                elif train_messages > 0:
+                    job_info = train_consumer.poll_message(executable_job)
 
-            elif evaluate_messages > 0:
-                job_info = evaluate_consumer.poll_message(executable_job)
+                elif evaluate_messages > 0:
+                    job_info = evaluate_consumer.poll_message(executable_job)
 
-            else:
-                logger.synlog.info(
-                    f"No jobs in queue! Waiting for {RETRY_INTERVAL} second...",
+                else:
+                    logger.synlog.info(
+                        f"No jobs in queue! Waiting for {RETRY_INTERVAL} second...",
+                        ID_path=os.path.join(SRC_DIR, "config.py"), 
+                        ID_function=poll_cycle.__name__
+                    )
+                    job_info = None
+
+                if job_info:
+                    logger.synlog.info(
+                        "Job completed! Submitting results for archival...",
+                        ID_path=os.path.join(SRC_DIR, "config.py"), 
+                        ID_function=poll_cycle.__name__
+                    )
+
+                    completed_producer.process(**job_info)
+                    
+                    logger.synlog.info(
+                        "Archival request submitted!",
+                        ID_path=os.path.join(SRC_DIR, "config.py"), 
+                        ID_function=poll_cycle.__name__
+                    )
+            
+            except Exception as e:
+                logger.synlog.error(
+                    f"Something went wrong while running current job! Error: {e}",
                     ID_path=os.path.join(SRC_DIR, "config.py"), 
                     ID_function=poll_cycle.__name__
                 )
-                job_info = None
-
-            if job_info:
-                logging.warning(f"--->>> Completed info: {job_info}") 
-                completed_producer.process(**job_info)
-            
-            # except Exception as e:
-            #     logger.synlog.error(
-            #         f"Something went wrong while running a job! Error: {e}",
-            #         ID_path=os.path.join(SRC_DIR, "config.py"), 
-            #         ID_function=poll_cycle.__name__
-            #     )
 
             time.sleep(RETRY_INTERVAL)
     
