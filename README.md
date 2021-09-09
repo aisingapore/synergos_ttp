@@ -1,3 +1,5 @@
+# Running Dockerised Synergos TTP
+
 1) **Clone this repository**
     ```bash
     git clone https://github.com/aimakerspace/synergos_ttp.git
