@@ -147,7 +147,6 @@ docker run --rm
     -P 8021:8020     
     -v <PATH-TO-DATA>:/orchestrator/data            # <-- Mount for data access
     -v <PATH-TO-OUTPUTS>:/orchestrator/outputs      # <-- Mount for outputs access
-    -v <PATH-TO-MLFLOGS>:/mlflow                    # <-- Mount for MLFlow outputs
     --name ttp_syncluster 
     synergos_ttp:syncluster          
         --id ttp_syncluster      
@@ -167,6 +166,8 @@ In addition to *basic* configurations, users need to specify:
     - `<MQ-HOST>` - Specify Synergos MQ's host. This is a mandatory declaration, since Synergos Director orchestratrates jobs across multiple grids.
     - `<MQ-PORT>` - Synergos MQ's allocated port
 
+Notice that MLFlow mount points are no longer necesary? That's because that functionality will be taken over by [Synergos Director](https://github.com/aimakerspace/synergos_director).
+
 An example of a *cluster* launch command is as follows:
 
 ```
@@ -175,14 +176,12 @@ docker run --rm
     -P 8021:8020   
     -v /synergos_demos/orchestrator/data/:/director/data      
     -v /synergos_demos/orchestrator/outputs/:/director/outputs      
-    -v /synergos_demos/orchestrator/mlflow/:/mlflow 
     --name ttp_syncluster_2 
     synergos_ttp:syncluster          
         --id ttp_syncluster_2  
         --grid 1
         --queue rabbitmq 172.17.0.4 5672      
         --logging_variant graylog 172.30.0.4 9300 
-
 ```
 
 > Note: Multiple **Synergos TTP** instance can be deployed in a `SynCluster` grid!
