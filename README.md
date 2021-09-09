@@ -1,27 +1,33 @@
 1) **Clone this repository**
-
-    > <font color='turquoise'>**git clone https://github.com/aimakerspace/synergos_ttp.git**</font>
+    ```bash
+    git clone https://github.com/aimakerspace/synergos_ttp.git
+    ```
 
 2) **Navigate into the repository**
-
-    > <font color='turquoise'>**cd ./synergos_ttp**</font>
+    ```bash
+    cd ./synergos_ttp
+    ```
 
 2) **Checkout to stable tag**
-
-    > <font color='turquoise'>**git checkout tags/v0.1.0**</font>
+    ```bash
+    git checkout tags/v0.1.0
+    ```
 
 3) **Update Submodule**
-
-    > <font color='turquoise'>**git submodule update --init --recursive**<>
-    > <font color='turquoise'>**git submodule update --recursive --remote**</font>
+    ```bash
+    git submodule update --init --recursive
+    git submodule update --recursive --remote
+    ```
 
 4) **Build Synergos Basic image using the following command(s):** 
-
-    > <font color='turquoise'>**docker build --target basic_ttp -t synergos_ttp:v0.1.0 --label "WebsocketClientWorker" .**</font>
+    ```bash
+    docker build --target basic_ttp -t synergos_ttp:v0.1.0 --label "WebsocketClientWorker" .
+    ```
 
 5) **Build Synergos Cluster image using the following command(s):** 
-
-    > <font color='turquoise'>**docker build --target syncluster_ttp -t synergos_ttp_cluster:v0.1.0 --label "WebsocketClientWorker" .**</font>
+    ```bash
+    docker build --target syncluster_ttp -t synergos_ttp_cluster:v0.1.0 --label "WebsocketClientWorker" .
+    ```
 
 6) **Make sure that the worker containers have already started running (i.e. primed for WS handshake. Instructions for worker startup can be found [here](https://github.com/aimakerspace/synergos_worker).**
 
@@ -49,15 +55,38 @@
 8) **Start up the TTP node. Start-up commands can be reduced depending on whether or not you are running the REST-RPC grid in standalone mode, or over a distributed network. In general, it is as follows:**
 
     ** When running TTP Basic configuration
-    ><font color='turquoise'>**docker run <br><font color='red'>-p <host\>:<f_port\>:5000 <br> -p <host\>:<ws_port\>:8020</font><br><font color='orange'>-v /path/to/data_export_directory/ttp_data:/ttp/data <br> -v /path/to/outputs_export_directory:/ttp/outputs <br> -v /path/to/outputs_export_directory/mlflow_test:/ttp/mlflow <br> -v /path/to/mlflow_export_directory:/ttp/mlflow</font><br> --name ttp synergos_ttp:v0.1.0**</font>
+    ```bash
+    docker run \
+        -p <host>:<f_port>:5000 \
+        -p <host>:<ws_port>:8020 \
+        -v /path/to/data_export_directory/ttp_data:/ttp/data \
+        -v /path/to/outputs_export_directory:/ttp/outputs \
+        -v /path/to/outputs_export_directory/mlflow_test:/ttp/mlflow \
+        -v /path/to/mlflow_export_directory:/ttp/mlflow \
+        --name ttp synergos_ttp:v0.1.0
+    ```
 
     ** When running TTP Cluster configuration
-    ><font color='turquoise'>**docker run <br><font color='red'>-p <host\>:<f_port\>:5000 <br> </font><br><font color='orange'>-v /path/to/data_export_directory/ttp_data:/ttp/data <br> -v /path/to/outputs_export_directory:/ttp/outputs <br> -v /path/to/outputs_export_directory/mlflow_test:/ttp/mlflow <br> -v /path/to/mlflow_export_directory:/ttp/mlflow</font><br> --name ttp synergos_ttp_cluster:v0.1.0<br> --id ttp <br> --logging_variant basic <br> --queue rabbitmq <mq-vm-ip\> 5672 <br> --censored**</font>
+    ```bash
+    docker run \
+        -p <host>:<f_port>:5000 \
+        -v /path/to/data_export_directory/ttp_data:/ttp/data \
+        -v /path/to/outputs_export_directory:/ttp/outputs \
+        -v /path/to/outputs_export_directory/mlflow_test:/ttp/mlflow \
+        -v /path/to/mlflow_export_directory:/ttp/mlflow \
+        --name ttp synergos_ttp_cluster:v0.1.0 \
+        --id ttp --logging_variant basic \ 
+        --queue rabbitmq <mq-vm-ip> 5672 \
+        --censored
+    ```
 
     <!-- Let's try to break down what is going on here. -->
 
     A. Port Routes
-    ><font color='red'>-p <host\>:<f_port\>:5000 <br> -p <host\>:<ws_port\>:8020</font>
+    ```bash
+        -p <host>:<f_port>:5000 \
+        -p <host>:<ws_port>:8020
+    ```
 
     This section maps the incoming connections into the container. 
     
@@ -82,8 +111,11 @@
     * mq-vm-ip - IP of selected VM running Synergos MQ component required in Synergos Cluster configuration
 
     B. Volume Mounts
-
-    <font color='orange'>-v /path/to/data_export_directory:/ttp/data <br> -v /path/to/outputs_export_directory:/ttp/outputs <br> -v /path/to/mlflow_export_directory:/ttp/mlflow</font>
+    ```bash
+        -v /path/to/data_export_directory:/ttp/data \
+        -v /path/to/outputs_export_directory:/ttp/outputs \
+        -v /path/to/mlflow_export_directory:/ttp/mlflow
+    ```
 
     As mentioned in step 7., override the internal directories of the containers with the mountable directories you have created.
 
