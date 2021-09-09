@@ -190,8 +190,10 @@ docker run --rm
 ---
 <br>
 
-For a guided tutorial, 
-1. Download worker inputs [here](https://drive.google.com/drive/folders/1hSoOq1z-Lo3w-qUrFbsoPITzIyYWivvD?usp=sharing)
-2. Download test datasets [here](https://drive.google.com/drive/folders/19C9m6XEPHeEMIwmPRajX5-UBNujGOdtM?usp=sharing)
-3. Refer to this [guide](https://gitlab.int.aisingapore.org/aims/federatedlearning/fedlearn-prototype/-/wikis/PySyft/How-to-run-jobs-in-PySyft).
+## Further Resources
 
+You can view the guides for running:
+- [Synergos Basic Standalone Grid i.e. local](https://docs.synergos.ai/BasicRunLocal.html)
+- [Synergos Basic Distributed Grid i.e. across multiple devices](https://docs.synergos.ai/BasicRunDistributed.html)
+- [Synergos Cluster Distributed Grid i.e. across multiple devices](https://docs.synergos.ai/ClusterRunDistributed.html)
+- [Example Datasets and Jupyter Notebooks](https://github.com/aimakerspace/Synergos/tree/master/examples)
