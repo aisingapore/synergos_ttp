@@ -19,7 +19,7 @@ TL;DR, We want users to be able to configure & deploy their federated endeavours
 
 **Synergos TTP** is one of two core components essential for kickstarting your Synergos workflow!
 
-![Synergos Grid Configurations](./docs/images/synergos_modules.png)
+![Synergos components](./docs/images/synergos_modules.png)
 
 *X-raying Synergos' core components*
 
@@ -50,6 +50,9 @@ Synergos TTP has been dockerized for easy component-based deployment.
 git clone https://github.com/aimakerspace/synergos_ttp.git
 cd ./synergos_ttp
 
+# Checkout to stable tag
+git checkout tags/v0.1.0
+
 # Initialize & update all submodules
 git submodule update --init --recursive
 git submodule update --recursive --remote
@@ -73,7 +76,7 @@ To deploy this, execute the following instructions:
 
 ```
 # Build basic TTP image
-docker build -t synergos_ttp:synbasic --label "synbasic_ttp" . 
+docker build -t synergos_ttp:basic --label "synbasic_ttp" . 
 
 # Start containerized service
 docker run --rm 
@@ -82,9 +85,9 @@ docker run --rm
     -v <PATH-TO-DATA>:/orchestrator/data            # <-- Mount for data access
     -v <PATH-TO-OUTPUTS>:/orchestrator/outputs      # <-- Mount for outputs access
     -v <PATH-TO-MLFLOGS>:/mlflow                    # <-- Mount for MLFlow outputs
-    --name ttp_synbasic 
-    synergos_ttp:synbasic          
-        --id ttp_synbasic        
+    --name <TTP_ID> 
+    synergos_ttp:basic          
+        --id <TTP_ID>        
         --logging_variant <LOGGER-VARIANT> <LOGGER-HOST> <SYSMETRIC-PORT> 
         --logging_resolution <LOGGING-RESOLUTION>   # <-- optional
         --cpus <CPU-COUNT>                          # <-- optional
@@ -92,7 +95,7 @@ docker run --rm
         --censored                                  # <-- optional
         --debug                                     # <-- optional
 ```
-
+- `<TTP_ID>` - ID of this TTP instance. If not specified, a random UUID will be generated.
 - `<COMMAND PORT>` - Port on which REST-RPC service resides
 - `<DATA PORT>` - Port on which intra-network TTP-WORKER communication occurs on
 - `<PATH-TO-DATA>` - User's custom volume on which data is to be stored 
@@ -110,17 +113,31 @@ docker run --rm
 An example of a *basic* launch command is as follows:
 
 ```
+# Basic logging (to screen)
 docker run --rm 
     -p 5001:5000   
     -P 8021:8020   
-    -v /synergos_demos/orchestrator/data/:/director/data      
-    -v /synergos_demos/orchestrator/outputs/:/director/outputs      
+    -v /synergos_demos/orchestrator/data/:/orchestrator/data      
+    -v /synergos_demos/orchestrator/outputs/:/orchestrator/outputs      
     -v /synergos_demos/orchestrator/mlflow/:/mlflow 
     --name ttp_synbasic 
-    synergos_ttp:synbasic          
+    synergos_ttp:basic          
         --id ttp_synbasic        
-        --logging_variant graylog 172.30.0.4 9300 
-        --queue rabbitmq 172.17.0.4 5672
+        --logging_variant basic
+
+OR
+
+# With centralized logging deployed by Orchestrator
+docker run --rm 
+    -p 5001:5000   
+    -P 8021:8020   
+    -v /synergos_demos/orchestrator/data/:/orchestrator/data      
+    -v /synergos_demos/orchestrator/outputs/:/orchestrator/outputs      
+    -v /synergos_demos/orchestrator/mlflow/:/mlflow 
+    --name ttp_synplus 
+    synergos_ttp:basic          
+        --id ttp_synplus        
+        --logging_variant graylog 172.30.0.4 9300
 ```
 
 > Note: Only 1 **Synergos TTP** should be deployed in a `SynBasic` or `SynPlus` grid!
@@ -139,7 +156,7 @@ To deploy this, execute the following instructions:
 
 ```
 # Build TTP Cluster image
-docker build -t synergos_ttp:syncluster --label "syncluster_ttp" . 
+docker build -t synergos_ttp:cluster --label "syncluster_ttp" . 
 
 # Start containerized service
 docker run --rm 
@@ -147,9 +164,9 @@ docker run --rm
     -P 8021:8020     
     -v <PATH-TO-DATA>:/orchestrator/data            # <-- Mount for data access
     -v <PATH-TO-OUTPUTS>:/orchestrator/outputs      # <-- Mount for outputs access
-    --name ttp_syncluster 
-    synergos_ttp:syncluster          
-        --id ttp_syncluster      
+    --name <TTP_ID> 
+    synergos_ttp:cluster          
+        --id <TTP_ID>      
         --grid <GRID IDX>                           # <-- IMPT! 
         --queue <MQ-VARIANT> <MQ-HOST> <MQ-PORT>
         --logging_variant <LOGGER-VARIANT> <LOGGER-HOST> <SYSMETRIC-PORT> 
@@ -171,20 +188,40 @@ Notice that MLFlow mount points are no longer necesary? That's because that func
 An example of a *cluster* launch command is as follows:
 
 ```
+################
+# 1ST TTP Node #
+################
+
 docker run --rm 
     -p 5001:5000   
     -P 8021:8020   
-    -v /synergos_demos/orchestrator/data/:/director/data      
-    -v /synergos_demos/orchestrator/outputs/:/director/outputs      
+    -v /synergos_demos/orchestrator/data/:/orchestrator/data      
+    -v /synergos_demos/orchestrator/outputs/:/orchestrator/outputs       
+    --name ttp_syncluster_1 
+    synergos_ttp:cluster          
+        --id ttp_syncluster_1  
+        --grid 0    # <-- IMPT! Just count up sequentially starting from 0
+        --queue rabbitmq 172.17.0.4 5672      
+        --logging_variant graylog 172.30.0.4 9300 
+
+################
+# 2ND TTP Node #
+################
+
+docker run --rm 
+    -p 5002:5000   
+    -P 8022:8020   
+    -v /synergos_demos/orchestrator/data/:/orchestrator/data      
+    -v /synergos_demos/orchestrator/outputs/:/orchestrator/outputs       
     --name ttp_syncluster_2 
-    synergos_ttp:syncluster          
+    synergos_ttp:cluster          
         --id ttp_syncluster_2  
-        --grid 1
+        --grid 1    # <-- IMPT! 2nd TTP node deployed >> grid idx == 1
         --queue rabbitmq 172.17.0.4 5672      
         --logging_variant graylog 172.30.0.4 9300 
 ```
 
-> Note: Multiple **Synergos TTP** instance can be deployed in a `SynCluster` grid!
+> Note: Multiple **Synergos TTP** instances can be deployed in a `SynCluster` grid! Each TTP node forms a sub-grid with a registered node from each worker. Hence, the no. of jobs parallelizable equals to the total no. of sub-grids DETECTED.
 
 ---
 <br>
