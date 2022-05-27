@@ -31,7 +31,7 @@ dependencies:
         - flask-restx==0.2.0
         - nni==1.7.1
         - pathos==0.2.5
-	- protobuf=3.20.1
+        - protobuf=3.20.1
         - psutil==5.7.0
         - pytorch-ignite==0.3.0
         - ray==0.7.7
